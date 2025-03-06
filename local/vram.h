@@ -28,6 +28,7 @@ typedef struct {
 void clear_vram();
 void fill_rect(uint16_t color, int x0, int y0, int x1, int y1);
 void fill_vram();
+void put_char(uint16_t color, int x, int y, char c);
 void init_palette();
 void scroll();
 
@@ -39,7 +40,7 @@ extern volatile char *mfp;
 extern volatile CRTC_REG *crtc;
 
 // vram address
-extern uint16_t* vram_start;
-extern uint16_t* vram_end;
+extern volatile uint16_t* vram_start;
+extern volatile uint16_t* vram_end;
 
 #endif
