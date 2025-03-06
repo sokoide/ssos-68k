@@ -26,6 +26,7 @@ typedef struct {
 } CRTC_REG;
 
 void clear_vram();
+void fill_rect(uint16_t color, int x0, int y0, int x1, int y1);
 void fill_vram();
 void init_palette();
 void scroll();
@@ -38,7 +39,7 @@ extern volatile char *mfp;
 extern volatile CRTC_REG *crtc;
 
 // vram address
-extern const void* vram_start;
-extern const void* vram_end;
+extern uint16_t* vram_start;
+extern uint16_t* vram_end;
 
 #endif

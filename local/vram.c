@@ -13,8 +13,8 @@ CRTC_REG scroll_data;
 volatile char* mfp = (char*)0xe88001;
 volatile CRTC_REG* crtc = (CRTC_REG*)0xe80018;
 
-const void* vram_start = (void*)0xc00000;
-const void* vram_end = (void*)0xd00000;
+uint16_t* vram_start = (uint16_t*)0xc00000;
+uint16_t* vram_end = (uint16_t*)0xd00000;
 
 __attribute__((optimize("no-unroll-loops"))) void clear_vram() {
     /* uint16_t* p = (uint16_t*)vram0; */
@@ -40,8 +40,18 @@ __attribute__((optimize("no-unroll-loops"))) void clear_vram() {
     /* } */
 }
 
+void fill_rect(uint16_t color, int x0, int y0, int x1, int y1) {
+    int x, y;
+    for (y = y0; y <= y1; y++) {
+        for (x = x0; x <= x1; x++)
+            vram_start[y * 1024 + x] = color;
+    }
+    return;
+}
+
+
 void fill_vram() {
-    uint16_t* p = (uint16_t*)vram_start;
+    uint16_t* p = vram_start;
 
     uint16_t color = 0;
     for (int y = 0; y < 512; y++) {

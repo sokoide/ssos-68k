@@ -21,7 +21,10 @@ int main() {
     _iocs_b_curoff(); // stop cursor
     init_palette();
 
-    fill_vram();
+    /* fill_vram(); */
+    for(int i=1;i<16;i++) {
+        fill_rect(i, 20+20*i, 20+20*i, 120+20*i, 120+20*i);
+    }
 
     while (1) {
         // if it's vsync, wait for display period
