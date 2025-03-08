@@ -22,13 +22,14 @@ int main() {
     init_palette();
 
     /* fill_vram(); */
-    for(int i=0;i<16;i++) {
-        fill_rect(i, 20+20*i, 20+20*i, 120+20*i, 120+20*i);
+    for (int i = 0; i < 16; i++) {
+        fill_rect(i, 20 + 20 * i, 20 + 20 * i, 120 + 20 * i, 120 + 20 * i);
     }
 
-    put_char(2, 0, 200, 'A');
-    put_char(3, 8, 200, 'B');
-    put_char(4, 16, 200, 'C');
+    put_char(2, 0, 200, 200, 'A');
+    put_char(3, 0, 208, 200, 'B');
+    put_char(4, 0, 216, 200, 'C');
+    print(5, 0, 10, 10, "Scott & Sandy OS x68k");
 
     while (1) {
         // if it's vsync, wait for display period

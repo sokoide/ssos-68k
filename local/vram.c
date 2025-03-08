@@ -1,6 +1,7 @@
 #include "vram.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #pragma warning disable format
 #include <x68k/iocs.h>
@@ -70,37 +71,40 @@ void fill_vram() {
     }
 }
 
-void put_char(uint16_t color, int x, int y, char c) {
-    uint8_t* font_base = (uint8_t*)0xf3a000;
-    uint16_t* font_addr = (uint16_t*)(font_base + 8 * c);
+void put_char(uint16_t fg_color, uint16_t bg_color, int x, int y, char c) {
+    // 8x8 font
+    uint8_t* font_base_8_8 = (uint8_t*)0xf3a000;
+    // 8x16 font
+    uint8_t* font_base_8_16 = (uint8_t*)0xf3a800;
 
+    uint16_t font_height = 16;
+    uint16_t* font_addr = (uint16_t*)(font_base_8_16 + font_height * c);
 
-    for (int ty = y; ty < y + 8; ty++) {
+    for (int ty = y; ty < y + font_height; ty++) {
         uint8_t hi = (uint8_t)((*font_addr) >> 8);
         uint8_t lo = (uint8_t)(*font_addr);
         uint8_t t = hi;
 
-        if (ty%2 == 1) {
+        if (ty % 2 == 1) {
             t = lo;
             font_addr++;
         }
 
-        if ((t & 0x80) != 0)
-            vram_start[ty * 1024 + x] = color;
-        if ((t & 0x40) != 0)
-            vram_start[ty * 1024 + x + 1] = color;
-        if ((t & 0x20) != 0)
-            vram_start[ty * 1024 + x + 2] = color;
-        if ((t & 0x10) != 0)
-            vram_start[ty * 1024 + x + 3] = color;
-        if ((t & 0x08) != 0)
-            vram_start[ty * 1024 + x + 4] = color;
-        if ((t & 0x04) != 0)
-            vram_start[ty * 1024 + x + 5] = color;
-        if ((t & 0x02) != 0)
-            vram_start[ty * 1024 + x + 6] = color;
-        if ((t & 0x01) != 0)
-            vram_start[ty * 1024 + x + 7] = color;
+        vram_start[ty * 1024 + x] = (t & 0x80) ? fg_color : bg_color;
+        vram_start[ty * 1024 + x + 1] = (t & 0x40) ? fg_color : bg_color;
+        vram_start[ty * 1024 + x + 2] = (t & 0x20) ? fg_color : bg_color;
+        vram_start[ty * 1024 + x + 3] = (t & 0x10) ? fg_color : bg_color;
+        vram_start[ty * 1024 + x + 4] = (t & 0x08) ? fg_color : bg_color;
+        vram_start[ty * 1024 + x + 5] = (t & 0x04) ? fg_color : bg_color;
+        vram_start[ty * 1024 + x + 6] = (t & 0x02) ? fg_color : bg_color;
+        vram_start[ty * 1024 + x + 7] = (t & 0x01) ? fg_color : bg_color;
+    }
+}
+
+void print(uint16_t fg_color, uint16_t bg_color, int x, int y, char* str) {
+    int l = strlen(str);
+    for (int i = 0; i < l; i++) {
+        put_char(fg_color, bg_color, x + i * 8, y, str[i]);
     }
 }
 
