@@ -1,5 +1,6 @@
 TARGET=	local.x
 SRCS=	main.c \
+		kernel.c \
 		vram.c
 HEADERS=$(wildcard *.h)
 OBJS=$(SRCS:.c=.o)
@@ -13,7 +14,7 @@ CCFLAGS=$(INCLUDE) -O2 -g
 LDFLAGS=$(LIB) -lx68kiocs
 
 .PHONY:
-	clean install dump
+	clean install dump compiledb
 
 $(TARGET): $(OBJS)
 	$(CC) $^ -o $(TARGET) -Xlinker "$(LDFLAGS)"
@@ -29,3 +30,6 @@ install: $(TARGET)
 
 dump: $(TARGET)
 	$(OBJDUMP) -D $(TARGET).elf
+
+compiledb: $(SRCS)
+	compiledb make

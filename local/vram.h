@@ -37,7 +37,6 @@ void scroll();
 extern CRTC_REG scroll_data;
 
 // IO ports
-extern volatile char* mfp;
 extern volatile CRTC_REG* crtc;
 
 // vram address

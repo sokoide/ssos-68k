@@ -11,34 +11,34 @@
 CRTC_REG scroll_data;
 
 // IO ports
-volatile char* mfp = (char*)0xe88001;
 volatile CRTC_REG* crtc = (CRTC_REG*)0xe80018;
 
 volatile uint16_t* vram_start = (uint16_t*)0xc00000;
 volatile uint16_t* vram_end = (uint16_t*)0xd00000;
 
-__attribute__((optimize("no-unroll-loops"))) void clear_vram() {
-    /* uint16_t* p = (uint16_t*)vram0; */
-    /* uint16_t* limit = p + 0x80000; */
-    /*  */
-    /* while (p < limit) { */
-    /*     *p++ = 0; */
-    /*     *p++ = 0; */
-    /*     *p++ = 0; */
-    /*     *p++ = 0; */
-    /*     *p++ = 0; */
-    /*     *p++ = 0; */
-    /*     *p++ = 0; */
-    /*     *p++ = 0; */
-    /*     *p++ = 0; */
-    /*     *p++ = 0; */
-    /*     *p++ = 0; */
-    /*     *p++ = 0; */
-    /*     *p++ = 0; */
-    /*     *p++ = 0; */
-    /*     *p++ = 0; */
-    /*     *p++ = 0; */
-    /* } */
+void clear_vram() {
+    // only clears 512 (height) x 1024 (width)
+    uint16_t* p = (uint16_t*)vram_start;
+    uint16_t* limit = p + 512 * 1024;
+
+    while (p < limit) {
+        *p++ = 0;
+        *p++ = 0;
+        *p++ = 0;
+        *p++ = 0;
+        *p++ = 0;
+        *p++ = 0;
+        *p++ = 0;
+        *p++ = 0;
+        *p++ = 0;
+        *p++ = 0;
+        *p++ = 0;
+        *p++ = 0;
+        *p++ = 0;
+        *p++ = 0;
+        *p++ = 0;
+        *p++ = 0;
+    }
 }
 
 void fill_rect(uint16_t color, int x0, int y0, int x1, int y1) {

@@ -4,4 +4,4 @@ tags
 *.elf
 *.lst
 empty.xdf
-
+compile_commands.json
