@@ -23,7 +23,7 @@ entry:
 	lea.l	.message2, %a1
 	IOCS	_B_PRINT
 
-	# read the sector2
+	# read from the sector 2 to 8
 	#  track 0, side 0, sector 1: IPL
 	#  track 0, side 0, sector 2: <- read from here
 	move.l	#0x010000, %a1
@@ -33,7 +33,8 @@ entry:
 	# 00: Side 0
 	# 02: Sector 2
 	move.l	#0x03000002, %d2
-	move.l	#1024, %d3
+	# read 2 sectors
+	move.l	#1024*7, %d3
 
 	IOCS	_B_READ
 	tst.l	%d0

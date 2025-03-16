@@ -1,8 +1,9 @@
-ENTRY(boot)
+ENTRY(main)
 
 MEMORY
 {
-	RAM (rwx) : ORIGIN = 0x00010000, LENGTH = 1024K
+	ROM (rx)	: ORIGIN = 0x00010000, LENGTH = 1024K
+	RAM (rwx)	: ORIGIN = 0x00020000, LENGTH = 1024K
 }
 
 SECTIONS
@@ -11,11 +12,13 @@ SECTIONS
 
 	.text : {
 		__text_start = .;
+		/* .text.startup section is used for main */
+		/* *(.text.startup) */
 		*(.text)
 		*(.rela.text)
 		*(.rodata)
 		__text_end = .;
-	} > RAM
+	} > ROM
 	__test_size = __text_end - __text_start;
 
 	.data : {
