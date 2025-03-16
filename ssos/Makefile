@@ -1,61 +1,19 @@
-TARGET=SSOS.X
-SRCS=kernel/main.c
-OBJS=$(SRCS:.c=.o)
+TOPTARGETS := all clean
+SUBDIRS := makedisk boot os
+DISK := ssos.xdf
 
-CC=m68k-xelf-gcc
-AS=m68k-xelf-as
-LD=m68k-xelf-ld
-OBJCOPY=m68k-xelf-objcopy
-OBJDUMP=m68k-xelf-objdump
-READELF=m68k-xelf-readelf
+.PHONY: $(TARGETS) $(SUBDIRS) install
 
-INCLUDE=-I$(XELF_BASE)/m68k-elf/include
-LIB=-L$(XELF_BASE)/m68k-elf/lib
+$(TOPTARGETS): $(SUBDIRS)
 
-CCFLAGS=$(INCLUDE) -g -O2
-LDFLAGS=$(LIB) -lx68kiocs -nostdlib -Tlinker.ld
+$(SUBDIRS):
+	$(MAKE) -C $@ $(MAKECMDGOALS)
 
-DISKIMG=$(TARGET:.X=.xdf)
-EMPTYDISKIMG=empty.xdf
+$(DISK):
+	./makedisk/makedisk ./boot/BOOT.X.bin ./os/SSOS.X.bin $(DISK)
 
-.PHONY:
-	clean bin install dump disk readelf compiledb
-
-bin: $(TARGET)
-	$(OBJCOPY) -O binary $(TARGET).elf $(TARGET).bin
-
-$(TARGET): $(OBJS) linker.ld
-	$(LD) --strip-all $(OBJS) -o $(TARGET).elf $(LDFLAGS) -e boot -q
-	elf2x68k.py -s -o $(TARGET) $(TARGET).elf
-
-%.o: %.s
-	$(AS) --strip-local-absolute $^ -o $@ -m68000 -I../include
-
-%.o: %.c
-	$(CC) -Wa,-adhlns="$@.lst" -c $< -o $@ $(CCFLAGS)
+install: $(DISK)
+	cp $(DISK) ~/tmp
 
 clean:
-	rm -rf $(TARGET) *.elf *.o *.bin $(DISKIMG)
-
-install: $(DISKIMG)
-	cp $(DISKIMG) $(HOME)/tmp
-
-dump: $(TARGET)
-	$(OBJDUMP) -D $(TARGET).elf
-
-# disk: bin $(EMPTYDISKIMG)
-# 	cat $(TARGET).bin $(EMPTYDISKIMG) | dd bs=1 count=1261568 of=$(DISKIMG)
-# 	@echo $(DISKIMG) has been created
-#
-# $(EMPTYDISKIMG):
-# 	# 1024 bytes/sector
-# 	# 8 sectors * 77 tracks * 2 sides = 1232
-# 	echo making $(DISKIMG)
-# 	dd if=/dev/zero of=$(EMPTYDISKIMG) bs=1024 count=1232
-
-
-readelf: $(TARGET)
-	$(READELF) -a $(TARGET).elf
-
-compiledb: $(SRCS)
-	compiledb make
+	rm $(DISK)
