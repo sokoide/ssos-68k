@@ -12,14 +12,11 @@ READELF=m68k-xelf-readelf
 INCLUDE=-I$(XELF_BASE)/m68k-elf/include
 LIB=-L$(XELF_BASE)/m68k-elf/lib
 
-CCFLAGS=$(INCLUDE) -g -O2
+CCFLAGS=$(INCLUDE) -g -O2 -Wa,-adhlns="$@.lst"
 LDFLAGS=$(LIB) -lx68kiocs -nostdlib -Tlinker.ld
 
-DISKIMG=$(TARGET:.X=.xdf)
-EMPTYDISKIMG=empty.xdf
-
 .PHONY:
-	clean bin install dump disk readelf compiledb
+	clean bin dump readelf compiledb
 
 bin: $(TARGET)
 	$(OBJCOPY) -O binary $(TARGET).elf $(TARGET).bin
@@ -32,26 +29,14 @@ $(TARGET): $(OBJS) linker.ld
 	$(AS) --strip-local-absolute $^ -o $@ -m68000 -I../include
 
 %.o: %.c
-	$(CC) -Wa,-adhlns="$@.lst" -c $< -o $@ $(CCFLAGS)
+	# $(CC) -Wa,-adhlns="$@.lst" -c $< -o $@ $(CCFLAGS)
+	$(CC) -c $< -o $@ $(CCFLAGS)
 
 clean:
-	rm -rf $(TARGET) *.elf *.o *.bin $(DISKIMG)
-
-install: $(DISKIMG)
-	cp $(DISKIMG) $(HOME)/tmp
+	rm -rf $(TARGET) *.elf *.o *.bin
 
 dump: $(TARGET)
 	$(OBJDUMP) -D $(TARGET).elf
-
-# disk: bin $(EMPTYDISKIMG)
-# 	cat $(TARGET).bin $(EMPTYDISKIMG) | dd bs=1 count=1261568 of=$(DISKIMG)
-# 	@echo $(DISKIMG) has been created
-#
-# $(EMPTYDISKIMG):
-# 	# 1024 bytes/sector
-# 	# 8 sectors * 77 tracks * 2 sides = 1232
-# 	echo making $(DISKIMG)
-# 	dd if=/dev/zero of=$(EMPTYDISKIMG) bs=1024 count=1232
 
 
 readelf: $(TARGET)
