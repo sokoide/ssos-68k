@@ -16,12 +16,14 @@ READELF=m68k-xelf-readelf
 INCLUDE=-I$(XELF_BASE)/m68k-elf/include
 LIB=-L$(XELF_BASE)/m68k-elf/lib -L$(XELF_BASE)/lib/gcc/m68k-elf/13.3.0
 
-CCFLAGS=$(INCLUDE) -g -O2 -Wa,-adhlns="$@.lst"
-# CCFLAGS=$(INCLUDE) -O2
+# CCFLAGS=$(INCLUDE) -g -O2 -Wa,-adhlns="$@.lst"
+CCFLAGS=$(INCLUDE) -O2
 LDFLAGS=$(LIB) -lx68kiocs -Tlinker.ld -lnosys -nostdlib -lc -lm -lgcc
 
 .PHONY:
-	clean dump readelf compiledb
+	all clean dump readelf compiledb
+
+all: $(TARGET).bin
 
 $(TARGET).bin: $(TARGET)
 	$(OBJCOPY) -O binary $(TARGET).elf $(TARGET).bin

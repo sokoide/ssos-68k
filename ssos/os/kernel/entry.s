@@ -4,7 +4,8 @@
 	.type	entry, @function
 
 entry:
-	lea		0x03000000, %sp
+    # set stack
+	lea		0x300000, %sp
 	jmp		main
 
 	.end entry

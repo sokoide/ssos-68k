@@ -16,7 +16,9 @@ CCFLAGS=$(INCLUDE) -g -O2
 LDFLAGS=$(LIB) -lx68kiocs -nostdlib -Tlinker.ld
 
 .PHONY:
-	clean dump readelf
+	all clean dump readelf
+
+all: $(TARGET).bin
 
 $(TARGET).bin: $(TARGET)
 	$(OBJCOPY) -O binary $(TARGET).elf $(TARGET).bin

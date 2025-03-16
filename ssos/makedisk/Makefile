@@ -13,7 +13,9 @@ OBJDUMP=objdump
 READELF=otool -hfal
 
 .PHONY:
-	run clean dump readelf compiledb
+	all run clean dump readelf compiledb
+
+all: $(TARGET)
 
 $(TARGET): $(OBJS)
 	$(CC) $(OBJS) -o $(TARGET) $(LDFLAGS)

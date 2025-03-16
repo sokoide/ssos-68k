@@ -2,18 +2,21 @@ TOPTARGETS := all clean
 SUBDIRS := makedisk boot os
 DISK := ssos.xdf
 
-.PHONY: $(TARGETS) $(SUBDIRS) install compiledb
+.PHONY: $(TARGETS) $(SUBDIRS) all compiledb
+.default: all
+
 
 $(TOPTARGETS): $(SUBDIRS)
 
 $(SUBDIRS):
 	$(MAKE) -C $@ $(MAKECMDGOALS)
 
-$(DISK): ./makedisk/makedisk ./boot/boot.X.bin ./os/SSOS.X.bin
-	./makedisk/makedisk ./boot/BOOT.X.bin ./os/SSOS.X.bin $(DISK)
-
-install: $(DISK)
+all: $(DISK)
 	cp $(DISK) ~/tmp
+
+#$(DISK): ./makedisk/makedisk ./boot/boot.X.bin ./os/SSOS.X.bin
+$(DISK): $(SUBDIRS)
+	./makedisk/makedisk ./boot/BOOT.X.bin ./os/SSOS.X.bin $(DISK)
 
 clean:
 	rm $(DISK)

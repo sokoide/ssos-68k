@@ -10,7 +10,6 @@
 #define B_SUPER 0x81
 
 void main() {
-#if 0
     char c;
     int ssp = _iocs_b_super(0); // enter supervisor mode
 
@@ -24,14 +23,17 @@ void main() {
     _iocs_skey_mod(0, 0, 0);
     _iocs_ms_curon();
 
+    _iocs_b_print("Hello\r\n");
+
     /* clear_vram(); */
-    /* clear_vram_fast(); */
-    /* wait_for_clear_vram_completion(); */
+    clear_vram_fast();
+    wait_for_clear_vram_completion();
     /* fill_vram(); */
 
     for (int i = 0; i < 16; i++) {
         fill_rect(i, 20 + 20 * i, 20 + 20 * i, 120 + 20 * i, 120 + 20 * i);
     }
+    _iocs_b_print("Bye\r\n");
 
     put_char(2, 0, 200, 200, 'A');
     put_char(3, 0, 208, 200, 'B');
@@ -44,6 +46,7 @@ void main() {
     while (1) {
         wait_for_vsync();
 
+#if 0
         c = _iocs_b_keysns();
         if (c) {
             break;
@@ -70,6 +73,7 @@ void main() {
             sprintf(szMessage, "R20: 0x%04x", get_crtc_reg(20));
             print(9, 0, 0, 48, szMessage);
         }
+#endif
     }
 
     // uninit
@@ -84,9 +88,7 @@ void main() {
 
     sprintf(szMessage, "Key %c pressed", c);
     print(10, 0, 0, 64, szMessage);
-#endif
 
     while (1)
         ;
 }
-
