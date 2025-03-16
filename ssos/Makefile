@@ -19,7 +19,7 @@ DISKIMG=$(TARGET:.X=.xdf)
 EMPTYDISKIMG=empty.xdf
 
 .PHONY:
-	clean install dump bin disk readelf
+	clean install dump bin disk readelf compiledb
 
 $(TARGET): $(OBJS) linker.ld
 	$(LD) --strip-all $(OBJS) -o $(TARGET).elf $(LDFLAGS) -e boot -q
@@ -28,11 +28,14 @@ $(TARGET): $(OBJS) linker.ld
 %.o: %.s
 	$(AS) --strip-local-absolute $^ -o $@ -m68000 -I../include
 
+%.o: %.c
+	$(CC) -Wa,-adhlns="$@.lst" -c $< -o $@ $(CCFLAGS)
+
 clean:
 	rm -rf $(TARGET) *.elf *.o *.bin $(DISKIMG)
 
-install: $(TARGET)
-	cp $(TARGET) $(HOME)/tmp
+install: $(DISKIMG)
+	cp $(DISKIMG) $(HOME)/tmp
 
 dump: $(TARGET)
 	$(OBJDUMP) -D $(TARGET).elf
@@ -53,3 +56,6 @@ $(EMPTYDISKIMG):
 
 readelf: $(TARGET)
 	$(READELF) -a $(TARGET).elf
+
+compiledb: $(SRCS)
+	compiledb make
