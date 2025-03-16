@@ -43,8 +43,8 @@ entry:
 done:
 	lea.l	.message_done, %a1
 	IOCS	_B_PRINT
-	# jmp		loop
-	jmp		0x010000
+	move.l	#0x010000, %a2
+	jmp		(%a2)
 
 err:
 	move.l	#0x010000, %a2

@@ -26,9 +26,9 @@ void main() {
     _iocs_b_print("Hello\r\n");
 
     /* clear_vram(); */
-    clear_vram_fast();
-    wait_for_clear_vram_completion();
-    /* fill_vram(); */
+    /* clear_vram_fast(); */
+    /* wait_for_clear_vram_completion(); */
+    fill_vram();
 
     for (int i = 0; i < 16; i++) {
         fill_rect(i, 20 + 20 * i, 20 + 20 * i, 120 + 20 * i, 120 + 20 * i);

@@ -5,7 +5,7 @@
 
 entry:
     # set stack
-	lea		0x300000, %sp
+	move.l	#0x300000, %sp
 	jmp		main
 
 	.end entry
