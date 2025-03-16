@@ -1,7 +1,9 @@
 TARGET=	local.x
 SRCS=	main.c \
+		crtc.c \
 		kernel.c \
 		vram.c
+
 HEADERS=$(wildcard *.h)
 OBJS=$(SRCS:.c=.o)
 CC=m68k-xelf-gcc

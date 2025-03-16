@@ -1,4 +1,5 @@
 #include "vram.h"
+#include "crtc.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -39,6 +40,13 @@ void clear_vram() {
         *p++ = 0;
         *p++ = 0;
     }
+}
+
+void clear_vram_fast() { *crtc_execution_port = (*crtc_execution_port) | 2; }
+
+void wait_for_clear_vram_completion() {
+    while (*crtc_execution_port & 0b1111)
+        ;
 }
 
 void fill_rect(uint16_t color, int x0, int y0, int x1, int y1) {

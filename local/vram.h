@@ -1,5 +1,4 @@
-#ifndef __VRAM_H__
-#define __VRAM_H__
+#pragma once
 
 #include <stdint.h>
 
@@ -26,6 +25,9 @@ typedef struct {
 } CRTC_REG;
 
 void clear_vram();
+void clear_vram_fast();
+void wait_for_clear_vram_completion();
+
 void fill_rect(uint16_t color, int x0, int y0, int x1, int y1);
 void fill_vram();
 void put_char(uint16_t fg_color, uint16_t bg_color, int x, int y, char c);
@@ -42,5 +44,3 @@ extern volatile CRTC_REG* crtc;
 // vram address
 extern volatile uint16_t* vram_start;
 extern volatile uint16_t* vram_end;
-
-#endif

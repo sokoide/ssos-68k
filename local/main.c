@@ -1,3 +1,4 @@
+#include "crtc.h"
 #include "kernel.h"
 #include "vram.h"
 #include <stdio.h>
@@ -23,6 +24,12 @@ int main() {
     _iocs_ms_init();
     _iocs_skey_mod(0, 0, 0);
     _iocs_ms_curon();
+
+    /* clear_vram(); */
+
+    clear_vram_fast();
+    wait_for_clear_vram_completion();
+    fill_vram();
 
     for (int i = 0; i < 16; i++) {
         fill_rect(i, 20 + 20 * i, 20 + 20 * i, 120 + 20 * i, 120 + 20 * i);
@@ -57,9 +64,13 @@ int main() {
             sprintf(szMessage, "dx:%3d, dy:%3d, l:%3d, r:%3d", dx, dy,
                     (dt & 0xFF00) >> 8, dt & 0xFF);
             print(7, 0, 0, 16, szMessage);
+
             sprintf(szMessage, "x:%3d, y:%3d", (pos & 0xFFFF0000) >> 16,
                     pos & 0x0000FFFF);
             print(8, 0, 0, 32, szMessage);
+
+            sprintf(szMessage, "R20: 0x%04x", get_crtc_reg(20));
+            print(9, 0, 0, 48, szMessage);
         }
     }
 
