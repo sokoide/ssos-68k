@@ -1,5 +1,9 @@
 #include "syscall.h"
 
+#define HEAP_SIZE 65536
+static char heap[HEAP_SIZE];
+static char* heap_ptr = heap;
+
 // non-reentrant
 int _close(int fd) {
     errno = ENOSYS; // Function not implemented
@@ -40,7 +44,6 @@ int _write(int fd, const void* buf, size_t count) {
     errno = ENOSYS; // Function not implemented
     return -1;
 }
-
 void* _sbrk(ptrdiff_t incr) { return _sbrk_r(NULL, incr); }
 
 void _exit(int status) {
@@ -91,7 +94,12 @@ _ssize_t _write_r(struct _reent* ptr, int fd, const void* buf, size_t count) {
 }
 
 void* _sbrk_r(struct _reent* r, ptrdiff_t incr) {
-    errno = ENOMEM;
-    return (void*)-1;
+    if (heap_ptr + incr > heap + HEAP_SIZE) {
+        errno = ENOMEM;
+        return (void*)-1;
+    }
+    void* prev_heap_ptr = heap_ptr;
+    heap_ptr += incr;
+    return prev_heap_ptr;
 }
 

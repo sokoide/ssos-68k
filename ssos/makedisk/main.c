@@ -1,8 +1,9 @@
-#include <stdio.h>
 #include <stdint.h>
+#include <stdio.h>
 
-void usage () {
-    printf("Usage: makedisk {boot-binary-path} {os-binary-path} {target-disk-path}\n");
+void usage() {
+    printf("Usage: makedisk {boot-binary-path} {os-binary-path} "
+           "{target-disk-path}\n");
 }
 
 int main(int argc, char** argv) {
@@ -56,10 +57,10 @@ int main(int argc, char** argv) {
 
     sz = fread(buff, 1, 1024, f_boot);
     fwrite(buff, 1, sz, f_image);
-    fwrite(zero, 1, 1024-sz, f_image);
+    fwrite(zero, 1, 1024 - sz, f_image);
 
     uint32_t written = 1024;
-    while(1) {
+    while (1) {
         sz = fread(buff, 1, 1024, f_os);
         fwrite(buff, 1, sz, f_image);
         written += sz;
@@ -71,7 +72,7 @@ int main(int argc, char** argv) {
 
     printf("Boot (1024) + OS size: %d\n", written);
 
-    while(written <= IMAGE_SIZE - 1024) {
+    while (written <= IMAGE_SIZE - 1024) {
         fwrite(zero, 1, 1024, f_image);
         written += 1024;
     }

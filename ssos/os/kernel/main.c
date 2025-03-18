@@ -1,52 +1,93 @@
+#include "main.h"
 #include "crtc.h"
 #include "kernel.h"
 #include "vram.h"
 #include <stdio.h>
+#include <string.h>
 
 #pragma warning disable format
 #include <x68k/iocs.h>
 #pragma warning restore format
 
-#define B_SUPER 0x81
+void write_vram() {
+    volatile uint16_t* vram = (uint16_t*)0x00C00000;
+    for (int x = 0; x < 768; x++) {
+        for (int y = 0; y < 512; y++) {
+            vram[x + 1024 * y] = (y / 8) % 16;
+        }
+    }
+}
 
-void main() {
+char* itoh(uint32_t value, char* buffer) {
+    char* p = buffer;
+    int i;
+
+    for (i = 7; i >= 0; i--) {
+        int v = (value >> (i * 4)) & 0xf;
+        if (v < 10) {
+            *p++ = v + '0';
+        } else {
+            *p++ = v - 10 + 'a';
+        }
+    }
+
+    *p = '\0';
+    return buffer;
+}
+
+void ssosmain() {
     char c;
-    int ssp = _iocs_b_super(0); // enter supervisor mode
+    uint8_t counter = 0;
+    char szMessage[256];
+
+    /* int ssp = _iocs_b_super(0); // enter supervisor mode */
 
     // init
     _iocs_crtmod(16); // 768x512 dots, 16 colors, 1 screen
     _iocs_g_clr_on(); // clear graphics, reset palette to the default, access
-                      // page 0
+    // page 0
     _iocs_b_curoff(); // stop cursor
     init_palette();
-    _iocs_ms_init();
-    _iocs_skey_mod(0, 0, 0);
-    _iocs_ms_curon();
+    /* _iocs_ms_init(); */
+    /* _iocs_skey_mod(0, 0, 0); */
+    /* _iocs_ms_curon(); */
 
     _iocs_b_print("Hello\r\n");
+
+    write_vram();
+
+    /* test_vram(); */ /* uint32_t reg20 = _iocs_crtmod(255); */
+    /* sprintf(szMessage, "CRTC Register 20: 0x%04X\n", reg20); */
+    /* char* hex = itoh(reg20, szMessage); */
+    /* _iocs_b_print("Reg20\r\n"); */
+    /* _iocs_b_print(hex); */
+    /* _iocs_b_print("\r\n"); */
+
+    /* uint8_t val1 = VRAM[0]; // VRAM の最初の値を取得 */
+    /* uint8_t val2 = VRAM[1]; // 2バイト目の値を取得 */
+    /*  */
+    /* sprintf(szMessage, "VRAM[0]=%02X, VRAM[1]=%02X\r\n", val1, val2); */
+    /* _iocs_b_print(szMessage); // シリアル出力で確認 */
 
     /* clear_vram(); */
     /* clear_vram_fast(); */
     /* wait_for_clear_vram_completion(); */
-    fill_vram();
+    /* fill_vram(); */
 
-    for (int i = 0; i < 16; i++) {
-        fill_rect(i, 20 + 20 * i, 20 + 20 * i, 120 + 20 * i, 120 + 20 * i);
-    }
+    // for (int i = 0; i < 16; i++) {
+    //     fill_rect(i, 20 + 20 * i, 20 + 20 * i, 120 + 20 * i, 120 + 20 * i);
+    // }
     _iocs_b_print("Bye\r\n");
 
     put_char(2, 0, 200, 200, 'A');
-    put_char(3, 0, 208, 200, 'B');
-    put_char(4, 0, 216, 200, 'C');
-    print(5, 0, 0, 0, "Scott & Sandy OS x68k");
-
-    uint8_t counter = 0;
-    char szMessage[256];
+    /* put_char(3, 0, 208, 200, 'B'); */
+    /* put_char(4, 0, 216, 200, 'C'); */
+    /* print(5, 0, 0, 0, "Scott & Sandy OS x68k"); */
 
     while (1) {
+#if 0
         wait_for_vsync();
 
-#if 0
         c = _iocs_b_keysns();
         if (c) {
             break;
@@ -84,10 +125,10 @@ void main() {
                       // page 0
     _iocs_crtmod(16); // 768x512 dots, 16 colors, 1 screen
 
-    _iocs_b_super(ssp); // leave supervisor mode
+    /* _iocs_b_super(ssp); // leave supervisor mode */
 
-    sprintf(szMessage, "Key %c pressed", c);
-    print(10, 0, 0, 64, szMessage);
+    /* sprintf(szMessage, "Key %c pressed", c); */
+    /* print(10, 0, 0, 64, szMessage); */
 
     while (1)
         ;
