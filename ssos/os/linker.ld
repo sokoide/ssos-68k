@@ -2,8 +2,12 @@ ENTRY(main)
 
 MEMORY
 {
-	ROM (rx)	: ORIGIN = 0x00010000, LENGTH = 1024K
-	RAM (rwx)	: ORIGIN = 0x00020000, LENGTH = 1024K
+	/* 77 tracks x 2 sides x 8 sectors = 1261568 bytes */
+	/* -1024 (boot sector) = 1260544 = 0x133c00 = 0x1231 KB*/
+	ROM (rx)	: ORIGIN = 0x00010000, LENGTH = 1000K
+	/* 0x143c00-0x14FFFF: OS work */
+	/* 0x150000-0xBFFFFF: HEAP+Stack work */
+	RAM (rwx)	: ORIGIN = 0x0010A000, LENGTH = 100K
 }
 
 SECTIONS

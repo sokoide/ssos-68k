@@ -1,5 +1,6 @@
 #include "vram.h"
 #include "crtc.h"
+#include "printf.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -14,13 +15,13 @@ CRTC_REG scroll_data;
 // IO ports
 volatile CRTC_REG* crtc = (CRTC_REG*)0xe80018;
 
-volatile uint16_t* vram_start = (uint16_t*)0xc00000;
-volatile uint16_t* vram_end = (uint16_t*)0xd00000;
+volatile uint16_t* vram_start = (uint16_t*)0x00c00000;
+volatile uint16_t* vram_end = (uint16_t*)0x00d00000;
 
 void clear_vram() {
     // only clears 512 (height) x 1024 (width)
-    uint16_t* p = (uint16_t*)vram_start;
-    uint16_t* limit = p + 512 * 1024;
+    volatile uint16_t* p = vram_start;
+    volatile uint16_t* limit = p + 512 * 1024;
 
     while (p < limit) {
         *p++ = 0;
@@ -57,29 +58,9 @@ void fill_rect(uint16_t color, int x0, int y0, int x1, int y1) {
     return;
 }
 
-void fill_vram() {
-    volatile uint16_t* p = vram_start;
-
-    uint16_t color = 0;
-    for (int y = 0; y < 512; y++) {
-        for (int x = 0; x < 768 / 8; x++) {
-            *p++ = color;
-            *p++ = color;
-            *p++ = color;
-            *p++ = color;
-            *p++ = color;
-            *p++ = color;
-            *p++ = color;
-            *p++ = color;
-            color++;
-            if (color > 15)
-                color = 0;
-        }
-        p += (1024 - 768);
-    }
-}
-
 void put_char(uint16_t fg_color, uint16_t bg_color, int x, int y, char c) {
+    volatile uint16_t* vram = (uint16_t*)0x00C00000;
+
     // 8x8 font
     uint8_t* font_base_8_8 = (uint8_t*)0xf3a000;
     // 8x16 font
@@ -98,19 +79,26 @@ void put_char(uint16_t fg_color, uint16_t bg_color, int x, int y, char c) {
             font_addr++;
         }
 
-        vram_start[ty * 1024 + x] = (t & 0x80) ? fg_color : bg_color;
-        vram_start[ty * 1024 + x + 1] = (t & 0x40) ? fg_color : bg_color;
-        vram_start[ty * 1024 + x + 2] = (t & 0x20) ? fg_color : bg_color;
-        vram_start[ty * 1024 + x + 3] = (t & 0x10) ? fg_color : bg_color;
-        vram_start[ty * 1024 + x + 4] = (t & 0x08) ? fg_color : bg_color;
-        vram_start[ty * 1024 + x + 5] = (t & 0x04) ? fg_color : bg_color;
-        vram_start[ty * 1024 + x + 6] = (t & 0x02) ? fg_color : bg_color;
-        vram_start[ty * 1024 + x + 7] = (t & 0x01) ? fg_color : bg_color;
+        vram[ty * 1024 + x] = (t & 0x80) ? fg_color : bg_color;
+        vram[ty * 1024 + x + 1] = (t & 0x40) ? fg_color : bg_color;
+        vram[ty * 1024 + x + 2] = (t & 0x20) ? fg_color : bg_color;
+        vram[ty * 1024 + x + 3] = (t & 0x10) ? fg_color : bg_color;
+        vram[ty * 1024 + x + 4] = (t & 0x08) ? fg_color : bg_color;
+        vram[ty * 1024 + x + 5] = (t & 0x04) ? fg_color : bg_color;
+        vram[ty * 1024 + x + 6] = (t & 0x02) ? fg_color : bg_color;
+        vram[ty * 1024 + x + 7] = (t & 0x01) ? fg_color : bg_color;
     }
 }
 
+int mystrlen(char* str) {
+    int r = 0;
+    while (str[r] != 0)
+        r++;
+    return r;
+}
+
 void print(uint16_t fg_color, uint16_t bg_color, int x, int y, char* str) {
-    int l = strlen(str);
+    int l = mystrlen(str);
     for (int i = 0; i < l; i++) {
         put_char(fg_color, bg_color, x + i * 8, y, str[i]);
     }

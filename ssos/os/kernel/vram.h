@@ -29,11 +29,10 @@ void clear_vram_fast();
 void wait_for_clear_vram_completion();
 
 void fill_rect(uint16_t color, int x0, int y0, int x1, int y1);
-void fill_vram();
+
 void put_char(uint16_t fg_color, uint16_t bg_color, int x, int y, char c);
 void print(uint16_t fg_color, uint16_t bg_color, int x, int y, char* str);
 void init_palette();
-void scroll();
 
 // globals
 extern CRTC_REG scroll_data;

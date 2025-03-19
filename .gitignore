@@ -5,3 +5,4 @@ tags
 *.lst
 empty.xdf
 compile_commands.json
+.cache

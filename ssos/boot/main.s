@@ -27,18 +27,45 @@ entry:
 	#  track 0, side 0, sector 1: IPL
 	#  track 0, side 0, sector 2: <- read from here
 	move.l	#0x010000, %a1
+	# 0x90: 2HD 0
+	# 0x70: MFM, retry, seek
 	move.w	#0x9070, %d1
 	# 03: 2HD
 	# 00: Track 0
 	# 00: Side 0
 	# 02: Sector 2
 	move.l	#0x03000002, %d2
-	# read 2 sectors
-	move.l	#1024*7, %d3
+	/* # read 7 sectors */
+	/* move.l	#0x1c00, %d3 */
+	# read 7 (track 0, side 0) + 8 (track 0, side 1) sectors
+	# + 8 sectors * 76 tracks * 2 sides
+	move.l	#1024*(7+8+8*76*2), %d3
 
 	IOCS	_B_READ
+	# Mask FDC result status 0's low bits & cylinder
+	and.l	#0xF0FFFF00, %d0
 	tst.l	%d0
 	bne.w 	err
+
+	/* # read side 1 */
+	/* # Read disk */
+	/* move.l	#0x012000, %a1 */
+	/* # 0x90: 2HD 0 */
+	/* # 0x70: MFM, retry, seek */
+	/* move.w	#0x9070, %d1 */
+	/* # 03: 2HD */
+	/* # 00: Track 0 */
+	/* # 01: Side 1 */
+	/* # 01: Sector 1 */
+	/* move.l	#0x03000101, %d2 */
+	/* # read 8 sectors */
+	/* move.l	#0x2000, %d3 */
+    /*  */
+	/* IOCS	_B_READ */
+	/* # Mask FDC result status 0's low bits & cylinder */
+	/* and.l	#0xF0FFFF00, %d0 */
+	/* tst.l	%d0 */
+	/* bne.w 	err */
 
 done:
 	lea.l	.message_done, %a1
