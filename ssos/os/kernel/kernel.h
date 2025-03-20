@@ -21,6 +21,9 @@ extern char __bss_size[];
 extern char __appram_start[];
 extern char __appram_end[];
 extern char __appram_size[];
+extern char __ssosram_start[];
+extern char __ssosram_end[];
+extern char __ssosram_size[];
 
 // local only: defined in local/main.c
 extern char local_info[256];

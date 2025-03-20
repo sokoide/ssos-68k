@@ -180,6 +180,11 @@ void draw_stats() {
         ss_print(color_fg, color_bg, 0, y, szMessage);
         y += 16;
 
+        sprintf(szMessage, ".ssos: 0x%p-0x%p, size:%d", __ssosram_start,
+                __ssosram_end, __ssosram_size);
+        ss_print(color_fg, color_bg, 0, y, szMessage);
+        y += 16;
+
         sprintf(szMessage, ".app:  0x%p-0x%p, size:%d", __appram_start,
                 __appram_end, __appram_size);
         ss_print(color_fg, color_bg, 0, y, szMessage);
