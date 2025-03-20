@@ -3,6 +3,7 @@ SRCS= \
 	kernel/premain.c \
 	kernel/ssosmain.c \
 	kernel/kernel.c \
+	kernel/memory.c \
 	kernel/vram.c \
 	util/printf.c
 ASRCS= \

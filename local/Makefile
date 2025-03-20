@@ -2,6 +2,7 @@ TARGET=	local.x
 SRCS=	main.c \
 		../ssos/os/kernel/ssosmain.c \
 		../ssos/os/kernel/kernel.c \
+		../ssos/os/kernel/memory.c \
 		../ssos/os/kernel/vram.c \
 		../ssos/os/util/printf.c
 ASRCS= \

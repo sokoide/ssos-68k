@@ -40,7 +40,12 @@ entry:
 	# read 7 (track 0, side 0) + 8 (track 0, side 1) sectors
 	# + 8 sectors * 76 tracks * 2 sides
 	#move.l	#1024*(7+8+8*76*2), %d3
-	move.l	#1024*(7+8+8*16), %d3
+	#
+	# 7: 7 sectors in track 0 side 0
+	# 8: 8 sectors in track 0 side 1
+	# 8*12*2: 8 sectors in track 1-13 x 2 sides
+	# Total 8*(1+1+24)-1 = 207KB
+	move.l	#1024*(7+8+8*12*2), %d3
 
 	IOCS	_B_READ
 	# Mask FDC result status 0's low bits & cylinder

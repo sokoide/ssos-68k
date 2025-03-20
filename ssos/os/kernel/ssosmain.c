@@ -12,7 +12,6 @@ void draw_background();
 void draw_taskbar();
 void draw_stats();
 void draw_keys();
-
 void ssosmain() {
     // init
     _iocs_crtmod(16); // 768x512 dots, 16 colors, 1 screen
@@ -168,16 +167,21 @@ void draw_stats() {
         ss_print(color_fg, color_bg, 0, y, szMessage);
         y += 16;
 #else
-        sprintf(szMessage, ".text: %p-%p, size:%d", __text_start, __text_end,
-                __text_size);
+        sprintf(szMessage, ".text: 0x%p-0x%p, size:%d", __text_start,
+                __text_end, __text_size);
         ss_print(color_fg, color_bg, 0, y, szMessage);
         y += 16;
-        sprintf(szMessage, ".data: %p-%p, size:%d", __data_start, __data_end,
-                __data_size);
+        sprintf(szMessage, ".data: 0x%p-0x%p, size:%d", __data_start,
+                __data_end, __data_size);
         ss_print(color_fg, color_bg, 0, y, szMessage);
         y += 16;
-        sprintf(szMessage, ".bss:  %p-%p, size:%d", __bss_start, __bss_end,
+        sprintf(szMessage, ".bss:  0x%p-0x%p, size:%d", __bss_start, __bss_end,
                 __bss_size);
+        ss_print(color_fg, color_bg, 0, y, szMessage);
+        y += 16;
+
+        sprintf(szMessage, ".app:  0x%p-0x%p, size:%d", __appram_start,
+                __appram_end, __appram_size);
         ss_print(color_fg, color_bg, 0, y, szMessage);
         y += 16;
 #endif
