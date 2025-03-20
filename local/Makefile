@@ -22,7 +22,7 @@ INCLUDE=-I$(XELF_BASE)/m68k-elf/include -I../ssos/os/util
 LIB=-L$(XELF_BASE)/m68k-elf/lib
 
 CCFLAGS=$(INCLUDE) -O2 -g -DLOCAL_MODE
-LDFLAGS=$(LIB) -lx68kiocs
+LDFLAGS=$(LIB) -lx68kiocs -nostdlib -lc -lm -lgcc
 
 .PHONY:
 	clean install dump compiledb

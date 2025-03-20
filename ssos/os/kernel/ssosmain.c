@@ -21,6 +21,17 @@ void draw_taskbar();
 void draw_stats();
 void draw_keys();
 
+// defined in linker.ld
+extern char __text_start[];
+extern char __text_end[];
+extern char __text_size[];
+extern char __data_start[];
+extern char __data_end[];
+extern char __data_size[];
+extern char __bss_start[];
+extern char __bss_end[];
+extern char __bss_size[];
+
 void ssosmain() {
     // init
     _iocs_crtmod(16); // 768x512 dots, 16 colors, 1 screen
@@ -275,6 +286,21 @@ void draw_stats() {
         sprintf(szMessage, "D: 1000Hz timer:   %9d (every 1ms)", *timerd_count);
         ss_print(color_fg, color_bg, 0, y, szMessage);
         y += 16;
+
+#ifndef LOCAL_MODE
+        sprintf(szMessage, ".text: %p-%p, size:%d", __text_start, __text_end,
+                __text_size);
+        ss_print(color_fg, color_bg, 0, y, szMessage);
+        y += 16;
+        sprintf(szMessage, ".data: %p-%p, size:%d", __data_start, __data_end,
+                __data_size);
+        ss_print(color_fg, color_bg, 0, y, szMessage);
+        y += 16;
+        sprintf(szMessage, ".bss:  %p-%p, size:%d", __bss_start, __bss_end,
+                __bss_size);
+        ss_print(color_fg, color_bg, 0, y, szMessage);
+        y += 16;
+#endif
     }
 }
 
@@ -300,5 +326,5 @@ void draw_keys() {
         x += 8 * 11;
     }
     // clear
-    ss_fill_rect(color_bg, x, 100, 768, 116);
+    ss_fill_rect(color_bg, x, y, 768, 116);
 }
