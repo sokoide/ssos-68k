@@ -1,4 +1,4 @@
-#include "main.h"
+#include "ssosmain.h"
 #include <stdint.h>
 
 extern uint8_t __bss_start, __bss_end;

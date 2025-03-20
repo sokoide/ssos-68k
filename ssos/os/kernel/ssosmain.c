@@ -1,4 +1,4 @@
-#include "main.h"
+#include "ssosmain.h"
 #include "crtc.h"
 #include "kernel.h"
 #include "printf.h"

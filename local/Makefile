@@ -1,6 +1,6 @@
 TARGET=	local.x
 SRCS=	main.c \
-		../ssos/os/kernel/main.c \
+		../ssos/os/kernel/ssosmain.c \
 		../ssos/os/kernel/crtc.c \
 		../ssos/os/kernel/kernel.c \
 		../ssos/os/kernel/vram.c \
