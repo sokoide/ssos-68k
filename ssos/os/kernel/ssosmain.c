@@ -193,18 +193,18 @@ void draw_keys() {
     int x = 0;
     const int y = 164;
 
-    if (kb.len == 0)
+    if (ss_kb.len == 0)
         return;
 
     ss_print(color_fg, color_bg, x, y, "ScanCode:");
     x += 8 * 9;
 
-    while (kb.len > 0) {
-        int scancode = kb.data[kb.idxr];
-        kb.len--;
-        kb.idxr++;
-        if (kb.idxr > 32)
-            kb.idxr = 0;
+    while (ss_kb.len > 0) {
+        int scancode = ss_kb.data[ss_kb.idxr];
+        ss_kb.len--;
+        ss_kb.idxr++;
+        if (ss_kb.idxr > 32)
+            ss_kb.idxr = 0;
         sprintf(szMessage, " 0x%08x", scancode);
         ss_print(color_fg, color_bg, x, y, szMessage);
         x += 8 * 11;

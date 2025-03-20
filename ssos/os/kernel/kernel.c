@@ -9,7 +9,7 @@ const uint16_t color_tb = 14; // taskbar color
 
 volatile uint8_t* mfp = (volatile uint8_t*)0xe88001;
 
-struct KeyBuffer kb;
+struct KeyBuffer ss_kb;
 
 void ss_wait_for_vsync() {
     // if it's vsync, wait for display period
@@ -34,11 +34,11 @@ int ss_handle_keys() {
 
         // push it to the key buffer
         // TODO: if the queue has 32 chars it's overwritten
-        kb.data[kb.idxw] = scancode;
-        kb.len++;
-        kb.idxw++;
-        if (kb.idxw > 32)
-            kb.idxw = 0;
+        ss_kb.data[ss_kb.idxw] = scancode;
+        ss_kb.len++;
+        ss_kb.idxw++;
+        if (ss_kb.idxw > 32)
+            ss_kb.idxw = 0;
 
         if ((scancode & 0xFFFF) == 0x011b) {
             // ESC key

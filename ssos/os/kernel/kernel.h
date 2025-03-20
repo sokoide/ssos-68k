@@ -38,4 +38,4 @@ struct KeyBuffer {
     int len;
 };
 
-extern struct KeyBuffer kb;
+extern struct KeyBuffer ss_kb;
