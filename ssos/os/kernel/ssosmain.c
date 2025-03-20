@@ -32,6 +32,9 @@ extern char __bss_start[];
 extern char __bss_end[];
 extern char __bss_size[];
 
+// defined in local/main.c
+extern char local_info[256];
+
 void ssosmain() {
     // init
     _iocs_crtmod(16); // 768x512 dots, 16 colors, 1 screen
@@ -287,7 +290,11 @@ void draw_stats() {
         ss_print(color_fg, color_bg, 0, y, szMessage);
         y += 16;
 
-#ifndef LOCAL_MODE
+#ifdef LOCAL_MODE
+        sprintf(szMessage, "local: %s", local_info);
+        ss_print(color_fg, color_bg, 0, y, szMessage);
+        y += 16;
+#else
         sprintf(szMessage, ".text: %p-%p, size:%d", __text_start, __text_end,
                 __text_size);
         ss_print(color_fg, color_bg, 0, y, szMessage);
