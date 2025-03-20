@@ -6,10 +6,13 @@ SRCS= \
 	kernel/kernel.c \
 	kernel/vram.c \
 	util/printf.c
+ASRCS= \
+	kernel/entry.s \
+	kernel/interrupts.s
 
 # kernel/syscall.c
 
-OBJS=kernel/entry.o $(SRCS:.c=.o)
+OBJS=$(ASRCS:.s=.o) $(SRCS:.c=.o)
 
 CC=m68k-xelf-gcc
 AS=m68k-xelf-as
