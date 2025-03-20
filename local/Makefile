@@ -40,7 +40,7 @@ $(TARGET): $(OBJS)
 	$(CC) -Wa,-adhlns="$@.lst" -c $< -o $@ $(CCFLAGS)
 
 clean:
-	rm -rf $(TARGET) *.elf *.o *.lst ../ssos/kernel/*.o ../ssos/util/*.o
+	rm -rf $(TARGET) *.elf *.o *.lst ../ssos/os/kernel/*.o ../ssos/os/util/*.o
 
 dump: $(TARGET)
 	$(OBJDUMP) -D $(TARGET).elf
