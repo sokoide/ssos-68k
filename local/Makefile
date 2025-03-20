@@ -45,5 +45,8 @@ clean:
 dump: $(TARGET)
 	$(OBJDUMP) -D $(TARGET).elf
 
+readelf: $(TARGET)
+	$(READELF) -a $(TARGET).elf
+
 compiledb: $(SRCS)
 	compiledb make

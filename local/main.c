@@ -9,7 +9,7 @@ extern void interrupts();
 
 int main() {
     int ssp = _iocs_b_super(0); // enter supervisor mode
-                                //
+
     interrupts();
     ssosmain();
 
