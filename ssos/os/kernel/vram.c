@@ -69,6 +69,9 @@ void ss_put_char(uint16_t fg_color, uint16_t bg_color, int x, int y, char c) {
     uint16_t font_height = 16;
     uint16_t* font_addr = (uint16_t*)(font_base_8_16 + font_height * c);
 
+    if (x > 1024 - 8)
+        return;
+
     for (int ty = y; ty < y + font_height; ty++) {
         uint8_t hi = (uint8_t)((*font_addr) >> 8);
         uint8_t lo = (uint8_t)(*font_addr);

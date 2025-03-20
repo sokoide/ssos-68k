@@ -110,8 +110,6 @@ clear_loop:
 	# Timer C - 4MHz / 200 / 200 = 100Hz, every 10ms
 	# Timer D - 4MHz /  50 /  80 = 1000Hz, every 1ms
 
-
-
 	# Enable interrupts - level 2
 	move.w	#0x2000, %sr
 

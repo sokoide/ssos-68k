@@ -3,6 +3,7 @@ tags
 *.o
 *.elf
 *.lst
+*.map
 empty.xdf
 compile_commands.json
 .cache

@@ -34,12 +34,10 @@ int ss_handle_keys() {
         if (kb.idxw > 32)
             kb.idxw = 0;
 
-#ifdef LOCAL_MODE
         if ((scancode & 0xFFFF) == 0x011b) {
             // ESC key
             return -1;
         }
-#endif
         c = _iocs_b_keysns();
     }
     return handled_keys;

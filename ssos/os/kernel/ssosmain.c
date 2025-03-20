@@ -9,7 +9,7 @@
 
 #include <x68k/iocs.h>
 
-const int WIDTH = 758;
+const int WIDTH = 768;
 const int HEIGHT = 512;
 uint16_t color_fg = 15; // foreground color
 uint16_t color_bg = 10; // background color
@@ -51,16 +51,28 @@ void ssosmain() {
         // if it's vsync, wait for display period
         while (!((*mfp) & 0x10)) {
             if (ss_handle_keys() == -1)
+#ifdef LOCAL_MODE
                 goto CLEANUP;
+#else
+                ;
+#endif
         }
         // wait for vsync
         while ((*mfp) & 0x10) {
             if (ss_handle_keys() == -1)
+#ifdef LOCAL_MODE
                 goto CLEANUP;
+#else
+                ;
+#endif
         }
 
         if (ss_handle_keys() == -1)
+#ifdef LOCAL_MODE
             break;
+#else
+            ;
+#endif
 
         draw_keys();
         draw_stats();
@@ -269,11 +281,12 @@ void draw_stats() {
 void draw_keys() {
     char szMessage[256];
     int x = 0;
+    const int y = 164;
 
     if (kb.len == 0)
         return;
 
-    ss_print(color_fg, color_bg, x, 100, "ScanCode:");
+    ss_print(color_fg, color_bg, x, y, "ScanCode:");
     x += 8 * 9;
 
     while (kb.len > 0) {
@@ -283,7 +296,7 @@ void draw_keys() {
         if (kb.idxr > 32)
             kb.idxr = 0;
         sprintf(szMessage, " 0x%08x", scancode);
-        ss_print(color_fg, color_bg, x, 100, szMessage);
+        ss_print(color_fg, color_bg, x, y, szMessage);
         x += 8 * 11;
     }
     // clear

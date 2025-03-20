@@ -11,7 +11,10 @@ void clear_bss() {
     }
 }
 
-void copy_data() {}
+void copy_data() {
+    // This is not necessary
+    // .data section is loaded along with the .text section in boot/main.s
+}
 
 void premain() {
     clear_bss();
