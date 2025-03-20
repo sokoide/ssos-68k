@@ -24,15 +24,15 @@ typedef struct {
     short sc3_y_reg;
 } CRTC_REG;
 
-void clear_vram();
-void clear_vram_fast();
-void wait_for_clear_vram_completion();
+void ss_clear_vram();
+void ss_clear_vram_fast();
+void ss_wait_for_clear_vram_completion();
 
-void fill_rect(uint16_t color, int x0, int y0, int x1, int y1);
+void ss_fill_rect(uint16_t color, int x0, int y0, int x1, int y1);
 
-void put_char(uint16_t fg_color, uint16_t bg_color, int x, int y, char c);
-void print(uint16_t fg_color, uint16_t bg_color, int x, int y, char* str);
-void init_palette();
+void ss_put_char(uint16_t fg_color, uint16_t bg_color, int x, int y, char c);
+void ss_print(uint16_t fg_color, uint16_t bg_color, int x, int y, char* str);
+void ss_init_palette();
 
 // globals
 extern CRTC_REG scroll_data;

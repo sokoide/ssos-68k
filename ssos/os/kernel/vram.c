@@ -18,7 +18,7 @@ volatile CRTC_REG* crtc = (CRTC_REG*)0xe80018;
 volatile uint16_t* vram_start = (uint16_t*)0x00c00000;
 volatile uint16_t* vram_end = (uint16_t*)0x00d00000;
 
-void clear_vram() {
+void ss_clear_vram() {
     // only clears 512 (height) x 1024 (width)
     volatile uint16_t* p = vram_start;
     volatile uint16_t* limit = p + 512 * 1024;
@@ -43,14 +43,14 @@ void clear_vram() {
     }
 }
 
-void clear_vram_fast() { *crtc_execution_port = (*crtc_execution_port) | 2; }
+void ss_clear_vram_fast() { *crtc_execution_port = (*crtc_execution_port) | 2; }
 
-void wait_for_clear_vram_completion() {
+void ss_wait_for_clear_vram_completion() {
     while (*crtc_execution_port & 0b1111)
         ;
 }
 
-void fill_rect(uint16_t color, int x0, int y0, int x1, int y1) {
+void ss_fill_rect(uint16_t color, int x0, int y0, int x1, int y1) {
     for (int y = y0; y <= y1; y++) {
         for (int x = x0; x <= x1; x++)
             vram_start[y * 1024 + x] = color;
@@ -58,7 +58,7 @@ void fill_rect(uint16_t color, int x0, int y0, int x1, int y1) {
     return;
 }
 
-void put_char(uint16_t fg_color, uint16_t bg_color, int x, int y, char c) {
+void ss_put_char(uint16_t fg_color, uint16_t bg_color, int x, int y, char c) {
     volatile uint16_t* vram = (uint16_t*)0x00C00000;
 
     // 8x8 font
@@ -97,14 +97,14 @@ int mystrlen(char* str) {
     return r;
 }
 
-void print(uint16_t fg_color, uint16_t bg_color, int x, int y, char* str) {
+void ss_print(uint16_t fg_color, uint16_t bg_color, int x, int y, char* str) {
     int l = mystrlen(str);
     for (int i = 0; i < l; i++) {
-        put_char(fg_color, bg_color, x + i * 8, y, str[i]);
+        ss_put_char(fg_color, bg_color, x + i * 8, y, str[i]);
     }
 }
 
-void init_palette() {
+void ss_init_palette() {
     _iocs_gpalet(0, 0);
 
     // DOS 16 color

@@ -4,9 +4,9 @@
 
 extern volatile uint8_t* mfp;
 
-void wait_for_vsync();
+void ss_wait_for_vsync();
 
-int handle_keys();
+int ss_handle_keys();
 
 struct KeyBuffer {
     int data[32];

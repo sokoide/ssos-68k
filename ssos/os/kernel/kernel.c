@@ -5,7 +5,7 @@ volatile uint8_t* mfp = (volatile uint8_t*)0xe88001;
 
 struct KeyBuffer kb;
 
-void wait_for_vsync() {
+void ss_wait_for_vsync() {
     // if it's vsync, wait for display period
     while (!((*mfp) & 0x10))
         ;
@@ -14,7 +14,7 @@ void wait_for_vsync() {
         ;
 }
 
-int handle_keys() {
+int ss_handle_keys() {
     int c;
     int scancode = 0;
     int handled_keys = 0;
