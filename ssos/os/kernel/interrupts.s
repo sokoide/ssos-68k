@@ -6,7 +6,7 @@
 	.type	interrupts, @function
 
 interrupts:
-	# reset global vars in 0x30400-0x304FF
+	# reset global vars in 0x300400-0x3004FF
 	lea		0x00300400, %a0
 	move.w	#0xF, %d0
 	clr.l	%d1

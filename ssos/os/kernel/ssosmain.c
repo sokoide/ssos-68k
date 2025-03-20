@@ -114,7 +114,8 @@ void draw_taskbar() {
 
 void draw_stats() {
     static uint8_t counter = 0;
-    uint32_t y = 48;
+    const uint32_t oy = 32;
+    uint32_t y = oy + 32;
     char szMessage[256];
     uint32_t prev_dt = 0;
     uint32_t prev_pos = 0;
@@ -129,14 +130,14 @@ void draw_stats() {
         int8_t dy = (int8_t)((dt & 0xFF0000) >> 16);
         sprintf(szMessage, "mouse dx:%3d, dy:%3d, l-click:%3d, r-click:%3d", dx,
                 dy, (dt & 0xFF00) >> 8, dt & 0xFF);
-        ss_print(color_fg, color_bg, 0, 16, szMessage);
+        ss_print(color_fg, color_bg, 0, oy, szMessage);
     }
 
     if (pos != prev_pos) {
         prev_pos = pos;
         sprintf(szMessage, "mouse x:%3d, y:%3d", (pos & 0xFFFF0000) >> 16,
                 pos & 0x0000FFFF);
-        ss_print(color_fg, color_bg, 0, 32, szMessage);
+        ss_print(color_fg, color_bg, 0, oy+16, szMessage);
     }
 
     if (counter++ >= 30) {
@@ -196,7 +197,7 @@ void draw_stats() {
 void draw_keys() {
     char szMessage[256];
     int x = 0;
-    const int y = 164;
+    const int y = 16;
 
     if (ss_kb.len == 0)
         return;
