@@ -39,6 +39,7 @@ extern CRTC_REG scroll_data;
 
 // IO ports
 extern volatile CRTC_REG* crtc;
+extern volatile uint16_t* crtc_execution_port;
 
 // vram address
 extern volatile uint16_t* vram_start;

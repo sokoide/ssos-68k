@@ -1,5 +1,4 @@
 #include "vram.h"
-#include "crtc.h"
 #include "printf.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -14,6 +13,7 @@ CRTC_REG scroll_data;
 
 // IO ports
 volatile CRTC_REG* crtc = (CRTC_REG*)0xe80018;
+volatile uint16_t* crtc_execution_port = (uint16_t*)0xe80480;
 
 volatile uint16_t* vram_start = (uint16_t*)0x00c00000;
 volatile uint16_t* vram_end = (uint16_t*)0x00d00000;

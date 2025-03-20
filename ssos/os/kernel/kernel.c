@@ -1,6 +1,12 @@
 #include "kernel.h"
 #include <x68k/iocs.h>
 
+const int WIDTH = 768;
+const int HEIGHT = 512;
+const uint16_t color_fg = 15; // foreground color
+const uint16_t color_bg = 10; // background color
+const uint16_t color_tb = 14; // taskbar color
+
 volatile uint8_t* mfp = (volatile uint8_t*)0xe88001;
 
 struct KeyBuffer kb;

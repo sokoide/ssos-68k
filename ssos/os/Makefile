@@ -2,15 +2,12 @@ TARGET=SSOS.X
 SRCS= \
 	kernel/premain.c \
 	kernel/ssosmain.c \
-	kernel/crtc.c \
 	kernel/kernel.c \
 	kernel/vram.c \
 	util/printf.c
 ASRCS= \
 	kernel/entry.s \
 	kernel/interrupts.s
-
-# kernel/syscall.c
 
 OBJS=$(ASRCS:.s=.o) $(SRCS:.c=.o)
 
