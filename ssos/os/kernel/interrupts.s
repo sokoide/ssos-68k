@@ -1,4 +1,5 @@
 	.include "iocscall.mac"
+	.include "memory.inc"
 
 	.section .text
 	.align	2
@@ -6,8 +7,10 @@
 	.type	interrupts, @function
 
 interrupts:
-	# reset global vars in 0x300400-0x3004FF
-	lea		0x00300400, %a0
+	movem.l %d2-%d7/%a2-%a6, -(%sp)
+
+	# reset global vars in for timers
+	lea		ss_timera_counter, %a0
 	move.w	#0xF, %d0
 	clr.l	%d1
 clear_loop:
@@ -113,6 +116,7 @@ clear_loop:
 	# Enable interrupts - level 2
 	move.w	#0x2000, %sr
 
+	movem.l (%sp)+, %d2-%d7/%a2-%a6
 	rts
 
 nop_handler:
@@ -121,9 +125,9 @@ nop_handler:
 vdisp_handler:
 	movem.l	%d0/%a0, -(%sp)
 
-	move.l	0x00300400, %d0
+	move.l	ss_timera_counter, %d0
 	add.l 	#1, %d0
-	move.l	%d0, 0x00300400
+	move.l	%d0, ss_timera_counter
 
 	movem.l	(%sp)+, %d0/%a0
 	rte
@@ -132,9 +136,9 @@ vdisp_handler:
 usart_handler:
 	movem.l	%d0/%a0, -(%sp)
 
-	move.l	0x00300404, %d0
+	move.l	ss_timerb_counter, %d0
 	add.l 	#1, %d0
-	move.l	%d0, 0x00300404
+	move.l	%d0, ss_timerb_counter
 
 	movem.l	(%sp)+, %d0/%a0
 	rte
@@ -142,9 +146,9 @@ usart_handler:
 timerc_handler:
 	movem.l	%d0/%a0, -(%sp)
 
-	move.l	0x00300408, %d0
+	move.l	ss_timerc_counter, %d0
 	add.l 	#1, %d0
-	move.l	%d0, 0x00300408
+	move.l	%d0, ss_timerc_counter
 
 	# do the same as IOCS's 0xFF1D46-8A
 	lea.l	0x09b4.w, %a0
@@ -209,9 +213,9 @@ timerc_handler_l4_sub:
 timerd_handler:
 	movem.l	%d0/%a0, -(%sp)
 
-	move.l	0x0030040c, %d0
+	move.l	ss_timerd_counter, %d0
 	add.l 	#1, %d0
-	move.l	%d0, 0x0030040c
+	move.l	%d0, ss_timerd_counter
 
 	movem.l	(%sp)+, %d0/%a0
 	rte
@@ -219,11 +223,15 @@ timerd_handler:
 key_input_handler:
 	movem.l	%d0/%a0, -(%sp)
 
-	move.l	0x00300410, %d0
+	move.l	ss_key_counter, %d0
 	add.l 	#1, %d0
-	move.l	%d0, 0x00300410
+	move.l	%d0, ss_key_counter
 
 	movem.l	(%sp)+, %d0/%a0
 	rte
+
+; 	.section .bss
+; timer_handler_base:
+; 	ds.b	20
 
 	.end interrupts

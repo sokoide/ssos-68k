@@ -1,5 +1,6 @@
 #include "ssosmain.h"
 #include "kernel.h"
+#include "memory.h"
 #include "printf.h"
 #include "vram.h"
 #include <stdbool.h>
@@ -137,29 +138,24 @@ void draw_stats() {
         prev_pos = pos;
         sprintf(szMessage, "mouse x:%3d, y:%3d", (pos & 0xFFFF0000) >> 16,
                 pos & 0x0000FFFF);
-        ss_print(color_fg, color_bg, 0, oy+16, szMessage);
+        ss_print(color_fg, color_bg, 0, oy + 16, szMessage);
     }
 
     if (counter++ >= 30) {
         counter = 0;
 
-        volatile uint32_t* timera_count = (uint32_t*)0x00300400;
-        volatile uint32_t* timerb_count = (uint32_t*)0x00300404;
-        volatile uint32_t* timerc_count = (uint32_t*)0x00300408;
-        volatile uint32_t* timerd_count = (uint32_t*)0x0030040c;
-        volatile uint32_t* key_count = (uint32_t*)0x00300410;
-
         sprintf(szMessage, "A: V-DISP counter: %9d (vsync count)",
-                *timera_count);
+                *ss_timera_counter);
         ss_print(color_fg, color_bg, 0, y, szMessage);
         y += 16;
 
         sprintf(szMessage, "C: 100Hz timer:    %9d (every 10ms)",
-                *timerc_count);
+                *ss_timerc_counter);
         ss_print(color_fg, color_bg, 0, y, szMessage);
         y += 16;
 
-        sprintf(szMessage, "D: 1000Hz timer:   %9d (every 1ms)", *timerd_count);
+        sprintf(szMessage, "D: 1000Hz timer:   %9d (every 1ms)",
+                *ss_timerd_counter);
         ss_print(color_fg, color_bg, 0, y, szMessage);
         y += 16;
 

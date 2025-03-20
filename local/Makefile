@@ -35,7 +35,7 @@ $(TARGET): $(OBJS)
 	$(CC) $^ -o $(TARGET) -Xlinker "$(LDFLAGS)"
 
 %.o: %.s
-	$(AS) --strip-local-absolute $^ -o $@ -m68000 -I../include
+	$(AS) --strip-local-absolute $^ -o $@ -m68000 -I../include -I../ssos/os/kernel
 
 %.o: %.c
 	$(CC) -Wa,-adhlns="$@.lst" -c $< -o $@ $(CCFLAGS)
