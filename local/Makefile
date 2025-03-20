@@ -5,9 +5,11 @@ SRCS=	main.c \
 		../ssos/os/kernel/kernel.c \
 		../ssos/os/kernel/vram.c \
 		../ssos/os/util/printf.c
+ASRCS= \
+		../ssos/os/kernel/interrupts.s
 
 HEADERS=$(wildcard *.h)
-OBJS=$(SRCS:.c=.o)
+OBJS=$(ASRCS:.s=.o) $(SRCS:.c=.o)
 CC=m68k-xelf-gcc
 OBJDUMP=m68k-xelf-objdump
 

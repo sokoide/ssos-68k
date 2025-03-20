@@ -5,5 +5,14 @@
 #pragma warning restore format
 
 extern void ssosmain();
+extern void interrupts();
 
-void main() { ssosmain(); }
+int main() {
+    int ssp = _iocs_b_super(0); // enter supervisor mode
+                                //
+    interrupts();
+    ssosmain();
+
+    _iocs_b_super(ssp); // leave supervisor mode
+    return 0;
+}

@@ -16,10 +16,6 @@ void ssosmain() {
     uint8_t counter = 0;
     char szMessage[256];
 
-#ifdef LOCAL_MODE
-    int ssp = _iocs_b_super(0); // enter supervisor mode
-#endif
-
     // init
     _iocs_crtmod(16); // 768x512 dots, 16 colors, 1 screen
     _iocs_g_clr_on(); // clear gvram, reset palette, access page 0
@@ -39,7 +35,6 @@ void ssosmain() {
     }
 #ifdef LOCAL_MODE
     print(15, 0, 0, 0, "Scott & Sandy OS x68k, [ESC] to quit");
-    print(5, 0, 0, 120, "* Counters doesn't increment in local mode for now");
 #else
     print(15, 0, 0, 0, "Scott & Sandy OS x68k");
 #endif
@@ -138,8 +133,4 @@ void ssosmain() {
     _iocs_g_clr_on(); // clear graphics, reset palette to the default, access
                       // page 0
     _iocs_crtmod(16); // 768x512 dots, 16 colors, 1 screen
-                      //
-#ifdef LOCAL_MODE
-    _iocs_b_super(ssp); // leave supervisor mode
-#endif
 }
