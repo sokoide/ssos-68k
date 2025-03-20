@@ -2,7 +2,7 @@
 
 	.section .text
 	.align	2
-	.globl	interrupts
+	.global	interrupts
 	.type	interrupts, @function
 
 interrupts:

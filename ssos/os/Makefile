@@ -44,6 +44,7 @@ $(TARGET): $(OBJS) linker.ld
 
 %.o: %.s
 	$(AS) --strip-local-absolute $^ -o $@ -m68000 -I../../include
+
 %.o: %.c
 	$(CC) -c $< -o $@ $(CCFLAGS)
 
