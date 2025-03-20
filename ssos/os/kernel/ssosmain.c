@@ -6,9 +6,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#pragma warning disable format
 #include <x68k/iocs.h>
-#pragma warning restore format
 
 const int WIDTH = 758;
 const int HEIGHT = 512;
@@ -20,6 +18,7 @@ void demo();
 void draw_background();
 void draw_taskbar();
 void draw_stats();
+void draw_keys();
 
 void ssosmain() {
     // init
@@ -48,18 +47,27 @@ void ssosmain() {
     char szMessage[256];
 
     while (1) {
-        c = _iocs_b_keysns();
-        if (c > 0) {
-            // delete the key from the buffer
-            scancode = _iocs_b_keyinp();
-            sprintf(szMessage, "Scan Code:        0x%08x", scancode);
-            print(color_fg, color_bg, 0, 100, szMessage);
-#ifdef LOCAL_MODE
-            if ((scancode & 0xFFFF) == 0x011b) {
-                // ESC key
-                break;
-            }
-#endif
+        /*         c = _iocs_b_keysns(); */
+        /*         while (c > 0) { */
+        /*             // delete the key from the buffer */
+        /*             scancode = _iocs_b_keyinp(); */
+        /*  */
+        /*             sprintf(szMessage, "Scan Code:        0x%08x", scancode);
+         */
+        /*             print(color_fg, color_bg, 0, 100, szMessage); */
+        /* #ifdef LOCAL_MODE */
+        /*             if ((scancode & 0xFFFF) == 0x011b) { */
+        /*                 // ESC key */
+        /*                 break; */
+        /*             } */
+        /* #endif */
+        /*             c = _iocs_b_keysns(); */
+        /*         } */
+        int handled_keys = handle_keys();
+        if (handled_keys == -1) {
+            break;
+        } else if (handled_keys > 0) {
+            draw_keys();
         }
 
         draw_stats();
@@ -263,3 +271,24 @@ void draw_stats() {
         y += 16;
     }
 }
+
+void draw_keys() {
+    char szMessage[256];
+    int x = 0;
+    print(color_fg, color_bg, x, 100, "ScanCode:");
+    x += 8 * 9;
+
+    while (kb.len > 0) {
+        int scancode = kb.data[kb.idxr];
+        kb.len--;
+        kb.idxr++;
+        if (kb.idxr > 32)
+            kb.idxr = 0;
+        sprintf(szMessage, " 0x%08x", scancode);
+        print(color_fg, color_bg, x, 100, szMessage);
+        x += 8 * 11;
+    }
+    // clear
+    fill_rect(color_bg, x, 100, 768, 116);
+}
+
