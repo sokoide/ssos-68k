@@ -1,7 +1,7 @@
 ENTRY(main)
 
-__ssosram_size = 0x000B0000;;
-__appram_size = 0x00B00000;;
+__ssosram_size = 0x00010000;;
+__appram_size  = 0x00AA0000;;
 
 MEMORY
 {
@@ -10,8 +10,8 @@ MEMORY
 	/* move.l	#1024*(X), %d3 */
 	ROM (rx):		ORIGIN = 0x00010000, LENGTH = 128K
 	RAM (rwx):		ORIGIN = 0x00030000, LENGTH = 64K
-	SSOSRAM (rwx):	ORIGIN = 0x00040000, LENGTH = 768K
-	APPRAM (rwx):	ORIGIN = 0x10000000, LENGTH = 11264K
+	SSOSRAM (rwx):	ORIGIN = 0x00150000, LENGTH = 64K
+	APPRAM (rwx):	ORIGIN = 0x00160000, LENGTH = 10880K
 
 	/* 77 tracks x 2 sides x 8 sectors = 1261568 bytes */
 	/* -1024 (boot sector) = 1260544 = 0x133c00 = 0x1231 KB*/

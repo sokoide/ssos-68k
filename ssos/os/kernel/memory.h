@@ -8,11 +8,13 @@
  * 0x0023FF-0x00FFFF: SSOS stack (55KiB)
  * 0x010000-0x02FFFF: SSOS .text (128KiB)
  * 0x030000-0x03FFFF: SSOS .data (64KiB)
- * 0x040000-0x0FFFFF: SSOS .ssos (768KiB),
- * 0x100000-0xBFFFFF: SSOS .app (11MiB), application memory
+ * 0x150000-0x15FFFF: SSOS .ssos (64KiB),
+ * 0x160000-0xBFFFFF: SSOS .app (10.7MiB), application memory
  *
  * local mode)
  * TBD
+ * 0x150000-0x15FFFF: SSOS .ssos (64KiB),
+ * 0x160000-0xBFFFFF: SSOS .app (10.7MiB), application memory
  *
  * 1 chunk = 4KiB
  * 11MiB / 4Kib = 2816 chunks
