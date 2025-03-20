@@ -6,12 +6,6 @@
 	.type	entry, @function
 
 entry:
-	bsr setstack
-	bsr interrupts
-
-	jmp		premain
-
-setstack:
 	# ssp
 	move.l	#0x010000, %a0
 	move.l	%a0, %sp
@@ -21,7 +15,9 @@ setstack:
 	/* move.l	#0x280000, %a0 */
 	/* move.l	%a0, %usp */
 
-	rts
+	bsr interrupts
+
+	jmp		premain
 
 	.end entry
 

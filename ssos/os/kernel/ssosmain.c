@@ -11,11 +11,6 @@
 #pragma warning restore format
 
 void ssosmain() {
-    int c = 0;
-    int scancode = 0;
-    uint8_t counter = 0;
-    char szMessage[256];
-
     // init
     _iocs_crtmod(16); // 768x512 dots, 16 colors, 1 screen
     _iocs_g_clr_on(); // clear gvram, reset palette, access page 0
@@ -27,6 +22,24 @@ void ssosmain() {
 
     clear_vram_fast();
     wait_for_clear_vram_completion();
+
+    // demo
+    demo();
+
+    // uninit
+    _iocs_ms_curof();
+    _iocs_skey_mod(-1, 0, 0);
+    _iocs_b_curon();  // enable cursor
+    _iocs_g_clr_on(); // clear graphics, reset palette to the default, access
+                      // page 0
+    _iocs_crtmod(16); // 768x512 dots, 16 colors, 1 screen
+}
+
+void demo() {
+    int c = 0;
+    int scancode = 0;
+    uint8_t counter = 0;
+    char szMessage[256];
 
     /* _iocs_b_print("Hello\r\n"); */
 
@@ -55,7 +68,7 @@ void ssosmain() {
         // key
         c = _iocs_b_keysns();
         if (c > 0) {
-            // delete it from the buffer
+            // delete the key from the buffer
             scancode = _iocs_b_keyinp();
             sprintf(szMessage, "Scan Code:        0x%08x", scancode);
             print(15, 0, 0, 100, szMessage);
@@ -125,12 +138,4 @@ void ssosmain() {
             /* y += 16; */
         }
     }
-
-    // uninit
-    _iocs_ms_curof();
-    _iocs_skey_mod(-1, 0, 0);
-    _iocs_b_curon();  // enable cursor
-    _iocs_g_clr_on(); // clear graphics, reset palette to the default, access
-                      // page 0
-    _iocs_crtmod(16); // 768x512 dots, 16 colors, 1 screen
 }
