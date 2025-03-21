@@ -15,7 +15,7 @@ entry:
 	/* move.l	#0x280000, %a0 */
 	/* move.l	%a0, %usp */
 
-	bsr interrupts
+	bsr set_interrupts
 
 	jmp		premain
 

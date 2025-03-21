@@ -6,7 +6,8 @@
 #pragma warning restore format
 
 extern void ssosmain();
-extern void interrupts();
+extern void set_interrupts();
+extern void restore_interrupts();
 
 char local_info[256];
 
@@ -15,7 +16,7 @@ int main(int argc, char** argv) {
 
     int ssp = _iocs_b_super(0); // enter supervisor mode
 
-    interrupts();
+    set_interrupts();
 
     // get local info
     strcpy(local_info, argv[0]);
@@ -30,6 +31,8 @@ int main(int argc, char** argv) {
             data_size, bss_size);
 
     ssosmain();
+
+    restore_interrupts();
 
     _iocs_b_super(ssp); // leave supervisor mode
     return 0;

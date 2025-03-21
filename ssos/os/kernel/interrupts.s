@@ -3,22 +3,29 @@
 
 	.section .text
 	.align	2
-	.global	interrupts
-	.type	interrupts, @function
+	.global	set_interrupts, restore_interrupts
+	.global ss_timera_counter, ss_timerb_counter, ss_timerc_counter, ss_timerd_counter, ss_key_counter
+	.global ss_save_data_base
+	.type	set_interrupts, @function
+	.type	save_interrupts, @function
+	.type	restore_interrupts, @function
 
-interrupts:
+set_interrupts:
 	movem.l %d2-%d7/%a2-%a6, -(%sp)
 
 	# reset global vars in for timers
-	lea		ss_timera_counter, %a0
-	move.w	#0xF, %d0
+	lea		ss_save_data_base, %a0
+	move.w	#256, %d0
 	clr.l	%d1
 clear_loop:
 	move.l	%d1, (%a0)+
 	dbra	%d0, clear_loop
 
+
 	# Disable interrupts - level 7
 	move.w	#0x2700, %sr
+
+	bsr		save_interrupts
 
 	# MFP
 	# set MFP vector base (0x40 is the default)
@@ -115,6 +122,133 @@ clear_loop:
 
 	# Enable interrupts - level 2
 	move.w	#0x2000, %sr
+
+	movem.l (%sp)+, %d2-%d7/%a2-%a6
+	rts
+
+save_interrupts:
+	movem.l %d2-%d7/%a2-%a6, -(%sp)
+
+	# save Timer A
+	lea		ss_save_data_base, %a0
+	move.l	0x134, %d0
+	move.l	%d0, (%a0)
+
+	move.l	0x120, %d0
+	move.l	%d0, 4(%a0)
+
+	move.l	0x114, %d0
+	move.l	%d0, 8(%a0)
+
+	move.l	0x110, %d0
+	move.l	%d0, 12(%a0)
+
+	move.l	0x130, %d0
+	move.l	%d0, 16(%a0)
+
+	# save IERAB, IMRAB
+	move.l	#0xe88007, %a1
+	move.b	(%a1), %d0
+	move.b	%d0, 20(%a0)
+
+	move.l	#0xe88009, %a1
+	move.b	(%a1), %d0
+	move.b	%d0, 21(%a0)
+
+	move.l	#0xe88013, %a1
+	move.b	(%a1), %d0
+	move.b	%d0, 22(%a0)
+
+	move.l	#0xe88015, %a1
+	move.b	(%a1), %d0
+	move.b	%d0, 23(%a0)
+
+	# TACR
+	move.l	#0xe88019, %a1
+	move.b	(%a1), %d0
+	move.b	%d0, 24(%a0)
+	# TBCR
+	move.l	#0xe8801b, %a1
+	move.b	(%a1), %d0
+	move.b	%d0, 25(%a0)
+	# TCDCR
+	move.l	#0xe8801d, %a1
+	move.b	(%a1), %d0
+	move.b	%d0, 26(%a0)
+	# TADR
+	move.l	#0xe8801f, %a1
+	move.b	(%a1), %d0
+	move.b	%d0, 27(%a0)
+	# TBDR
+	move.l	#0xe88021, %a1
+	move.b	(%a1), %d0
+	move.b	%d0, 28(%a0)
+	# TCDR
+	move.l	#0xe88023, %a1
+	move.b	(%a1), %d0
+	move.b	%d0, 29(%a0)
+	# TDDR
+	move.l	#0xe88025, %a1
+	move.b	(%a1), %d0
+	move.b	%d0, 30(%a0)
+
+
+	movem.l (%sp)+, %d2-%d7/%a2-%a6
+	rts
+
+restore_interrupts:
+	movem.l %d2-%d7/%a2-%a6, -(%sp)
+
+	lea		ss_save_data_base, %a0
+	move.l	(%a0), %d0
+	move.l	%d0, 0x134
+
+	move.l	4(%a0), %d0
+	move.l	%d0, 0x120
+
+	move.l	8(%a0), %d0
+	move.l	%d0, 0x114
+
+	move.l	12(%a0), %d0
+	move.l	%d0, 0x118
+
+	move.l	16(%a0), %d0
+	move.l	%d0, 0x130
+
+	# restore IERAB, IMRAB
+	move.b	20(%a0), %d0
+	move.b	%d0, 0xe88007
+
+	move.b	21(%a0), %d0
+	move.b	%d0, 0xe88009
+
+	move.b	22(%a0), %d0
+	move.b	%d0, 0xe88013
+
+	move.b	23(%a0), %d0
+	move.b	%d0, 0xe88015
+
+	# TACR
+	move.b	24(%a0), %d0
+	move.b	%d0, 0xe88019
+	# TBCR
+	move.b	25(%a0), %d0
+	move.b	%d0, 0xe8801b
+	# TCDCR
+	move.b	26(%a0), %d0
+	move.b	%d0, 0xe8801d
+	# TADR
+	move.b	27(%a0), %d0
+	move.b	%d0, 0xe8801f
+	# TBDR
+	move.b	28(%a0), %d0
+	move.b	%d0, 0xe88021
+	# TCDR
+	move.b	29(%a0), %d0
+	move.b	%d0, 0xe88023
+	# TDDR
+	move.b	30(%a0), %d0
+	move.b	%d0, 0xe88025
 
 	movem.l (%sp)+, %d2-%d7/%a2-%a6
 	rts
@@ -230,8 +364,19 @@ key_input_handler:
 	movem.l	(%sp)+, %d0/%a0
 	rte
 
-; 	.section .bss
-; timer_handler_base:
-; 	ds.b	20
+ 	.section .bss
+	.even
+ss_timera_counter:
+	ds.l	1
+ss_timerb_counter:
+	ds.l	1
+ss_timerc_counter:
+	ds.l	1
+ss_timerd_counter:
+	ds.l	1
+ss_key_counter:
+	ds.l	1
+ss_save_data_base:
+ 	ds.b	1024
 
 	.end interrupts

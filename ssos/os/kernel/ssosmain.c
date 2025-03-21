@@ -13,6 +13,9 @@ void draw_background();
 void draw_taskbar();
 void draw_stats();
 void draw_keys();
+
+extern char local_info[256];
+
 void ssosmain() {
     // init
     _iocs_crtmod(16); // 768x512 dots, 16 colors, 1 screen
@@ -145,17 +148,21 @@ void draw_stats() {
         counter = 0;
 
         sprintf(szMessage, "A: V-DISP counter: %9d (vsync count)",
-                *ss_timera_counter);
+                ss_timera_counter);
         ss_print(color_fg, color_bg, 0, y, szMessage);
         y += 16;
 
         sprintf(szMessage, "C: 100Hz timer:    %9d (every 10ms)",
-                *ss_timerc_counter);
+                ss_timerc_counter);
         ss_print(color_fg, color_bg, 0, y, szMessage);
         y += 16;
 
         sprintf(szMessage, "D: 1000Hz timer:   %9d (every 1ms)",
-                *ss_timerd_counter);
+                ss_timerd_counter);
+        ss_print(color_fg, color_bg, 0, y, szMessage);
+        y += 16;
+
+        sprintf(szMessage, "ss_save_data_base addr: %p", &ss_save_data_base);
         ss_print(color_fg, color_bg, 0, y, szMessage);
         y += 16;
 
