@@ -1,5 +1,4 @@
 	.include "iocscall.mac"
-	.include "memory.inc"
 
 	.section .text
 	.align	2
@@ -129,20 +128,24 @@ clear_loop:
 save_interrupts:
 	movem.l %d2-%d7/%a2-%a6, -(%sp)
 
-	# save Timer A
+	# Timer A
 	lea		ss_save_data_base, %a0
 	move.l	0x134, %d0
 	move.l	%d0, (%a0)
 
+	# Timer B
 	move.l	0x120, %d0
 	move.l	%d0, 4(%a0)
 
+	# Timer C
 	move.l	0x114, %d0
 	move.l	%d0, 8(%a0)
 
+	# Timer D
 	move.l	0x110, %d0
 	move.l	%d0, 12(%a0)
 
+	# Key
 	move.l	0x130, %d0
 	move.l	%d0, 16(%a0)
 
@@ -192,6 +195,15 @@ save_interrupts:
 	move.b	(%a1), %d0
 	move.b	%d0, 30(%a0)
 
+	# CRTC IRQ
+	move.l	0x138, %d0
+	move.l	%d0, 34(%a0)
+	# CRTC HSYNC
+	move.l	0x13c, %d0
+	move.l	%d0, 38(%a0)
+
+	# reset interrupt masks
+	move.w	#0x2700, %sr
 
 	movem.l (%sp)+, %d2-%d7/%a2-%a6
 	rts
@@ -199,19 +211,30 @@ save_interrupts:
 restore_interrupts:
 	movem.l %d2-%d7/%a2-%a6, -(%sp)
 
+	# reset IPRAB, ISRAB
+	move.b	#0x00, 0xe8800b
+	move.b	#0x00, 0xe8800d
+	move.b	#0x00, 0xe8800f
+	move.b	#0x00, 0xe88011
+
+	# Timer A
 	lea		ss_save_data_base, %a0
 	move.l	(%a0), %d0
 	move.l	%d0, 0x134
 
-	move.l	4(%a0), %d0
-	move.l	%d0, 0x120
+	# Timer B
+	/* move.l	4(%a0), %d0 */
+	/* move.l	%d0, 0x120 */
 
+	# Timer C
 	move.l	8(%a0), %d0
 	move.l	%d0, 0x114
 
+	# Timer D
 	move.l	12(%a0), %d0
-	move.l	%d0, 0x118
+	move.l	%d0, 0x110
 
+	# Key
 	move.l	16(%a0), %d0
 	move.l	%d0, 0x130
 
@@ -232,8 +255,8 @@ restore_interrupts:
 	move.b	24(%a0), %d0
 	move.b	%d0, 0xe88019
 	# TBCR
-	move.b	25(%a0), %d0
-	move.b	%d0, 0xe8801b
+	/* move.b	25(%a0), %d0 */
+	/* move.b	%d0, 0xe8801b */
 	# TCDCR
 	move.b	26(%a0), %d0
 	move.b	%d0, 0xe8801d
@@ -241,14 +264,21 @@ restore_interrupts:
 	move.b	27(%a0), %d0
 	move.b	%d0, 0xe8801f
 	# TBDR
-	move.b	28(%a0), %d0
-	move.b	%d0, 0xe88021
+	/* move.b	28(%a0), %d0 */
+	/* move.b	%d0, 0xe88021 */
 	# TCDR
 	move.b	29(%a0), %d0
 	move.b	%d0, 0xe88023
 	# TDDR
 	move.b	30(%a0), %d0
 	move.b	%d0, 0xe88025
+
+	# CRTC IRQ
+	move.l	34(%a0), %d0
+	move.l	%d0, 0x138
+	# CRTC HSYNC
+	move.l	38(%a0), %d0
+	move.l	%d0, 0x13c
 
 	movem.l (%sp)+, %d2-%d7/%a2-%a6
 	rts
