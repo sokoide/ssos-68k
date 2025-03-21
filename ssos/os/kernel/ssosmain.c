@@ -162,6 +162,10 @@ void draw_stats() {
         ss_print(color_fg, color_bg, 0, y, szMessage);
         y += 16;
 
+        sprintf(szMessage, "ss_timer_counter_base addr: 0x%p",
+                &ss_timera_counter);
+        ss_print(color_fg, color_bg, 0, y, szMessage);
+        y += 16;
         sprintf(szMessage, "ss_save_data_base addr: 0x%p", &ss_save_data_base);
         ss_print(color_fg, color_bg, 0, y, szMessage);
         y += 16;
