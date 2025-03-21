@@ -73,7 +73,7 @@ clear_loop:
 	/* lea     nop_handler, %a0 */
 	/* move.l  %a0, 0x11c */
 
-	# USART, Timer B, don't chante, used by keyboard
+	# USART, Timer B, don't change, used by keyboard
 	/* lea		usart_handler, %a0 */
 	/* move.l  %a0, 0x120 */
 	# key send error
@@ -222,7 +222,7 @@ restore_interrupts:
 	move.l	(%a0), %d0
 	move.l	%d0, 0x134
 
-	# Timer B
+	# Timer B - don't touch
 	/* move.l	4(%a0), %d0 */
 	/* move.l	%d0, 0x120 */
 
@@ -254,7 +254,7 @@ restore_interrupts:
 	# TACR
 	move.b	24(%a0), %d0
 	move.b	%d0, 0xe88019
-	# TBCR
+	# TBCR - don't touch
 	/* move.b	25(%a0), %d0 */
 	/* move.b	%d0, 0xe8801b */
 	# TCDCR
@@ -263,7 +263,7 @@ restore_interrupts:
 	# TADR
 	move.b	27(%a0), %d0
 	move.b	%d0, 0xe8801f
-	# TBDR
+	# TBDR - don't touch
 	/* move.b	28(%a0), %d0 */
 	/* move.b	%d0, 0xe88021 */
 	# TCDR
