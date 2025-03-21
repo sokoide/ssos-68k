@@ -152,10 +152,10 @@ void draw_stats() {
         ss_print(color_fg, color_bg, 0, y, szMessage);
         y += 16;
 
-        sprintf(szMessage, "C: 100Hz timer:    %9d (every 10ms)",
-                ss_timerc_counter);
-        ss_print(color_fg, color_bg, 0, y, szMessage);
-        y += 16;
+        /* sprintf(szMessage, "C: 100Hz timer:    %9d (every 10ms)", */
+        /*         ss_timerc_counter); */
+        /* ss_print(color_fg, color_bg, 0, y, szMessage); */
+        /* y += 16; */
 
         sprintf(szMessage, "D: 1000Hz timer:   %9d (every 1ms)",
                 ss_timerd_counter);

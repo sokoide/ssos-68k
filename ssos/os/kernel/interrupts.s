@@ -12,15 +12,6 @@
 set_interrupts:
 	movem.l %d2-%d7/%a2-%a6, -(%sp)
 
-	# reset global vars in for timers
-	lea		ss_save_data_base, %a0
-	move.w	#256, %d0
-	clr.l	%d1
-clear_loop:
-	move.l	%d1, (%a0)+
-	dbra	%d0, clear_loop
-
-
 	# Disable interrupts - level 7
 	move.w	#0x2700, %sr
 
@@ -63,8 +54,8 @@ clear_loop:
 
 	# Timer C
 	# Used by IOCS's mouse handler, too
-	lea		timerc_handler, %a0
-	move.l  %a0, 0x114
+	/* lea		timerc_handler, %a0 */
+	/* move.l  %a0, 0x114 */
 
 	# V-DISP state
 	/* move.l  %a0, 0x118 */
@@ -102,21 +93,26 @@ clear_loop:
 	move.b  #0x08, 0xe88019
 	# TBCR - prescaler /4, don't change the setting, used by keyboard
 	/* move.b  #0x01, 0xe8801b */
+	# TCDCR - prescaler *, /50
+	# only set D timer
+	move.b	0xe8801d, %d0
+	or.b	0xF4, %d0
+	move.b	%d0, 0xe8801d
 	# TCDCR - prescaler /200, /50
-	move.b	#0x74, 0xe8801d
+	/* move.b	#0x74, 0xe8801d */
 
 	# TADR
 	move.b	#1, 0xe8801f
 	# TBDR - don't change the setting, used by keyboard
 	/* move.b	#100, 0xe88021 */
 	# TCDR
-	move.b	#200, 0xe88023
+	/* move.b	#200, 0xe88023 */
 	# TDDR
 	move.b	#80, 0xe88025
 
 	# Timer A - event mode per V-DISP
-	# Timer B - used by keyboard
-	# Timer C - 4MHz / 200 / 200 = 100Hz, every 10ms
+	# Timer B - used for keyboard in Human68K
+	# Timer C - used for cursor/FDD in Human68K
 	# Timer D - 4MHz /  50 /  80 = 1000Hz, every 1ms
 
 	# Enable interrupts - level 2
@@ -227,8 +223,8 @@ restore_interrupts:
 	/* move.l	%d0, 0x120 */
 
 	# Timer C
-	move.l	8(%a0), %d0
-	move.l	%d0, 0x114
+	/* move.l	8(%a0), %d0 */
+	/* move.l	%d0, 0x114 */
 
 	# Timer D
 	move.l	12(%a0), %d0
@@ -267,8 +263,8 @@ restore_interrupts:
 	/* move.b	28(%a0), %d0 */
 	/* move.b	%d0, 0xe88021 */
 	# TCDR
-	move.b	29(%a0), %d0
-	move.b	%d0, 0xe88023
+	/* move.b	29(%a0), %d0 */
+	/* move.b	%d0, 0xe88023 */
 	# TDDR
 	move.b	30(%a0), %d0
 	move.b	%d0, 0xe88025
@@ -394,18 +390,21 @@ key_input_handler:
 	movem.l	(%sp)+, %d0/%a0
 	rte
 
- 	.section .bss
+	.section .data
 	.even
 ss_timera_counter:
-	ds.l	1
+	dc.l	0
 ss_timerb_counter:
-	ds.l	1
+	dc.l	0
 ss_timerc_counter:
-	ds.l	1
+	dc.l	0
 ss_timerd_counter:
-	ds.l	1
+	dc.l	0
 ss_key_counter:
-	ds.l	1
+	dc.l	0
+
+ 	.section .bss
+	.even
 ss_save_data_base:
  	ds.b	1024
 
