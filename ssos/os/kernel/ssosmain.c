@@ -30,6 +30,8 @@ void ssosmain() {
     ss_clear_vram_fast();
     ss_wait_for_clear_vram_completion();
 
+    ss_init_memory_info();
+
     draw_background();
     draw_taskbar();
 
@@ -204,15 +206,15 @@ void draw_stats() {
         ss_print(color_fg, color_bg, 0, y, szMessage);
         y += 16;
 
-        ss_get_ssos_memory(&base, &sz);
-        sprintf(szMessage, "OS RAM addr:  0x%08x-0x%08x, size: %d", base,
-                base + sz, sz);
+        sprintf(szMessage, "OS RAM addr:  0x%08x-0x%08x, size: %d",
+                ss_ssos_memory_base, ss_ssos_memory_base + ss_ssos_memory_size,
+                ss_ssos_memory_size);
         ss_print(color_fg, color_bg, 0, y, szMessage);
         y += 16;
 
-        ss_get_app_memory(&base, &sz);
-        sprintf(szMessage, "App RAM addr: 0x%08x-0x%08x, size: %d", base,
-                base + sz, sz);
+        sprintf(szMessage, "App RAM addr: 0x%08x-0x%08x, size: %d",
+                ss_app_memory_base, ss_app_memory_base + ss_app_memory_size,
+                ss_app_memory_size);
         ss_print(color_fg, color_bg, 0, y, szMessage);
         y += 16;
 

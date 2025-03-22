@@ -2,6 +2,16 @@
 #include "kernel.h"
 #include <stdint.h>
 
+void* ss_ssos_memory_base;
+void* ss_app_memory_base;
+uint32_t ss_ssos_memory_size;
+uint32_t ss_app_memory_size;
+
+void ss_init_memory_info() {
+    ss_get_ssos_memory(&ss_ssos_memory_base, &ss_ssos_memory_size);
+    ss_get_app_memory(&ss_app_memory_base, &ss_app_memory_size);
+}
+
 void ss_get_ssos_memory(void** base, uint32_t* sz) {
 #ifdef LOCAL_MODE
     *base = local_ssos_memory_base;
