@@ -46,7 +46,9 @@ typedef struct ss_mem_mamager {
 
 void ss_mem_init();
 int ss_mem_free(uint32_t addr, uint32_t sz);
+int ss_mem_free4k(uint32_t addr, uint32_t sz);
 uint32_t ss_mem_alloc(uint32_t sz);
+uint32_t ss_mem_alloc4k(uint32_t sz);
 uint32_t ss_mem_total_bytes();
 uint32_t ss_mem_free_bytes();
 

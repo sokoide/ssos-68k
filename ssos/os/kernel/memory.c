@@ -120,6 +120,11 @@ int ss_mem_free(uint32_t addr, uint32_t sz) {
     return -1;
 }
 
+int ss_mem_free4k(uint32_t addr, uint32_t sz) {
+    sz = (sz + 0xfff) & 0xfffff000;
+    return ss_mem_free(addr, sz);
+}
+
 uint32_t ss_mem_alloc(uint32_t sz) {
     int i;
     uint32_t addr;
@@ -140,6 +145,11 @@ uint32_t ss_mem_alloc(uint32_t sz) {
     }
 
     return 0;
+}
+
+uint32_t ss_mem_alloc4k(uint32_t sz) {
+    sz = (sz + 0xfff) & 0xfffff000;
+    return ss_mem_alloc(sz);
 }
 
 uint32_t ss_mem_total_bytes() { return ss_app_memory_size; }
