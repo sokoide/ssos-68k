@@ -2,8 +2,8 @@
 
 #include <stdint.h>
 
-extern const int SW;
-extern const int SH;    
+extern const int VRAMWIDTH;
+extern const int VRAMHEIGHT;
 extern const int WIDTH;
 extern const int HEIGHT;
 extern const uint16_t color_fg;
@@ -21,9 +21,6 @@ extern char __data_size[];
 extern char __bss_start[];
 extern char __bss_end[];
 extern char __bss_size[];
-// extern char __appram_start[];
-// extern char __appram_end[];
-// extern char __appram_size[];
 extern char __ssosram_start[];
 extern char __ssosram_end[];
 extern char __ssosram_size[];

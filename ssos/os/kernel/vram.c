@@ -20,9 +20,9 @@ volatile uint16_t* vram_start = (uint16_t*)0x00c00000;
 volatile uint16_t* vram_end = (uint16_t*)0x00d00000;
 
 void ss_clear_vram(volatile uint16_t* vram) {
-    // only clears 512 (height) x 1024 (width)
+    // only clears HEIGHT (visible height) x SW (vram width)
     volatile uint16_t* p = vram;
-    volatile uint16_t* limit = p + 512 * 1024;
+    volatile uint16_t* limit = p +  VRAMWIDTH * HEIGHT;
 
     while (p < limit) {
         *p++ = 0;
@@ -52,12 +52,7 @@ void ss_wait_for_clear_vram_completion() {
 }
 
 void ss_fill_rect(uint16_t color, int x0, int y0, int x1, int y1) {
-    // for (int y = y0; y <= y1; y++) {
-    //     for (int x = x0; x <= x1; x++)
-    //         vram_start[y * 1024 + x] = color;
-    // }
-    // return;
-    ss_fill_rect_v(vram_start, SW, SH, color, x0, y0, x1, y1);
+    ss_fill_rect_v(vram_start, VRAMWIDTH, VRAMHEIGHT, color, x0, y0, x1, y1);
 }
 
 void ss_fill_rect_v(volatile uint16_t* vram, uint16_t sw, uint16_t sh, uint16_t color, int x0, int y0, int x1, int y1){
@@ -69,7 +64,7 @@ void ss_fill_rect_v(volatile uint16_t* vram, uint16_t sw, uint16_t sh, uint16_t 
 }
 
 void ss_put_char(uint16_t fg_color, uint16_t bg_color, int x, int y, char c) {
-    ss_put_char_v(vram_start, SW, SH, fg_color, bg_color, x, y, c);
+    ss_put_char_v(vram_start, VRAMWIDTH, VRAMHEIGHT, fg_color, bg_color, x, y, c);
 }
 
 void ss_put_char_v(volatile uint16_t* vram, uint16_t sw, uint16_t sh, uint16_t fg_color, uint16_t bg_color, int x, int y, char c) {
@@ -113,7 +108,7 @@ int mystrlen(char* str) {
 }
 
 void ss_print(uint16_t fg_color, uint16_t bg_color, int x, int y, char* str) {
-    ss_print_v(vram_start, SW, SH, fg_color, bg_color, x, y, str);
+    ss_print_v(vram_start, VRAMWIDTH, VRAMHEIGHT, fg_color, bg_color, x, y, str);
 }
 
 void ss_print_v(volatile uint16_t* vram, uint16_t sw, uint16_t sh, uint16_t fg_color, uint16_t bg_color, int x, int y, char* str){
