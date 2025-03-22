@@ -20,5 +20,8 @@
  * 11MiB / 4Kib = 2816 chunks
  */
 
-void* ss_get_app_memory_base();
-uint32_t ss_get_app_memory_size();
+void ss_get_ssos_memory(void** base, uint32_t* sz);
+void ss_get_app_memory(void** base, uint32_t* sz);
+void ss_get_text(void** base, uint32_t* sz);
+void ss_get_data(void** base, uint32_t* sz);
+void ss_get_bss(void** base, uint32_t* sz);

@@ -12,12 +12,13 @@ extern void set_interrupts();
 extern void restore_interrupts();
 
 char local_info[256];
+void* local_ssos_memory_base;
+uint32_t local_ssos_memory_size = 1 * 1024 * 1024;
 void* local_app_memory_base;
 uint32_t local_app_memory_size = 8 * 1024 * 1024;
+uint32_t local_text_size, local_data_size, local_bss_size;
 
 int main(int argc, char** argv) {
-    uint32_t text_size, data_size, bss_size;
-
     int ssp = _iocs_b_super(0); // enter supervisor mode
 
     set_interrupts();
@@ -27,17 +28,24 @@ int main(int argc, char** argv) {
 
     FILE* fp = fopen(argv[0], "rb");
     fseek(fp, 0xc, SEEK_SET);
-    fread(&text_size, 4, 1, fp);
-    fread(&data_size, 4, 1, fp);
-    fread(&bss_size, 4, 1, fp);
+    fread(&local_text_size, 4, 1, fp);
+    fread(&local_data_size, 4, 1, fp);
+    fread(&local_bss_size, 4, 1, fp);
     fclose(fp);
-    sprintf(local_info, "text size:%d, data size:%d, bss size:%d", text_size,
-            data_size, bss_size);
+    sprintf(local_info, "text size: %9d\ndata size: %9d\nbss size:  %9d",
+            local_text_size, local_data_size, local_bss_size);
 
+    local_ssos_memory_base = malloc(local_ssos_memory_size);
+    assert(local_ssos_memory_base);
     local_app_memory_base = malloc(local_app_memory_size);
     assert(local_app_memory_base);
 
     ssosmain();
+
+    if (NULL != local_app_memory_base)
+        free(local_app_memory_base);
+    if (NULL != local_ssos_memory_base)
+        free(local_ssos_memory_base);
 
     restore_interrupts();
 

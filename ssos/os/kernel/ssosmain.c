@@ -6,6 +6,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 
 #include <x68k/iocs.h>
 
@@ -183,10 +184,35 @@ void draw_stats() {
         ss_print(color_fg, color_bg, 0, y, szMessage);
         y += 16;
 
-        sprintf(szMessage, "appram addr: 0x%08x-0x%08x, size: %d",
-                ss_get_app_memory_base(),
-                (uint32_t)(ss_get_app_memory_base()) + ss_get_app_memory_size(),
-                ss_get_app_memory_size());
+        void* base;
+        uint32_t sz;
+        ss_get_text(&base, &sz);
+        sprintf(szMessage, ".text   addr: 0x%08x-0x%08x, size: %d", base,
+                base + sz, sz);
+        ss_print(color_fg, color_bg, 0, y, szMessage);
+        y += 16;
+
+        ss_get_data(&base, &sz);
+        sprintf(szMessage, ".data   addr: 0x%08x-0x%08x, size: %d", base,
+                base + sz, sz);
+        ss_print(color_fg, color_bg, 0, y, szMessage);
+        y += 16;
+
+        ss_get_bss(&base, &sz);
+        sprintf(szMessage, ".bss    addr: 0x%08x-0x%08x, size: %d", base,
+                base + sz, sz);
+        ss_print(color_fg, color_bg, 0, y, szMessage);
+        y += 16;
+
+        ss_get_ssos_memory(&base, &sz);
+        sprintf(szMessage, "OS RAM addr:  0x%08x-0x%08x, size: %d", base,
+                base + sz, sz);
+        ss_print(color_fg, color_bg, 0, y, szMessage);
+        y += 16;
+
+        ss_get_app_memory(&base, &sz);
+        sprintf(szMessage, "App RAM addr: 0x%08x-0x%08x, size: %d", base,
+                base + sz, sz);
         ss_print(color_fg, color_bg, 0, y, szMessage);
         y += 16;
 
@@ -198,35 +224,6 @@ void draw_stats() {
         sprintf(szMessage, "ss_save_data_base addr: 0x%p", &ss_save_data_base);
         ss_print(color_fg, color_bg, 0, y, szMessage);
         y += 16;
-
-#ifdef LOCAL_MODE
-        sprintf(szMessage, "local: %s", local_info);
-        ss_print(color_fg, color_bg, 0, y, szMessage);
-        y += 16;
-#else
-        sprintf(szMessage, ".text: 0x%p-0x%p, size:%d", __text_start,
-                __text_end, __text_size);
-        ss_print(color_fg, color_bg, 0, y, szMessage);
-        y += 16;
-        sprintf(szMessage, ".data: 0x%p-0x%p, size:%d", __data_start,
-                __data_end, __data_size);
-        ss_print(color_fg, color_bg, 0, y, szMessage);
-        y += 16;
-        sprintf(szMessage, ".bss:  0x%p-0x%p, size:%d", __bss_start, __bss_end,
-                __bss_size);
-        ss_print(color_fg, color_bg, 0, y, szMessage);
-        y += 16;
-
-        sprintf(szMessage, ".ssos: 0x%p-0x%p, size:%d", __ssosram_start,
-                __ssosram_end, __ssosram_size);
-        ss_print(color_fg, color_bg, 0, y, szMessage);
-        y += 16;
-
-        sprintf(szMessage, ".app:  0x%p-0x%p, size:%d", __appram_start,
-                __appram_end, __appram_size);
-        ss_print(color_fg, color_bg, 0, y, szMessage);
-        y += 16;
-#endif
     }
 }
 
