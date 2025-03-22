@@ -183,6 +183,13 @@ void draw_stats() {
         ss_print(color_fg, color_bg, 0, y, szMessage);
         y += 16;
 
+        sprintf(szMessage, "appram addr: 0x%08x-0x%08x, size: %d",
+                ss_get_app_memory_base(),
+                (uint32_t)(ss_get_app_memory_base()) + ss_get_app_memory_size(),
+                ss_get_app_memory_size());
+        ss_print(color_fg, color_bg, 0, y, szMessage);
+        y += 16;
+
         sprintf(szMessage, "ss_timer_counter_base addr: 0x%p",
                 &ss_timera_counter);
         ss_print(color_fg, color_bg, 0, y, szMessage);

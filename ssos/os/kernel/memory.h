@@ -20,3 +20,5 @@
  * 11MiB / 4Kib = 2816 chunks
  */
 
+void* ss_get_app_memory_base();
+uint32_t ss_get_app_memory_size();

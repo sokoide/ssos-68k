@@ -29,6 +29,8 @@ extern char __ssosram_size[];
 // ***** local only *****
 // defined in local/main.c
 extern char local_info[256];
+extern void* local_app_memory_base;
+extern uint32_t local_app_memory_size;
 
 // ***** common *****
 // SSOS ports: defined in interrupts.s

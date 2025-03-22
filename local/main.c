@@ -1,4 +1,6 @@
+#include <assert.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #pragma warning disable format
@@ -10,6 +12,8 @@ extern void set_interrupts();
 extern void restore_interrupts();
 
 char local_info[256];
+void* local_app_memory_base;
+uint32_t local_app_memory_size = 8 * 1024 * 1024;
 
 int main(int argc, char** argv) {
     uint32_t text_size, data_size, bss_size;
@@ -29,6 +33,9 @@ int main(int argc, char** argv) {
     fclose(fp);
     sprintf(local_info, "text size:%d, data size:%d, bss size:%d", text_size,
             data_size, bss_size);
+
+    local_app_memory_base = malloc(local_app_memory_size);
+    assert(local_app_memory_base);
 
     ssosmain();
 
