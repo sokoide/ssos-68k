@@ -31,3 +31,24 @@ void ss_get_app_memory(void** base, uint32_t* sz);
 void ss_get_text(void** base, uint32_t* sz);
 void ss_get_data(void** base, uint32_t* sz);
 void ss_get_bss(void** base, uint32_t* sz);
+
+#define MEM_FREE_BLOCKS 1024
+
+typedef struct ss_mem_free_block {
+    uint32_t addr;
+    uint32_t sz;
+} SsMemFreeBlock;
+
+typedef struct ss_mem_mamager {
+    int num_free_blocks;
+    struct ss_mem_free_block free_blocks[MEM_FREE_BLOCKS];
+} SsMemManager;
+
+void ss_mem_init();
+int ss_mem_free(uint32_t addr, uint32_t sz);
+uint32_t ss_mem_alloc(uint32_t sz);
+uint32_t ss_mem_total_bytes();
+uint32_t ss_mem_free_bytes();
+
+// temp
+extern SsMemManager ss_mem_mgr;

@@ -31,6 +31,7 @@ void ssosmain() {
     ss_wait_for_clear_vram_completion();
 
     ss_init_memory_info();
+    ss_mem_init();
 
     draw_background();
     draw_taskbar();
@@ -226,6 +227,19 @@ void draw_stats() {
         sprintf(szMessage, "ss_save_data_base addr: 0x%p", &ss_save_data_base);
         ss_print(color_fg, color_bg, 0, y, szMessage);
         y += 16;
+
+        sprintf(szMessage, "memory total: %d, free: %d", ss_mem_total_bytes(),
+                ss_mem_free_bytes());
+        ss_print(color_fg, color_bg, 0, y, szMessage);
+        y += 16;
+
+        for (int i = 0; i < ss_mem_mgr.num_free_blocks; i++) {
+            sprintf(szMessage, "memory manager: block: %d, addr: 0x%x, sz:%d",
+                    i, ss_mem_mgr.free_blocks[i].addr,
+                    ss_mem_mgr.free_blocks[i].sz);
+            ss_print(color_fg, color_bg, 0, y, szMessage);
+            y += 16;
+        }
     }
 }
 
