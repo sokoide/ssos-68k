@@ -31,6 +31,9 @@ void ss_wait_for_clear_vram_completion();
 void ss_fill_rect(uint16_t color, int x0, int y0, int x1, int y1);
 void ss_fill_rect_v(volatile uint16_t* vram, uint16_t sw, uint16_t sh, uint16_t color, int x0, int y0, int x1, int y1);
 
+void ss_dwaw(uint16_t color, int x0, int y0, int x1, int y1);
+void ss_draw_rect_v(volatile uint16_t* vram, uint16_t sw, uint16_t sh, uint16_t color, int x0, int y0, int x1, int y1);
+
 void ss_put_char(uint16_t fg_color, uint16_t bg_color, int x, int y, char c);
 void ss_put_char_v(volatile uint16_t* vram, uint16_t sw, uint16_t sh, uint16_t fg_color, uint16_t bg_color, int x, int y, char c);
 

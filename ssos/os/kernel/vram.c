@@ -63,6 +63,22 @@ void ss_fill_rect_v(volatile uint16_t* vram, uint16_t w, uint16_t h, uint16_t co
     return;
 }
 
+void ss_draw_rect(uint16_t color, int x0, int y0, int x1, int y1) {
+    ss_draw_rect_v(vram_start, VRAMWIDTH, VRAMHEIGHT, color, x0, y0, x1, y1);
+}
+
+void ss_draw_rect_v(volatile uint16_t* vram, uint16_t w, uint16_t h, uint16_t color, int x0, int y0, int x1, int y1){
+    for (int y = y0; y <= y1; y+=y1-y0-1) {
+        for (int x = x0; x <= x1; x++)
+            vram[y * w + x] = color;
+    }
+    for (int x=x0;x<=x1;x+=x1-x0-1){
+        for (int y=y0;y<=y1;y++)
+            vram[y * w + x] = color;
+    }
+    return;
+}
+
 void ss_put_char(uint16_t fg_color, uint16_t bg_color, int x, int y, char c) {
     ss_put_char_v(vram_start, VRAMWIDTH, VRAMHEIGHT, fg_color, bg_color, x, y, c);
 }
