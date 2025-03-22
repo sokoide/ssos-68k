@@ -1,6 +1,8 @@
 #include "kernel.h"
 #include <x68k/iocs.h>
 
+const int SW = 1024;
+const int SH = 512;
 const int WIDTH = 768;
 const int HEIGHT = 512;
 const uint16_t color_fg = 15; // foreground color
