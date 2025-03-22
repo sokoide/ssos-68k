@@ -68,11 +68,11 @@ void ss_draw_rect(uint16_t color, int x0, int y0, int x1, int y1) {
 }
 
 void ss_draw_rect_v(volatile uint16_t* vram, uint16_t w, uint16_t h, uint16_t color, int x0, int y0, int x1, int y1){
-    for (int y = y0; y <= y1; y+=y1-y0-1) {
+    for (int y = y0; y <= y1; y+=y1-y0) {
         for (int x = x0; x <= x1; x++)
             vram[y * w + x] = color;
     }
-    for (int x=x0;x<=x1;x+=x1-x0-1){
+    for (int x=x0;x<=x1;x+=x1-x0){
         for (int y=y0;y<=y1;y++)
             vram[y * w + x] = color;
     }
