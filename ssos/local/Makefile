@@ -1,12 +1,12 @@
 TARGET=	local.x
 SRCS=	main.c \
-		../ssos/os/kernel/ssosmain.c \
-		../ssos/os/kernel/kernel.c \
-		../ssos/os/kernel/memory.c \
-		../ssos/os/kernel/vram.c \
-		../ssos/os/util/printf.c
+		../os/kernel/ssosmain.c \
+		../os/kernel/kernel.c \
+		../os/kernel/memory.c \
+		../os/kernel/vram.c \
+		../os/util/printf.c
 ASRCS= \
-		../ssos/os/kernel/interrupts.s
+		../os/kernel/interrupts.s
 
 HEADERS=$(wildcard *.h)
 OBJS=$(ASRCS:.s=.o) $(SRCS:.c=.o)
@@ -18,7 +18,7 @@ OBJDUMP=m68k-xelf-objdump
 OBJDUMP=m68k-xelf-objdump
 READELF=m68k-xelf-readelf
 
-INCLUDE=-I$(XELF_BASE)/m68k-elf/include -I../ssos/os/util
+INCLUDE=-I$(XELF_BASE)/m68k-elf/include -I../os/util
 LIB=-L$(XELF_BASE)/m68k-elf/lib
 
 CCFLAGS=$(INCLUDE) -O2 -g -DLOCAL_MODE
@@ -35,13 +35,13 @@ $(TARGET): $(OBJS)
 	$(CC) $^ -o $(TARGET) -Xlinker "$(LDFLAGS)"
 
 %.o: %.s
-	$(AS) --strip-local-absolute $^ -o $@ -m68000 -I../include -I../ssos/os/kernel
+	$(AS) --strip-local-absolute $^ -o $@ -m68000 -I../include -I../os/kernel
 
 %.o: %.c
 	$(CC) -Wa,-adhlns="$@.lst" -c $< -o $@ $(CCFLAGS)
 
 clean:
-	rm -rf $(TARGET) *.elf *.o *.lst ../ssos/os/kernel/*.o ../ssos/os/util/*.o
+	rm -rf $(TARGET) *.elf *.o *.lst ../os/kernel/*.o ../os/util/*.o
 
 dump: $(TARGET)
 	$(OBJDUMP) -D $(TARGET).elf

@@ -28,7 +28,7 @@ $(TARGET): $(OBJS) linker.ld
 	elf2x68k.py -s -o $(TARGET) $(TARGET).elf
 
 %.o: %.s
-	$(AS) --strip-local-absolute $^ -o $@ -m68000 -I../../include
+	$(AS) --strip-local-absolute $^ -o $@ -m68000 -I../include
 
 clean:
 	rm -rf $(TARGET) *.elf *.o *.bin
