@@ -38,7 +38,7 @@ typedef struct ss_mem_free_block {
 typedef struct ss_mem_mamager {
     int num_free_blocks;
     struct ss_mem_free_block free_blocks[MEM_FREE_BLOCKS];
-} SsMemManager;
+} SsMemmgr;
 
 void ss_mem_init();
 int ss_mem_free(uint32_t addr, uint32_t sz);
@@ -49,4 +49,4 @@ uint32_t ss_mem_total_bytes();
 uint32_t ss_mem_free_bytes();
 
 // temp
-extern SsMemManager ss_mem_mgr;
+extern SsMemmgr ss_mem_mgr;

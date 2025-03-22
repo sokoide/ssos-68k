@@ -228,7 +228,7 @@ void draw_stats() {
         y += 16;
 
         for (int i = 0; i < ss_mem_mgr.num_free_blocks; i++) {
-            sprintf(szMessage, "memory manager: block: %d, addr: 0x%x, sz:%d",
+            sprintf(szMessage, "memory mgr: block: %d, addr: 0x%x, sz:%d",
                     i, ss_mem_mgr.free_blocks[i].addr,
                     ss_mem_mgr.free_blocks[i].sz);
             ss_print(color_fg, color_bg, 0, y, szMessage);

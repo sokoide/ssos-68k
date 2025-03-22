@@ -13,7 +13,7 @@ extern void restore_interrupts();
 
 char local_info[256];
 void* local_ssos_memory_base;
-uint32_t local_ssos_memory_size = 9 * 1024 * 1024;
+uint32_t local_ssos_memory_size = 10 * 1024 * 1024;
 uint32_t local_text_size, local_data_size, local_bss_size;
 
 int main(int argc, char** argv) {
