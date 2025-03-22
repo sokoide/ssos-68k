@@ -3,14 +3,11 @@
 #include <stdint.h>
 
 void* ss_ssos_memory_base;
-void* ss_app_memory_base;
 uint32_t ss_ssos_memory_size;
-uint32_t ss_app_memory_size;
 SsMemManager ss_mem_mgr;
 
 void ss_init_memory_info() {
     ss_get_ssos_memory(&ss_ssos_memory_base, &ss_ssos_memory_size);
-    ss_get_app_memory(&ss_app_memory_base, &ss_app_memory_size);
 }
 
 void ss_get_ssos_memory(void** base, uint32_t* sz) {
@@ -20,16 +17,6 @@ void ss_get_ssos_memory(void** base, uint32_t* sz) {
 #else
     *base = (void*)__ssosram_start;
     *sz = (uint32_t)__ssosram_size;
-#endif
-}
-
-void ss_get_app_memory(void** base, uint32_t* sz) {
-#ifdef LOCAL_MODE
-    *base = local_app_memory_base;
-    *sz = local_app_memory_size;
-#else
-    *base = (void*)__appram_start;
-    *sz = (uint32_t)__appram_size;
 #endif
 }
 
@@ -65,7 +52,7 @@ void ss_get_bss(void** base, uint32_t* sz) {
 
 void ss_mem_init() {
     ss_mem_mgr.num_free_blocks = 0;
-    ss_mem_free((uint32_t)ss_app_memory_base, ss_app_memory_size);
+    ss_mem_free((uint32_t)ss_ssos_memory_base, ss_ssos_memory_size);
 }
 
 int ss_mem_free(uint32_t addr, uint32_t sz) {
@@ -152,7 +139,7 @@ uint32_t ss_mem_alloc4k(uint32_t sz) {
     return ss_mem_alloc(sz);
 }
 
-uint32_t ss_mem_total_bytes() { return ss_app_memory_size; }
+uint32_t ss_mem_total_bytes() { return ss_ssos_memory_size; }
 
 uint32_t ss_mem_free_bytes() {
     uint32_t ret = 0;

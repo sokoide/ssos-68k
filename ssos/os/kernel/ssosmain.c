@@ -207,15 +207,9 @@ void draw_stats() {
         ss_print(color_fg, color_bg, 0, y, szMessage);
         y += 16;
 
-        sprintf(szMessage, "OS RAM addr:  0x%08x-0x%08x, size: %d",
+        sprintf(szMessage, "RAM     addr: 0x%08x-0x%08x, size: %d",
                 ss_ssos_memory_base, ss_ssos_memory_base + ss_ssos_memory_size,
                 ss_ssos_memory_size);
-        ss_print(color_fg, color_bg, 0, y, szMessage);
-        y += 16;
-
-        sprintf(szMessage, "App RAM addr: 0x%08x-0x%08x, size: %d",
-                ss_app_memory_base, ss_app_memory_base + ss_app_memory_size,
-                ss_app_memory_size);
         ss_print(color_fg, color_bg, 0, y, szMessage);
         y += 16;
 

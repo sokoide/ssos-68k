@@ -13,9 +13,7 @@ extern void restore_interrupts();
 
 char local_info[256];
 void* local_ssos_memory_base;
-uint32_t local_ssos_memory_size = 1 * 1024 * 1024;
-void* local_app_memory_base;
-uint32_t local_app_memory_size = 8 * 1024 * 1024;
+uint32_t local_ssos_memory_size = 9 * 1024 * 1024;
 uint32_t local_text_size, local_data_size, local_bss_size;
 
 int main(int argc, char** argv) {
@@ -37,13 +35,9 @@ int main(int argc, char** argv) {
 
     local_ssos_memory_base = malloc(local_ssos_memory_size);
     assert(local_ssos_memory_base);
-    local_app_memory_base = malloc(local_app_memory_size);
-    assert(local_app_memory_base);
 
     ssosmain();
 
-    if (NULL != local_app_memory_base)
-        free(local_app_memory_base);
     if (NULL != local_ssos_memory_base)
         free(local_ssos_memory_base);
 

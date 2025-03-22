@@ -19,9 +19,9 @@ extern char __data_size[];
 extern char __bss_start[];
 extern char __bss_end[];
 extern char __bss_size[];
-extern char __appram_start[];
-extern char __appram_end[];
-extern char __appram_size[];
+// extern char __appram_start[];
+// extern char __appram_end[];
+// extern char __appram_size[];
 extern char __ssosram_start[];
 extern char __ssosram_end[];
 extern char __ssosram_size[];
@@ -31,8 +31,6 @@ extern char __ssosram_size[];
 extern char local_info[256];
 extern void* local_ssos_memory_base;
 extern uint32_t local_ssos_memory_size;
-extern void* local_app_memory_base;
-extern uint32_t local_app_memory_size;
 extern uint32_t local_text_size, local_data_size, local_bss_size;
 
 // ***** common *****
