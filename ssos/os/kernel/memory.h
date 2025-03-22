@@ -30,15 +30,15 @@ void ss_get_bss(void** base, uint32_t* sz);
 
 #define MEM_FREE_BLOCKS 1024
 
-typedef struct ss_mem_free_block {
+typedef struct {
     uint32_t addr;
     uint32_t sz;
 } SsMemFreeBlock;
 
-typedef struct ss_mem_mamager {
+typedef struct {
     int num_free_blocks;
-    struct ss_mem_free_block free_blocks[MEM_FREE_BLOCKS];
-} SsMemmgr;
+    SsMemFreeBlock free_blocks[MEM_FREE_BLOCKS];
+} SsMemMgr;
 
 void ss_mem_init();
 int ss_mem_free(uint32_t addr, uint32_t sz);
@@ -49,4 +49,4 @@ uint32_t ss_mem_total_bytes();
 uint32_t ss_mem_free_bytes();
 
 // temp
-extern SsMemmgr ss_mem_mgr;
+extern SsMemMgr ss_mem_mgr;

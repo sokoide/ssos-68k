@@ -1,5 +1,6 @@
 #include "ssosmain.h"
 #include "kernel.h"
+#include "layer.h"
 #include "memory.h"
 #include "printf.h"
 #include "vram.h"
@@ -7,7 +8,6 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
-
 #include <x68k/iocs.h>
 
 void draw_background();
@@ -33,8 +33,20 @@ void ssosmain() {
     ss_init_memory_info();
     ss_mem_init();
 
+    ss_layer_init();
+    Layer* l1 = ss_layer_get();
+    uint16_t* buf = (uint16_t*)ss_mem_alloc4k(256 * 64 * 2);
+    ss_fill_rect_v(buf, 256, 64, 2, 0, 0, 256, 24);
+    ss_fill_rect_v(buf, 256, 64, 15, 0, 25, 256, 64);
+
+
+    ss_layer_set(l1, buf, 300, 300, 256, 64);
+    // ss_layer_set_z(l1, 0);
+
     draw_background();
     draw_taskbar();
+
+    ss_layer_draw();
 
 #ifdef LOCAL_MODE
     ss_print(5, 0, 0, 0, "Scott & Sandy OS x68k, [ESC] to quit");
@@ -69,8 +81,8 @@ void ssosmain() {
         if (ss_handle_keys() == -1)
 #ifdef LOCAL_MODE
             break;
-#else
-            ;
+
+        ;
 #endif
 
         draw_keys();

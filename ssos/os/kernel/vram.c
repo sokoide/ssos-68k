@@ -55,10 +55,10 @@ void ss_fill_rect(uint16_t color, int x0, int y0, int x1, int y1) {
     ss_fill_rect_v(vram_start, VRAMWIDTH, VRAMHEIGHT, color, x0, y0, x1, y1);
 }
 
-void ss_fill_rect_v(volatile uint16_t* vram, uint16_t sw, uint16_t sh, uint16_t color, int x0, int y0, int x1, int y1){
+void ss_fill_rect_v(volatile uint16_t* vram, uint16_t w, uint16_t h, uint16_t color, int x0, int y0, int x1, int y1){
     for (int y = y0; y <= y1; y++) {
         for (int x = x0; x <= x1; x++)
-            vram[y * sw + x] = color;
+            vram[y * w + x] = color;
     }
     return;
 }
@@ -67,7 +67,7 @@ void ss_put_char(uint16_t fg_color, uint16_t bg_color, int x, int y, char c) {
     ss_put_char_v(vram_start, VRAMWIDTH, VRAMHEIGHT, fg_color, bg_color, x, y, c);
 }
 
-void ss_put_char_v(volatile uint16_t* vram, uint16_t sw, uint16_t sh, uint16_t fg_color, uint16_t bg_color, int x, int y, char c) {
+void ss_put_char_v(volatile uint16_t* vram, uint16_t w, uint16_t h, uint16_t fg_color, uint16_t bg_color, int x, int y, char c) {
     // 8x8 font
     uint8_t* font_base_8_8 = (uint8_t*)0xf3a000;
     // 8x16 font
@@ -89,14 +89,14 @@ void ss_put_char_v(volatile uint16_t* vram, uint16_t sw, uint16_t sh, uint16_t f
             font_addr++;
         }
 
-        vram[ty * sw + x] = (t & 0x80) ? fg_color : bg_color;
-        vram[ty * sw + x + 1] = (t & 0x40) ? fg_color : bg_color;
-        vram[ty * sw + x + 2] = (t & 0x20) ? fg_color : bg_color;
-        vram[ty * sw + x + 3] = (t & 0x10) ? fg_color : bg_color;
-        vram[ty * sw + x + 4] = (t & 0x08) ? fg_color : bg_color;
-        vram[ty * sw + x + 5] = (t & 0x04) ? fg_color : bg_color;
-        vram[ty * sw + x + 6] = (t & 0x02) ? fg_color : bg_color;
-        vram[ty * sw + x + 7] = (t & 0x01) ? fg_color : bg_color;
+        vram[ty * w + x] = (t & 0x80) ? fg_color : bg_color;
+        vram[ty * w + x + 1] = (t & 0x40) ? fg_color : bg_color;
+        vram[ty * w + x + 2] = (t & 0x20) ? fg_color : bg_color;
+        vram[ty * w + x + 3] = (t & 0x10) ? fg_color : bg_color;
+        vram[ty * w + x + 4] = (t & 0x08) ? fg_color : bg_color;
+        vram[ty * w + x + 5] = (t & 0x04) ? fg_color : bg_color;
+        vram[ty * w + x + 6] = (t & 0x02) ? fg_color : bg_color;
+        vram[ty * w + x + 7] = (t & 0x01) ? fg_color : bg_color;
     }
 }
 
@@ -111,10 +111,10 @@ void ss_print(uint16_t fg_color, uint16_t bg_color, int x, int y, char* str) {
     ss_print_v(vram_start, VRAMWIDTH, VRAMHEIGHT, fg_color, bg_color, x, y, str);
 }
 
-void ss_print_v(volatile uint16_t* vram, uint16_t sw, uint16_t sh, uint16_t fg_color, uint16_t bg_color, int x, int y, char* str){
+void ss_print_v(volatile uint16_t* vram, uint16_t w, uint16_t h, uint16_t fg_color, uint16_t bg_color, int x, int y, char* str){
     int l = mystrlen(str);
     for (int i = 0; i < l; i++) {
-        ss_put_char_v(vram, sw, sh, fg_color, bg_color, x + i * 8, y, str[i]);
+        ss_put_char_v(vram, w, h, fg_color, bg_color, x + i * 8, y, str[i]);
     }
 }
 

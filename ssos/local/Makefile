@@ -4,6 +4,7 @@ SRCS=	main.c \
 		../os/kernel/kernel.c \
 		../os/kernel/memory.c \
 		../os/kernel/vram.c \
+		../os/window/layer.c \
 		../os/util/printf.c
 ASRCS= \
 		../os/kernel/interrupts.s
@@ -18,7 +19,7 @@ OBJDUMP=m68k-xelf-objdump
 OBJDUMP=m68k-xelf-objdump
 READELF=m68k-xelf-readelf
 
-INCLUDE=-I$(XELF_BASE)/m68k-elf/include -I../os/util
+INCLUDE=-I$(XELF_BASE)/m68k-elf/include -I../os/util -I../os/kernel -I../os/window
 LIB=-L$(XELF_BASE)/m68k-elf/lib
 
 CCFLAGS=$(INCLUDE) -O2 -g -DLOCAL_MODE

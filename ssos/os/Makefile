@@ -5,6 +5,7 @@ SRCS= \
 	kernel/kernel.c \
 	kernel/memory.c \
 	kernel/vram.c \
+	window/layer.c \
 	util/printf.c
 ASRCS= \
 	kernel/entry.s \
@@ -19,7 +20,7 @@ OBJCOPY=m68k-xelf-objcopy
 OBJDUMP=m68k-xelf-objdump
 READELF=m68k-xelf-readelf
 
-INCLUDE=-I$(XELF_BASE)/m68k-elf/include -I./util -I./kernel
+INCLUDE=-I$(XELF_BASE)/m68k-elf/include -I./util -I./kernel -I./window
 LIB=-L$(XELF_BASE)/m68k-elf/lib -L$(XELF_BASE)/lib/gcc/m68k-elf/13.3.0
 
 CCFLAGS=$(INCLUDE) -g -O2 -Wa,-adhlns="$@.lst"
