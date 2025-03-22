@@ -162,10 +162,32 @@ void draw_stats() {
         ss_print(color_fg, color_bg, 0, y, szMessage);
         y += 16;
 
+        uint32_t ssp;
+        uint32_t pc;
+        uint16_t sr;
+        asm volatile("move.l %%sp, %0"
+                     : "=r"(ssp) /* output */
+                     :           /* intput */
+                     : /* destroyed registers */);
+        asm volatile("bsr 1f\n\t"
+                     "1: move.l (%%sp)+, %0"
+                     : "=r"(pc) /* output */
+                     :          /* intput */
+                     : /* destroyed registers */);
+        asm volatile("move.w %%sr, %0"
+                     : "=d"(sr) /* output */
+                     :          /* intput */
+                     : /* destroyed registers */);
+
+        sprintf(szMessage, "ssp: 0x%08x, pc: 0x%08x, sr: 0x%04x", ssp, pc, sr);
+        ss_print(color_fg, color_bg, 0, y, szMessage);
+        y += 16;
+
         sprintf(szMessage, "ss_timer_counter_base addr: 0x%p",
                 &ss_timera_counter);
         ss_print(color_fg, color_bg, 0, y, szMessage);
         y += 16;
+
         sprintf(szMessage, "ss_save_data_base addr: 0x%p", &ss_save_data_base);
         ss_print(color_fg, color_bg, 0, y, szMessage);
         y += 16;

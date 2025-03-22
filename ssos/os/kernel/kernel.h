@@ -8,6 +8,7 @@ extern const uint16_t color_fg;
 extern const uint16_t color_bg;
 extern const uint16_t color_tb;
 
+// ***** disk boot only *****
 // defined in linker.ld
 extern char __text_start[];
 extern char __text_end[];
@@ -25,9 +26,20 @@ extern char __ssosram_start[];
 extern char __ssosram_end[];
 extern char __ssosram_size[];
 
-// local only: defined in local/main.c
+// ***** local only *****
+// defined in local/main.c
 extern char local_info[256];
 
+// ***** common *****
+// SSOS ports: defined in interrupts.s
+extern const volatile uint32_t ss_timera_counter;
+extern const volatile uint32_t ss_timerb_counter;
+extern const volatile uint32_t ss_timerc_counter;
+extern const volatile uint32_t ss_timerd_counter;
+extern const volatile uint32_t ss_key_counter;
+extern const volatile uint32_t ss_save_data_base;
+
+// defined in kernel.c
 extern volatile uint8_t* mfp;
 
 void ss_wait_for_vsync();
