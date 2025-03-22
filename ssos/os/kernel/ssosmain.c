@@ -191,24 +191,25 @@ void draw_stats() {
         uint32_t sz;
         ss_get_text(&base, &sz);
         sprintf(szMessage, ".text   addr: 0x%08x-0x%08x, size: %d", base,
-                base + sz, sz);
+                base + sz - 1, sz);
         ss_print(color_fg, color_bg, 0, y, szMessage);
         y += 16;
 
         ss_get_data(&base, &sz);
         sprintf(szMessage, ".data   addr: 0x%08x-0x%08x, size: %d", base,
-                base + sz, sz);
+                base + sz - 1, sz);
         ss_print(color_fg, color_bg, 0, y, szMessage);
         y += 16;
 
         ss_get_bss(&base, &sz);
         sprintf(szMessage, ".bss    addr: 0x%08x-0x%08x, size: %d", base,
-                base + sz, sz);
+                base + sz - 1, sz);
         ss_print(color_fg, color_bg, 0, y, szMessage);
         y += 16;
 
         sprintf(szMessage, "RAM     addr: 0x%08x-0x%08x, size: %d",
-                ss_ssos_memory_base, ss_ssos_memory_base + ss_ssos_memory_size,
+                ss_ssos_memory_base,
+                ss_ssos_memory_base + ss_ssos_memory_size - 1,
                 ss_ssos_memory_size);
         ss_print(color_fg, color_bg, 0, y, szMessage);
         y += 16;
@@ -228,8 +229,8 @@ void draw_stats() {
         y += 16;
 
         for (int i = 0; i < ss_mem_mgr.num_free_blocks; i++) {
-            sprintf(szMessage, "memory mgr: block: %d, addr: 0x%x, sz:%d",
-                    i, ss_mem_mgr.free_blocks[i].addr,
+            sprintf(szMessage, "memory mgr: block: %d, addr: 0x%x, sz:%d", i,
+                    ss_mem_mgr.free_blocks[i].addr,
                     ss_mem_mgr.free_blocks[i].sz);
             ss_print(color_fg, color_bg, 0, y, szMessage);
             y += 16;

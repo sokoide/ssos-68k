@@ -1,7 +1,6 @@
 ENTRY(main)
 
-__ssosram_size = 0x00100000;;
-__appram_size  = 0x009B0000;;
+__ssosram_size = 0x00AB0000;;
 
 MEMORY
 {

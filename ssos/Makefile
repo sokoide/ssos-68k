@@ -1,5 +1,5 @@
 TOPTARGETS := all clean
-SUBDIRS := makedisk boot os
+SUBDIRS := boot os
 DISK := ssos.xdf
 
 .PHONY: $(TARGETS) $(SUBDIRS) all compiledb local
@@ -14,17 +14,14 @@ all: $(DISK)
 	cp $(DISK) ~/tmp
 
 $(DISK): $(SUBDIRS)
-	./makedisk/makedisk ./boot/BOOT.X.bin ./os/SSOS.X.bin $(DISK)
+	../makedisk/makedisk ./boot/BOOT.X.bin ./os/SSOS.X.bin $(DISK)
 
 clean:
 	cd local; make clean
-	rm $(DISK)
+	rm -rf $(DISK)
 
 compiledb: $(SRCS)
 	compiledb make
-
-local:
-	cd local; make clean; make
 
 local:
 	cd local; make
