@@ -39,6 +39,7 @@ export PATH=$XELF_BASE/bin:$PATH
 ### ssos
 
 * cd ssos
+* make clean # this is necessary after making `local` below
 * make
 * ~/tmp/ssos.xdf is built
 * boot from the xdf
@@ -48,7 +49,8 @@ export PATH=$XELF_BASE/bin:$PATH
 ### local version
 
 * for faster development, there is a local version runs as an .X file on Human68K
-* cd local
-* make
+* cd ssos
+* make clean # this is necessary after making the xfd version above
+* make local
 * mount and run ~/tmp/local.x
 
