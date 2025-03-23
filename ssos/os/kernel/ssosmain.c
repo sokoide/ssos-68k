@@ -18,6 +18,11 @@ void draw_keys();
 extern char local_info[256];
 
 void ssosmain() {
+    int c;
+    int scancode = 0;
+    char szMessage[256];
+    uint8_t counter = 0;
+
     // init
     _iocs_crtmod(16); // 768x512 dots, 16 colors, 1 screen
     _iocs_g_clr_on(); // clear gvram, reset palette, access page 0
@@ -77,31 +82,25 @@ void ssosmain() {
 #endif
 
     Layer* l2 = ss_layer_get();
-    uint16_t* l2buf = (uint16_t*)ss_mem_alloc4k(256 * 64 * 2);
-    ss_layer_set(l2, l2buf, 400, 40, 256, 64);
-    ss_fill_rect_v(l2buf, 256, 64, 2, 0, 0, 256, 24);
-    ss_fill_rect_v(l2buf, 256, 64, 15, 0, 25, 256, 64);
-    ss_draw_rect_v(l2buf, 256, 64, 0, 0, 0, 256, 64);
-    ss_print_v(l2buf, 256, 64, 15, 2, 8, 4, "Timer");
-    ss_print_v(l2buf, 256, 64, 0, 15, 8, 30, "A: V-DISP counter: 123456789");
-    ss_print_v(l2buf, 256, 64, 0, 15, 8, 46, "D: 1000Hz timer:   123456789");
+    const int l2w = 400;
+    const int l2h = 64;
+    uint16_t* l2buf = (uint16_t*)ss_mem_alloc4k(l2w * l2h * 2);
+    ss_layer_set(l2, l2buf, 300, 40, l2w, l2h);
+    ss_fill_rect_v(l2buf, l2w, l2h, 2, 0, 0, l2w, 24);
+    ss_fill_rect_v(l2buf, l2w, l2h, 15, 0, 25, l2w, l2h);
+    ss_draw_rect_v(l2buf, l2w, l2h, 0, 0, 0, l2w, l2h);
+    ss_print_v(l2buf, l2w, l2h, 15, 2, 8, 4, "Timer");
+    sprintf(szMessage, "A: V-DISP counter: %9d (vsync count)",
+            ss_timera_counter);
+    ss_print_v(l2buf, l2w, l2h, 0, 15, 8, 30, szMessage);
+    sprintf(szMessage, "D: 1000Hz timer:   %9d (every 1ms)", ss_timerd_counter);
+    ss_print_v(l2buf, l2w, l2h, 0, 15, 8, 46, szMessage);
     // ss_layer_set_z(l1, 0);
 
     // draw_background();
     // draw_taskbar();
 
-    ss_layer_draw();
-
-    // ss_fill_rect(2, 100, 300, 356, 324);
-    // ss_fill_rect(15, 100, 325, 356, 364);
-    // ss_draw_rect(0, 100, 300, 356, 364);
-    // ss_print(15, 2, 108, 304, "Sample Window");
-    // ss_print(0, 15, 108, 336, "Hello, SSOS!");
-
-    int c;
-    int scancode = 0;
-    char szMessage[256];
-    uint8_t counter = 0;
+    ss_all_layer_draw();
 
     while (true) {
         // if it's vsync, wait for display period
@@ -130,12 +129,22 @@ void ssosmain() {
         ;
 #endif
 
-        if (counter++ >= 60) {
+        counter++;
+        if (counter % 30 == 0) {
+            // if (l2->y < 400)
+            //     ss_layer_move(l2, l2->x, l2->y + 10);
+            // else
+            //     ss_layer_move(l2, l2->x, 40);
+            sprintf(szMessage, "A: V-DISP counter: %9d (vsync count)",
+                    ss_timera_counter);
+            ss_print_v(l2buf, l2w, l2h, 0, 15, 8, 30, szMessage);
+            sprintf(szMessage, "D: 1000Hz timer:   %9d (every 1ms)",
+                    ss_timerd_counter);
+            ss_print_v(l2buf, l2w, l2h, 0, 15, 8, 46, szMessage);
+            ss_layer_invalidate(l2);
+        }
+        if (counter > 60) {
             counter = 0;
-            if (l2->y < 400)
-                ss_layer_move(l2, l2->x, l2->y + 10);
-            else
-                ss_layer_move(l2, l2->x, 40);
         }
         // draw_keys();
         // draw_stats();
