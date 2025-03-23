@@ -71,7 +71,7 @@ void ssosmain() {
 
         update_layer_3(l3);
 
-        if (counter++ > 30) {
+        if (counter++ > 10) {
             update_layer_2(l2);
             counter = 0;
         }

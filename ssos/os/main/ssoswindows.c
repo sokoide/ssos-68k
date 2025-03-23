@@ -32,9 +32,9 @@ Layer* get_layer_2() {
 
     uint16_t* lbuf = (uint16_t*)ss_mem_alloc4k(lw * lh * 2);
     ss_layer_set(l, lbuf, 10, 30, lw, lh);
-    ss_fill_rect_v(lbuf, lw, lh, 2, 0, 0, lw-1, 24);
-    ss_fill_rect_v(lbuf, lw, lh, 15, 0, 25, lw-1, lh-1);
-    ss_draw_rect_v(lbuf, lw, lh, 0, 0, 0, lw-1, lh-1);
+    ss_fill_rect_v(lbuf, lw, lh, 2, 0, 0, lw - 1, 24);
+    ss_fill_rect_v(lbuf, lw, lh, 15, 0, 25, lw - 1, lh - 1);
+    ss_draw_rect_v(lbuf, lw, lh, 0, 0, 0, lw - 1, lh - 1);
     ss_print_v(lbuf, lw, lh, 15, 2, 8, 4, "Timer");
 
     // ss_layer_set_z(l, 0);
@@ -47,14 +47,14 @@ Layer* get_layer_3() {
     uint16_t bg = 15;
 
     Layer* l = ss_layer_get();
-    const int lw = 400;
+    const int lw = 399;
     const int lh = 100;
 
     uint16_t* lbuf = (uint16_t*)ss_mem_alloc4k(lw * lh * 2);
-    ss_layer_set(l, lbuf, 360, 10, lw, lh);
-    ss_fill_rect_v(lbuf, lw, lh, 3, 0, 0, lw-1, 24);
-    ss_fill_rect_v(lbuf, lw, lh, 15, 0, 25, lw-1, lh-1);
-    ss_draw_rect_v(lbuf, lw, lh, 0, 0, 0, lw-1, lh-1);
+    ss_layer_set(l, lbuf, 300, 10, lw, lh);
+    ss_fill_rect_v(lbuf, lw, lh, 3, 0, 0, lw - 1, 24);
+    ss_fill_rect_v(lbuf, lw, lh, 15, 0, 25, lw - 1, lh - 1);
+    ss_draw_rect_v(lbuf, lw, lh, 5, 0, 0, lw - 1, lh - 1);
     ss_print_v(lbuf, lw, lh, 15, 3, 8, 4, "Mouse Keyboard");
 
     return l;
@@ -66,6 +66,11 @@ void update_layer_2(Layer* l) {
     uint16_t bg = 15;
     uint16_t x = 8;
     uint16_t y = 30;
+
+    uint8_t lid = l - ss_layer_mgr->layers;
+    sprintf(szMessage, "layer id: %d", lid);
+    ss_print_v(l->vram, l->w, l->h, fg, bg, x, y, szMessage);
+    y += 16;
 
     sprintf(szMessage, "A: V-DISP counter: %9d (vsync count)",
             ss_timera_counter);
@@ -160,6 +165,11 @@ void update_layer_3(Layer* l) {
     // else
     //     ss_layer_move(l, l->x, 40);
 
+    uint8_t lid = l - ss_layer_mgr->layers;
+    sprintf(szMessage, "layer id: %d", lid);
+    ss_print_v(l->vram, l->w, l->h, fg, bg, x, y, szMessage);
+    y += 16;
+
     // mouse
     uint32_t dt = _iocs_ms_getdt();
     uint32_t pos = _iocs_ms_curgt();
@@ -184,7 +194,8 @@ void update_layer_3(Layer* l) {
     }
     y += 16;
 
-    if (invalidate) ss_layer_invalidate(l);
+    if (invalidate)
+        ss_layer_invalidate(l);
 }
 
 void draw_title(uint16_t* buf) {

@@ -20,6 +20,7 @@ typedef struct {
     int16_t topLayerIdx;
     Layer* zLayers[MAX_LAYERS]; // z-order sorted layer pointers
     Layer layers[MAX_LAYERS];   // layer data ( sizeof(Layer) * MAX_LAYERS )
+    uint8_t* map;
 } LayerMgr;
 
 extern LayerMgr* ss_layer_mgr;
@@ -31,7 +32,8 @@ void ss_layer_set(Layer* layer, uint16_t* vram, uint16_t x, uint16_t y,
 void ss_layer_set_z(Layer* layer, uint16_t z);
 void ss_all_layer_draw();
 void ss_all_layer_draw_rect(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1);
-void ss_z_layer_draw_rect(uint16_t z, uint16_t x0, uint16_t y0, uint16_t x1,
+void ss_layer_draw_rect_layer(Layer *l, uint16_t x0, uint16_t y0, uint16_t x1,
                           uint16_t y1);
-    void ss_layer_move(Layer * layer, uint16_t x, uint16_t y);
-    void ss_layer_invalidate(Layer * layer);
+void ss_layer_move(Layer* layer, uint16_t x, uint16_t y);
+void ss_layer_invalidate(Layer* layer);
+void ss_layer_update_map(Layer *layer);
