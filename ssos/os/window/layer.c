@@ -73,10 +73,28 @@ void ss_layer_draw() {
         Layer* layer = ss_layer_mgr->zLayers[i];
         if(layer->attr & LAYER_ATTR_VISIBLE){
             for(int y=0;y<layer->h;y++){
-                for(int x=0;x<layer->w;x++){
-                    vram_start[(layer->y + y) * VRAMWIDTH + layer->x + x] = layer->vram[y * layer->w + x];
+                int blocks = layer->w / 4;
+                int rest = layer->w % 4;
+                // draw per 16byte block for faster drawing
+                for(int b=0;b<blocks;b++){
+                    uint16_t* src = &layer->vram[y * layer->w + b * 4];
+                    uint16_t* dst = &vram_start[(layer->y + y) * VRAMWIDTH + layer->x + b * 4];
+                    dst[0] = src[0];
+                    dst[1] = src[1];
+                    dst[2] = src[2];
+                    dst[3] = src[3];
+                }
+                // draw the rest
+                for(int r=0;r<rest;r++){
+                    vram_start[(layer->y + y) * VRAMWIDTH + layer->x + blocks * 4 + r] = layer->vram[y * layer->w + blocks * 4 + r];
                 }
             }
         }
     }
+}
+
+void ss_layer_move(Layer *layer, uint16_t x, uint16_t y){
+    layer->x = x;
+    layer->y = y;
+    ss_layer_draw();
 }

@@ -87,30 +87,32 @@ void ssosmain() {
 
     //     ss_layer_set(l1, l1buf, 0, 0, WIDTH, HEIGHT);
 
-    // Layer* l2 = ss_layer_get();
-    // uint16_t* l2buf = (uint16_t*)ss_mem_alloc4k(256 * 64 * 2);
-    // ss_fill_rect_v(l2buf, 256, 64, 2, 0, 0, 256, 24);
-    // ss_fill_rect_v(l2buf, 256, 64, 15, 0, 25, 256, 64);
-    // ss_draw_rect_v(l2buf, 256, 64, 0, 0, 0, 256, 64);
-    // ss_print_v(l2buf, 256, 64, 15, 2, 20, 4, "Sample Window");
-    // ss_print_v(l2buf, 256, 64, 0, 15, 20, 36, "Hello, SSOS!");
-    // ss_layer_set(l2, l2buf, 300, 300, 256, 64);
+    Layer* l2 = ss_layer_get();
+    uint16_t* l2buf = (uint16_t*)ss_mem_alloc4k(256 * 64 * 2);
+    ss_fill_rect_v(l2buf, 256, 64, 2, 0, 0, 256, 24);
+    ss_fill_rect_v(l2buf, 256, 64, 15, 0, 25, 256, 64);
+    ss_draw_rect_v(l2buf, 256, 64, 0, 0, 0, 256, 64);
+    ss_print_v(l2buf, 256, 64, 15, 2, 8, 4, "Timer");
+    ss_print_v(l2buf, 256, 64, 0, 15, 8, 30, "A: V-DISP counter: 123456789");
+    ss_print_v(l2buf, 256, 64, 0, 15, 8, 46, "D: 1000Hz timer:   123456789");
+    ss_layer_set(l2, l2buf, 400, 40, 256, 64);
     // ss_layer_set_z(l1, 0);
 
     draw_background();
     draw_taskbar();
 
-    // ss_layer_draw();
+    ss_layer_draw();
 
     ss_fill_rect(2, 100, 300, 356, 324);
     ss_fill_rect(15, 100, 325, 356, 364);
     ss_draw_rect(0, 100, 300, 356, 364);
     ss_print(15, 2, 108, 304, "Sample Window");
-    ss_print( 0, 15, 108, 336, "Hello, SSOS!");
+    ss_print(0, 15, 108, 336, "Hello, SSOS!");
 
     int c;
     int scancode = 0;
     char szMessage[256];
+    uint8_t counter = 0;
 
     while (true) {
         // if it's vsync, wait for display period
@@ -139,8 +141,15 @@ void ssosmain() {
         ;
 #endif
 
-        draw_keys();
-        draw_stats();
+        if (counter++ >= 60) {
+            counter = 0;
+            if (l2->y < 400)
+                ss_layer_move(l2, l2->x, l2->y + 10);
+            else
+                ss_layer_move(l2, l2->x, 40);
+        }
+        // draw_keys();
+        // draw_stats();
     }
 
 CLEANUP:
@@ -156,10 +165,9 @@ CLEANUP:
 void draw_background() {
     ss_fill_rect(color_bg, 0, 0, WIDTH, HEIGHT - 33);
 #ifdef LOCAL_MODE
-    ss_print(5, 0, 0, 0,
-               "Scott & Sandy OS x68k, [ESC] to quit");
+    ss_print(5, 0, 0, 0, "Scott & Sandy OS x68k, [ESC] to quit");
 #else
-        ss_print(5, 0, 0, 0, "Scott & Sandy OS x68k");
+    ss_print(5, 0, 0, 0, "Scott & Sandy OS x68k");
 #endif
 }
 
@@ -222,7 +230,7 @@ void draw_stats() {
         ss_print(color_fg, color_bg, 0, oy + 16, szMessage);
     }
 
-    if (counter++ >= 30) {
+    if (counter++ >= 60) {
         counter = 0;
 
         sprintf(szMessage, "A: V-DISP counter: %9d (vsync count)",
