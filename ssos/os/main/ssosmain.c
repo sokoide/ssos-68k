@@ -37,6 +37,7 @@ void ssosmain() {
 
     Layer* l1 = get_layer_1();
     Layer* l2 = get_layer_2();
+    Layer* l3 = get_layer_3();
 
     ss_all_layer_draw();
 
@@ -67,6 +68,10 @@ void ssosmain() {
         ;
 #endif
 
+        // update_layer_3(l3);
+        if (counter % 10 == 0) {
+            update_layer_3(l3);
+        }
         if (counter % 60 == 0) {
             update_layer_2(l2);
         }

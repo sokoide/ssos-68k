@@ -30,7 +30,7 @@ Layer* ss_layer_get() {
 }
 
 void ss_layer_set(Layer* layer, uint16_t* vram, uint16_t x, uint16_t y,
-                  uint16_t w, uint16_t h) {
+    uint16_t w, uint16_t h) {
     layer->vram = vram;
     layer->x = x;
     layer->y = y;
@@ -39,7 +39,7 @@ void ss_layer_set(Layer* layer, uint16_t* vram, uint16_t x, uint16_t y,
 }
 
 void ss_layer_set_z(Layer* layer, uint16_t z) {
-    uint16_t prev = layer->z;
+    // uint16_t prev = layer->z;
 
     // TODO:
     // if (z < 0) {
@@ -82,8 +82,35 @@ void ss_all_layer_draw_rect(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1) 
 void ss_z_layer_draw_rect(uint16_t z, uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1) {
     for (int i = z; i < ss_layer_mgr->topLayerIdx; i++) {
         Layer* layer = ss_layer_mgr->zLayers[i];
-        if (0 == layer->attr & LAYER_ATTR_VISIBLE)
+        if (0 == (layer->attr & LAYER_ATTR_VISIBLE))
             continue;
+
+        uint16_t bx0 = x0 - layer->x;
+        uint16_t by0 = y0 - layer->y;
+        uint16_t bx1 = x1 - layer->x;
+        uint16_t by1 = y1 - layer->y;
+        if (bx0 < 0)
+            bx0 = 0;
+        if (by0 < 0)
+            by0 = 0;
+        if (bx1 > layer->w)
+            bx1 = layer->w;
+        if (by1 > layer->h)
+            by1 = layer->h;
+        for (uint16_t by = by0; by < by1; by++) {
+            uint16_t vy = layer->y + by;
+            if (vy < 0 || vy >= HEIGHT)
+                continue;
+            for (uint16_t bx = bx0; bx < bx1; bx++) {
+                uint16_t vx = layer->x + bx;
+                if (vx < 0 || vx >= WIDTH)
+                    continue;
+                vram_start[vy * VRAMWIDTH + vx] =
+                    layer->vram[by * layer->w + bx];
+            }
+        }
+
+#if 0
         // (dx0, dy0) - (dx1, dy1) is the intersection of the layer and the
         // rectangle (x0, y0) - (x1, y1).
         // layer->x+dx0, layer->y+dy0 - layer->x+dx1, layer->y+dy1 will be
@@ -108,25 +135,27 @@ void ss_z_layer_draw_rect(uint16_t z, uint16_t x0, uint16_t y0, uint16_t x1, uin
                 continue;
 
             // draw per 16byte block for faster drawing
-            uint16_t blocks = (dx1 - dx0) / 4;
-            uint16_t rest = (dx1 - dx0) % 4;
-            for (uint16_t b = 0; b < blocks; b++) {
-                uint16_t vx = layer->x + dx0 + b * 4;
-                uint16_t* src = &layer->vram[dy * layer->w + dx0 + b * 4];
-                volatile uint16_t* dst =
-                    &vram_start[vy * VRAMWIDTH + vx];
-                dst[0] = src[0];
-                dst[1] = src[1];
-                dst[2] = src[2];
-                dst[3] = src[3];
-            }
+            // uint16_t blocks = (dx1 - dx0) / 4;
+            // uint16_t rest = (dx1 - dx0) % 4;
+            // for (uint16_t b = 0; b < blocks; b++) {
+            //     uint16_t vx = layer->x + dx0 + b * 4;
+
+            //     uint16_t* src = &layer->vram[dy * layer->w + dx0 + b * 4];
+            //     volatile uint16_t* dst =
+            //         &vram_start[vy * VRAMWIDTH + vx];
+            //     dst[0] = src[0];
+            //     dst[1] = src[1];
+            //     dst[2] = src[2];
+            //     dst[3] = src[3];
+            // }
             // draw the rest
-            for (uint16_t r = 0; r < rest; r++) {
-                uint16_t vx = layer->x + blocks * 4 + dx0 + r;
-                vram_start[vy * VRAMWIDTH + vx] =
-                    layer->vram[dy * layer->w + blocks * 4 + dx0 + r];
-            }
+            // for (uint16_t r = 0; r < rest; r++) {
+            //     uint16_t vx = layer->x + blocks * 4 + dx0 + r;
+            //     vram_start[vy * VRAMWIDTH + vx] =
+            //         layer->vram[dy * layer->w + blocks * 4 + dx0 + r];
+            // }
         }
+#endif
     }
 }
 
@@ -141,5 +170,5 @@ void ss_layer_move(Layer* layer, uint16_t x, uint16_t y) {
 
 void ss_layer_invalidate(Layer* layer) {
     ss_z_layer_draw_rect(layer->z, layer->x, layer->y, layer->x + layer->w,
-                           layer->y + layer->h);
+        layer->y + layer->h);
 }
