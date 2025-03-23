@@ -1,8 +1,8 @@
 #include "layer.h"
-#include "memory.h"
-#include <stddef.h>
-#include "vram.h"
 #include "kernel.h"
+#include "memory.h"
+#include "vram.h"
+#include <stddef.h>
 
 LayerMgr* ss_layer_mgr;
 
@@ -68,33 +68,63 @@ void ss_layer_set_z(Layer* layer, uint16_t z) {
     // ss_layer_draw();
 }
 
-void ss_layer_draw() {
-    for(int i=0;i<ss_layer_mgr->topLayerIdx;i++){
+void ss_layer_draw() { ss_layer_draw_rect(0, 0, WIDTH, HEIGHT); }
+
+void ss_layer_draw_rect(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1) {
+    for (int i = 0; i < ss_layer_mgr->topLayerIdx; i++) {
         Layer* layer = ss_layer_mgr->zLayers[i];
-        if(layer->attr & LAYER_ATTR_VISIBLE){
-            for(int y=0;y<layer->h;y++){
-                int blocks = layer->w / 4;
-                int rest = layer->w % 4;
-                // draw per 16byte block for faster drawing
-                for(int b=0;b<blocks;b++){
-                    uint16_t* src = &layer->vram[y * layer->w + b * 4];
-                    uint16_t* dst = &vram_start[(layer->y + y) * VRAMWIDTH + layer->x + b * 4];
-                    dst[0] = src[0];
-                    dst[1] = src[1];
-                    dst[2] = src[2];
-                    dst[3] = src[3];
-                }
-                // draw the rest
-                for(int r=0;r<rest;r++){
-                    vram_start[(layer->y + y) * VRAMWIDTH + layer->x + blocks * 4 + r] = layer->vram[y * layer->w + blocks * 4 + r];
-                }
+
+        uint16_t bx0 = x0 - layer->x;
+        uint16_t by0 = y0 - layer->y;
+        uint16_t bx1 = x1 - layer->x;
+        uint16_t by1 = y1 - layer->y;
+        if (bx0 < 0)
+            bx0 = 0;
+        if (by0 < 0)
+            by0 = 0;
+        if (bx1 > layer->w)
+            bx1 = layer->w;
+        if (by1 > layer->h)
+            by1 = layer->h;
+        for (uint16_t by = by0; by < by1; by++) {
+            uint16_t vy = layer->y + by;
+            if (vy < 0 || vy >= HEIGHT)
+                continue;
+            for (uint16_t bx = bx0; bx < bx1; bx++) {
+                uint16_t vx = layer->x + bx;
+                if (vx < 0 || vx >= WIDTH)
+                    continue;
+                vram_start[vy * VRAMWIDTH + vx] =
+                    layer->vram[by * layer->w + bx];
             }
         }
+        // if(layer->attr & LAYER_ATTR_VISIBLE){
+        //     for(int y=0;y<layer->h;y++){
+        //         int blocks = layer->w / 4;
+        //         int rest = layer->w % 4;
+        //         // draw per 16byte block for faster drawing
+        //         for(int b=0;b<blocks;b++){
+        //             uint16_t* src = &layer->vram[y * layer->w + b * 4];
+        //             uint16_t* dst = &vram_start[(layer->y + y) * VRAMWIDTH +
+        //             layer->x + b * 4]; dst[0] = src[0]; dst[1] = src[1];
+        //             dst[2] = src[2];
+        //             dst[3] = src[3];
+        //         }
+        //         // draw the rest
+        //         for(int r=0;r<rest;r++){
+        //             vram_start[(layer->y + y) * VRAMWIDTH + layer->x + blocks
+        //             * 4 + r] = layer->vram[y * layer->w + blocks * 4 + r];
+        //         }
+        //     }
+        // }
     }
 }
 
-void ss_layer_move(Layer *layer, uint16_t x, uint16_t y){
+void ss_layer_move(Layer* layer, uint16_t x, uint16_t y) {
+    uint16_t x0 = layer->x;
+    uint16_t y0 = layer->y;
     layer->x = x;
     layer->y = y;
-    ss_layer_draw();
+    ss_layer_draw_rect(x0, y0, x0 + layer->w, y0 + layer->h);
+    ss_layer_draw_rect(x, y, x + layer->w, y + layer->h);
 }
