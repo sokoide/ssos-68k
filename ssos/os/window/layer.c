@@ -19,7 +19,7 @@ Layer* ss_layer_get() {
         if ((ss_layer_mgr->layers[i].attr & LAYER_ATTR_USED) == 0) {
             ss_layer_mgr->layers[i].attr =
                 (LAYER_ATTR_USED | LAYER_ATTR_VISIBLE);
-            ss_layer_mgr->layers[i].z = 0;
+            ss_layer_mgr->layers[i].z = ss_layer_mgr->topLayerIdx;
             ss_layer_mgr->zLayers[ss_layer_mgr->topLayerIdx] =
                 &ss_layer_mgr->layers[i];
             ss_layer_mgr->topLayerIdx++;
@@ -74,7 +74,13 @@ void ss_all_layer_draw() { ss_all_layer_draw_rect(0, 0, WIDTH, HEIGHT); }
 // Draw the rectangle area (x0, y0) - (x1, y1)
 // in vram coordinates
 void ss_all_layer_draw_rect(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1) {
-    for (int i = 0; i < ss_layer_mgr->topLayerIdx; i++) {
+    ss_z_layer_draw_rect(0, x0, y0, x1, y1);
+}
+
+// Draw the rectangle area (x0, y0) - (x1, y1)
+// in vram coordinates whose z is z or higher
+void ss_z_layer_draw_rect(uint16_t z, uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1) {
+    for (int i = z; i < ss_layer_mgr->topLayerIdx; i++) {
         Layer* layer = ss_layer_mgr->zLayers[i];
         if (0 == layer->attr & LAYER_ATTR_VISIBLE)
             continue;
@@ -134,6 +140,6 @@ void ss_layer_move(Layer* layer, uint16_t x, uint16_t y) {
 }
 
 void ss_layer_invalidate(Layer* layer) {
-    ss_all_layer_draw_rect(layer->x, layer->y, layer->x + layer->w,
+    ss_z_layer_draw_rect(layer->z, layer->x, layer->y, layer->x + layer->w,
                            layer->y + layer->h);
 }
