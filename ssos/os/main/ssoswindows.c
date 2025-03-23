@@ -1,85 +1,30 @@
-#include "ssosmain.h"
+#include "ssoswindows.h"
 #include "kernel.h"
 #include "layer.h"
 #include "memory.h"
 #include "printf.h"
 #include "vram.h"
-#include <stdbool.h>
-#include <stdint.h>
-#include <stdio.h>
-#include <string.h>
 #include <x68k/iocs.h>
-
-void draw_background();
-void draw_taskbar();
-void draw_stats();
-void draw_keys();
 
 extern char local_info[256];
 
-void ssosmain() {
-    int c;
-    int scancode = 0;
-    char szMessage[256];
-    uint8_t counter = 0;
+void draw_title(uint16_t* l1);
+void draw_taskbar(uint16_t* buf);
 
-    // init
-    _iocs_crtmod(16); // 768x512 dots, 16 colors, 1 screen
-    _iocs_g_clr_on(); // clear gvram, reset palette, access page 0
-    _iocs_b_curoff(); // stop cursor
-
-    _iocs_ms_init();
-    _iocs_skey_mod(0, 0, 0);
-    _iocs_ms_curon();
-
-    ss_clear_vram_fast();
-    ss_wait_for_clear_vram_completion();
-
-    ss_init_memory_info();
-    ss_mem_init();
-
-    ss_layer_init();
-
+Layer* get_layer_1() {
     Layer* l1 = ss_layer_get();
     uint16_t* l1buf = (uint16_t*)ss_mem_alloc4k(WIDTH * HEIGHT * 2);
     ss_layer_set(l1, l1buf, 0, 0, WIDTH, HEIGHT);
     ss_fill_rect_v(l1buf, WIDTH, HEIGHT, color_bg, 0, 0, WIDTH, HEIGHT - 33);
-    // white line above the taskbar
-    ss_fill_rect_v(l1buf, WIDTH, HEIGHT, 15, 0, HEIGHT - 33, WIDTH,
-                   HEIGHT - 32);
-    // taskbar
-    ss_fill_rect_v(l1buf, WIDTH, HEIGHT, color_tb, 0, HEIGHT - 32, WIDTH,
-                   HEIGHT);
-    // bottom-left button
-    // upper -
-    ss_fill_rect_v(l1buf, WIDTH, HEIGHT, 15, 3, HEIGHT - 30, 100, HEIGHT - 30);
-    // left |
-    ss_fill_rect_v(l1buf, WIDTH, HEIGHT, 15, 3, HEIGHT - 29, 3, HEIGHT - 3);
-    // lower -
-    ss_fill_rect_v(l1buf, WIDTH, HEIGHT, 1, 3, HEIGHT - 3, 100, HEIGHT - 3);
-    // right |
-    ss_fill_rect_v(l1buf, WIDTH, HEIGHT, 1, 100, HEIGHT - 29, 100, HEIGHT - 4);
-    // bottom-right button
-    //  upper -
-    ss_fill_rect_v(l1buf, WIDTH, HEIGHT, 1, WIDTH - 100, HEIGHT - 30, WIDTH - 4,
-                   HEIGHT - 30);
-    // left |
-    ss_fill_rect_v(l1buf, WIDTH, HEIGHT, 1, WIDTH - 100, HEIGHT - 29,
-                   WIDTH - 100, HEIGHT - 3);
-    // lower -
-    ss_fill_rect_v(l1buf, WIDTH, HEIGHT, 15, WIDTH - 100, HEIGHT - 3, WIDTH - 4,
-                   HEIGHT - 3);
-    // right |
-    ss_fill_rect_v(l1buf, WIDTH, HEIGHT, 15, WIDTH - 3, HEIGHT - 29, WIDTH - 3,
-                   HEIGHT - 4);
-    // start
-    ss_print_v(l1buf, WIDTH, HEIGHT, 1, color_tb, 16, HEIGHT - 24, "Start");
-#ifdef LOCAL_MODE
-    ss_print_v(l1buf, WIDTH, HEIGHT, 5, 0, 0, 0,
-               "Scott & Sandy OS x68k, [ESC] to quit");
-#else
-    ss_print_v(l1buf, WIDTH, HEIGHT, 5, 0, 0, 0, "Scott & Sandy OS x68k");
-#endif
+
+    draw_taskbar(l1buf);
+    draw_title(l1buf);
+
+    return l1;
+}
+
+Layer* get_layer_2() {
+    char szMessage[256];
 
     Layer* l2 = ss_layer_get();
     const int l2w = 400;
@@ -97,107 +42,63 @@ void ssosmain() {
     ss_print_v(l2buf, l2w, l2h, 0, 15, 8, 46, szMessage);
     // ss_layer_set_z(l1, 0);
 
-    // draw_background();
-    // draw_taskbar();
-
-    ss_all_layer_draw();
-
-    while (true) {
-        // if it's vsync, wait for display period
-        while (!((*mfp) & 0x10)) {
-            if (ss_handle_keys() == -1)
-#ifdef LOCAL_MODE
-                goto CLEANUP;
-#else
-                ;
-#endif
-        }
-        // wait for vsync
-        while ((*mfp) & 0x10) {
-            if (ss_handle_keys() == -1)
-#ifdef LOCAL_MODE
-                goto CLEANUP;
-#else
-                ;
-#endif
-        }
-
-        if (ss_handle_keys() == -1)
-#ifdef LOCAL_MODE
-            break;
-
-        ;
-#endif
-
-        counter++;
-        if (counter % 30 == 0) {
-            // if (l2->y < 400)
-            //     ss_layer_move(l2, l2->x, l2->y + 10);
-            // else
-            //     ss_layer_move(l2, l2->x, 40);
-            sprintf(szMessage, "A: V-DISP counter: %9d (vsync count)",
-                    ss_timera_counter);
-            ss_print_v(l2buf, l2w, l2h, 0, 15, 8, 30, szMessage);
-            sprintf(szMessage, "D: 1000Hz timer:   %9d (every 1ms)",
-                    ss_timerd_counter);
-            ss_print_v(l2buf, l2w, l2h, 0, 15, 8, 46, szMessage);
-            ss_layer_invalidate(l2);
-        }
-        if (counter > 60) {
-            counter = 0;
-        }
-        // draw_keys();
-        // draw_stats();
-    }
-
-CLEANUP:
-    // uninit
-    _iocs_ms_curof();
-    _iocs_skey_mod(-1, 0, 0);
-    _iocs_b_curon();  // enable cursor
-    _iocs_g_clr_on(); // clear graphics, reset palette to the default,
-                      // access page 0
-    _iocs_crtmod(16); // 768x512 dots, 16 colors, 1 screen
+    return l2;
 }
 
-void draw_background() {
-    ss_fill_rect(color_bg, 0, 0, WIDTH, HEIGHT - 33);
+void update_layer_2(Layer* l2) {
+    char szMessage[256];
+
+    // if (l2->y < 400)
+    //     ss_layer_move(l2, l2->x, l2->y + 10);
+    // else
+    //     ss_layer_move(l2, l2->x, 40);
+
+    sprintf(szMessage, "A: V-DISP counter: %9d (vsync count)",
+            ss_timera_counter);
+    ss_print_v(l2->vram, l2->w, l2->h, 0, 15, 8, 30, szMessage);
+    sprintf(szMessage, "D: 1000Hz timer:   %9d (every 1ms)", ss_timerd_counter);
+    ss_print_v(l2->vram, l2->w, l2->h, 0, 15, 8, 46, szMessage);
+    ss_layer_invalidate(l2);
+}
+
+void draw_title(uint16_t* buf) {
 #ifdef LOCAL_MODE
-    ss_print(5, 0, 0, 0, "Scott & Sandy OS x68k, [ESC] to quit");
+    ss_print_v(buf, WIDTH, HEIGHT, 5, 0, 0, 0,
+               "Scott & Sandy OS x68k, [ESC] to quit");
 #else
-    ss_print(5, 0, 0, 0, "Scott & Sandy OS x68k");
+    ss_print_v(buf, WIDTH, HEIGHT, 5, 0, 0, 0, "Scott & Sandy OS x68k");
 #endif
 }
 
-void draw_taskbar() {
+void draw_taskbar(uint16_t* buf) {
     // white line above the taskbar
-    ss_fill_rect(15, 0, HEIGHT - 33, WIDTH, HEIGHT - 32);
-
+    ss_fill_rect_v(buf, WIDTH, HEIGHT, 15, 0, HEIGHT - 33, WIDTH, HEIGHT - 32);
     // taskbar
-    ss_fill_rect(color_tb, 0, HEIGHT - 32, WIDTH, HEIGHT);
-
+    ss_fill_rect_v(buf, WIDTH, HEIGHT, color_tb, 0, HEIGHT - 32, WIDTH, HEIGHT);
     // bottom-left button
-    // uppper -
-    ss_fill_rect(15, 3, HEIGHT - 30, 100, HEIGHT - 30);
+    // upper -
+    ss_fill_rect_v(buf, WIDTH, HEIGHT, 15, 3, HEIGHT - 30, 100, HEIGHT - 30);
     // left |
-    ss_fill_rect(15, 3, HEIGHT - 29, 3, HEIGHT - 3);
+    ss_fill_rect_v(buf, WIDTH, HEIGHT, 15, 3, HEIGHT - 29, 3, HEIGHT - 3);
     // lower -
-    ss_fill_rect(1, 3, HEIGHT - 3, 100, HEIGHT - 3);
+    ss_fill_rect_v(buf, WIDTH, HEIGHT, 1, 3, HEIGHT - 3, 100, HEIGHT - 3);
     // right |
-    ss_fill_rect(1, 100, HEIGHT - 29, 100, HEIGHT - 4);
-
+    ss_fill_rect_v(buf, WIDTH, HEIGHT, 1, 100, HEIGHT - 29, 100, HEIGHT - 4);
     // bottom-right button
     //  upper -
-    ss_fill_rect(1, WIDTH - 100, HEIGHT - 30, WIDTH - 4, HEIGHT - 30);
+    ss_fill_rect_v(buf, WIDTH, HEIGHT, 1, WIDTH - 100, HEIGHT - 30, WIDTH - 4,
+                   HEIGHT - 30);
     // left |
-    ss_fill_rect(1, WIDTH - 100, HEIGHT - 29, WIDTH - 100, HEIGHT - 3);
+    ss_fill_rect_v(buf, WIDTH, HEIGHT, 1, WIDTH - 100, HEIGHT - 29, WIDTH - 100,
+                   HEIGHT - 3);
     // lower -
-    ss_fill_rect(15, WIDTH - 100, HEIGHT - 3, WIDTH - 4, HEIGHT - 3);
+    ss_fill_rect_v(buf, WIDTH, HEIGHT, 15, WIDTH - 100, HEIGHT - 3, WIDTH - 4,
+                   HEIGHT - 3);
     // right |
-    ss_fill_rect(15, WIDTH - 3, HEIGHT - 29, WIDTH - 3, HEIGHT - 4);
-
+    ss_fill_rect_v(buf, WIDTH, HEIGHT, 15, WIDTH - 3, HEIGHT - 29, WIDTH - 3,
+                   HEIGHT - 4);
     // start
-    ss_print(1, color_tb, 16, HEIGHT - 24, "Start");
+    ss_print_v(buf, WIDTH, HEIGHT, 1, color_tb, 16, HEIGHT - 24, "Start");
 }
 
 void draw_stats() {
