@@ -31,11 +31,11 @@ Layer* get_layer_2() {
     const int lh = 280;
 
     uint16_t* lbuf = (uint16_t*)ss_mem_alloc4k(lw * lh * 2);
-    ss_layer_set(l, lbuf, 10, 30, lw, lh);
+    ss_layer_set(l, lbuf, 10, 80, lw, lh);
     ss_fill_rect_v(lbuf, lw, lh, 2, 0, 0, lw - 1, 24);
     ss_fill_rect_v(lbuf, lw, lh, 15, 0, 25, lw - 1, lh - 1);
     ss_draw_rect_v(lbuf, lw, lh, 0, 0, 0, lw - 1, lh - 1);
-    ss_print_v(lbuf, lw, lh, 15, 2, 8, 4, "Timer");
+    ss_print_v(lbuf, lw, lh, 15, 2, 8, 4, "Every Second: Timer");
 
     // ss_layer_set_z(l, 0);
 
@@ -47,15 +47,15 @@ Layer* get_layer_3() {
     uint16_t bg = 15;
 
     Layer* l = ss_layer_get();
-    const int lw = 399;
+    const int lw = 560;
     const int lh = 100;
 
     uint16_t* lbuf = (uint16_t*)ss_mem_alloc4k(lw * lh * 2);
-    ss_layer_set(l, lbuf, 300, 10, lw, lh);
+    ss_layer_set(l, lbuf, 200, 20, lw, lh);
     ss_fill_rect_v(lbuf, lw, lh, 3, 0, 0, lw - 1, 24);
     ss_fill_rect_v(lbuf, lw, lh, 15, 0, 25, lw - 1, lh - 1);
     ss_draw_rect_v(lbuf, lw, lh, 5, 0, 0, lw - 1, lh - 1);
-    ss_print_v(lbuf, lw, lh, 15, 3, 8, 4, "Mouse Keyboard");
+    ss_print_v(lbuf, lw, lh, 15, 3, 8, 4, "Real Time: Mouse / Keyboard");
 
     return l;
 }
@@ -193,6 +193,27 @@ void update_layer_3(Layer* l) {
         invalidate = true;
     }
     y += 16;
+
+    // keyboard
+    if (ss_kb.len > 0) {
+        ss_print_v(l->vram, l->w, l->h, fg, bg, x, y, "Code:");
+        x += 8 * 5;
+
+        while (ss_kb.len > 0) {
+            int scancode = ss_kb.data[ss_kb.idxr];
+            ss_kb.len--;
+            ss_kb.idxr++;
+            if (ss_kb.idxr > 32)
+                ss_kb.idxr = 0;
+            sprintf(szMessage, " 0x%08x", scancode);
+            ss_print_v(l->vram, l->w, l->h, fg, bg, x, y, szMessage);
+            x += 8 * 11;
+        }
+
+        // clear
+        ss_fill_rect_v(l->vram, l->w, l->h, bg, x, y, l->w - x, y + 16);
+        invalidate = true;
+    }
 
     if (invalidate)
         ss_layer_invalidate(l);

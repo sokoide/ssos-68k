@@ -16,7 +16,7 @@ void ssosmain() {
     int c;
     int scancode = 0;
     char szMessage[256];
-    uint8_t counter = 0;
+    uint32_t prev_counter = 0;
 
     // init
     _iocs_crtmod(16); // 768x512 dots, 16 colors, 1 screen
@@ -69,11 +69,12 @@ void ssosmain() {
         ;
 #endif
 
+        ss_timerd_counter;
         update_layer_3(l3);
 
-        if (counter++ > 10) {
+        if (ss_timerd_counter > prev_counter + 1000) {
+            prev_counter = ss_timerd_counter;
             update_layer_2(l2);
-            counter = 0;
         }
     }
 
