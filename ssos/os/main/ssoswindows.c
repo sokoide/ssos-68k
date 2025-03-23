@@ -31,7 +31,7 @@ Layer* get_layer_2() {
     const int lh = 280;
 
     uint16_t* lbuf = (uint16_t*)ss_mem_alloc4k(lw * lh * 2);
-    ss_layer_set(l, lbuf, 20, 20, lw, lh);
+    ss_layer_set(l, lbuf, 10, 30, lw, lh);
     ss_fill_rect_v(lbuf, lw, lh, 2, 0, 0, lw-1, 24);
     ss_fill_rect_v(lbuf, lw, lh, 15, 0, 25, lw-1, lh-1);
     ss_draw_rect_v(lbuf, lw, lh, 0, 0, 0, lw-1, lh-1);
@@ -51,7 +51,7 @@ Layer* get_layer_3() {
     const int lh = 100;
 
     uint16_t* lbuf = (uint16_t*)ss_mem_alloc4k(lw * lh * 2);
-    ss_layer_set(l, lbuf, 100, 10, lw, lh);
+    ss_layer_set(l, lbuf, 360, 10, lw, lh);
     ss_fill_rect_v(lbuf, lw, lh, 3, 0, 0, lw-1, 24);
     ss_fill_rect_v(lbuf, lw, lh, 15, 0, 25, lw-1, lh-1);
     ss_draw_rect_v(lbuf, lw, lh, 0, 0, 0, lw-1, lh-1);
@@ -153,6 +153,7 @@ void update_layer_3(Layer* l) {
     uint16_t y = 30;
     uint32_t prev_dt = 0;
     uint32_t prev_pos = 0;
+    bool invalidate = false;
 
     // if (l->y < 400)
     //     ss_layer_move(l, l->x, l->y + 10);
@@ -170,6 +171,7 @@ void update_layer_3(Layer* l) {
         sprintf(szMessage, "mouse dx:%3d, dy:%3d, l-click:%3d, r-click:%3d", dx,
                 dy, (dt & 0xFF00) >> 8, dt & 0xFF);
         ss_print_v(l->vram, l->w, l->h, fg, bg, x, y, szMessage);
+        invalidate = true;
     }
     y += 16;
 
@@ -178,10 +180,11 @@ void update_layer_3(Layer* l) {
         sprintf(szMessage, "mouse x:%3d, y:%3d", (pos & 0xFFFF0000) >> 16,
                 pos & 0x0000FFFF);
         ss_print_v(l->vram, l->w, l->h, fg, bg, x, y, szMessage);
+        invalidate = true;
     }
     y += 16;
 
-    ss_layer_invalidate(l);
+    if (invalidate) ss_layer_invalidate(l);
 }
 
 void draw_title(uint16_t* buf) {

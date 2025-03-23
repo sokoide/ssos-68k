@@ -40,6 +40,7 @@ void ssosmain() {
     Layer* l3 = get_layer_3();
 
     ss_all_layer_draw();
+    update_layer_2(l2);
 
     while (true) {
         // if it's vsync, wait for display period
@@ -68,15 +69,10 @@ void ssosmain() {
         ;
 #endif
 
-        // update_layer_3(l3);
-        if (counter % 10 == 0) {
-            update_layer_3(l3);
-        }
-        if (counter % 60 == 0) {
+        update_layer_3(l3);
+
+        if (counter++ > 30) {
             update_layer_2(l2);
-        }
-        counter++;
-        if (counter >= 240) {
             counter = 0;
         }
     }
