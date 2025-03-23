@@ -72,7 +72,7 @@ void ssosmain() {
         ss_timerd_counter;
         update_layer_3(l3);
 
-        if (ss_timerd_counter > prev_counter + 1000) {
+        if (ss_timerd_counter > prev_counter + 1000 || ss_timerd_counter < prev_counter) {
             prev_counter = ss_timerd_counter;
             update_layer_2(l2);
         }
