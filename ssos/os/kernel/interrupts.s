@@ -19,7 +19,8 @@ set_interrupts:
 
 	# MFP
 	# set MFP vector base (0x40 is the default)
-	move.b  #0x40, 0xe88017
+	# disable auto EQI -> need to reset ISRAB manually
+	move.b  #0x41, 0xe88017
 
 	# AER, DDR
 	/* move.b	#0x06, 0xe88003 */
@@ -190,6 +191,10 @@ save_interrupts:
 	move.l	#0xe88025, %a1
 	move.b	(%a1), %d0
 	move.b	%d0, 30(%a0)
+	# MFP vector
+	move.l	#0xe88017, %a1
+	move.b	(%a1), %d0
+	move.b	%d0, 31(%a0)
 
 	# CRTC IRQ
 	move.l	0x138, %d0
@@ -206,6 +211,9 @@ save_interrupts:
 
 restore_interrupts:
 	movem.l %d2-%d7/%a2-%a6, -(%sp)
+
+	# Disable interrupts - level 7
+	move.w	#0x2700, %sr
 
 	# reset IPRAB, ISRAB
 	move.b	#0x00, 0xe8800b
@@ -269,12 +277,20 @@ restore_interrupts:
 	move.b	30(%a0), %d0
 	move.b	%d0, 0xe88025
 
+	# MFP vector
+	move.b	31(%a0), %d0
+	move.b	%d0, 0xe88017
+
 	# CRTC IRQ
 	move.l	34(%a0), %d0
 	move.l	%d0, 0x138
 	# CRTC HSYNC
 	move.l	38(%a0), %d0
 	move.l	%d0, 0x13c
+
+
+	# reset interrupt masks
+	move.w	#0x2700, %sr
 
 	movem.l (%sp)+, %d2-%d7/%a2-%a6
 	rts
@@ -284,6 +300,12 @@ nop_handler:
 
 vdisp_handler:
 	movem.l	%d0/%a0, -(%sp)
+
+	# reset ISRA's Timer A bit
+	move.l	#0xe8800f, %a0
+	move.b	(%a0), %d0
+	and.b	0xdf, %d0
+	move.b	%d0, 0xe8800f
 
 	move.l	ss_timera_counter, %d0
 	add.l 	#1, %d0
@@ -296,6 +318,12 @@ vdisp_handler:
 usart_handler:
 	movem.l	%d0/%a0, -(%sp)
 
+	# reset ISRA's Timer B bit
+	move.l	#0xe8800f, %a0
+	move.b	(%a0), %d0
+	and.b	0xfe, %d0
+	move.b	%d0, 0xe8800f
+
 	move.l	ss_timerb_counter, %d0
 	add.l 	#1, %d0
 	move.l	%d0, ss_timerb_counter
@@ -305,6 +333,12 @@ usart_handler:
 
 timerc_handler:
 	movem.l	%d0/%a0, -(%sp)
+
+	# reset ISRB's Timer C bit
+	move.l	#0xe88011, %a0
+	move.b	(%a0), %d0
+	and.b	0x5f, %d0
+	move.b	%d0, 0xe8800f
 
 	move.l	ss_timerc_counter, %d0
 	add.l 	#1, %d0
@@ -372,6 +406,12 @@ timerc_handler_l4_sub:
 
 timerd_handler:
 	movem.l	%d0/%a0, -(%sp)
+
+	# reset ISRB's Timer D bit
+	move.l	#0xe88011, %a0
+	move.b	(%a0), %d0
+	and.b	0x6f, %d0
+	move.b	%d0, 0xe8800f
 
 	move.l	ss_timerd_counter, %d0
 	add.l 	#1, %d0
