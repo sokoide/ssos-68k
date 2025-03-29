@@ -1,6 +1,7 @@
 TARGET=SSOS.X
 SRCS= \
 	kernel/premain.c \
+	kernel/dma.c \
 	kernel/kernel.c \
 	kernel/memory.c \
 	kernel/vram.c \

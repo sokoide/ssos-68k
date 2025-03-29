@@ -1,4 +1,5 @@
 #include "layer.h"
+#include "dma.h"
 #include "kernel.h"
 #include "memory.h"
 #include "vram.h"
@@ -123,12 +124,27 @@ void ss_layer_draw_rect_layer(Layer* l, uint16_t x0, uint16_t y0, uint16_t x1,
         int16_t vy = l->y + dy;
         if (vy < 0 || vy >= HEIGHT)
             continue;
+        // DMA transfer
+        // draw dx1-dx0 dots
+        dma_clear();
+        // only 1 line (block)
+        int16_t vx = l->x + dx0;
+        // src offscreen vram addr, block count
+        // target vram addr must be an add addr
+        dma_init(((uint8_t*)&vram_start[vy * VRAMWIDTH + vx]) + 1, 1);
+        // dst vram addr
+        xfr_inf[0].addr = &l->vram[dy * l->w + dx0];
+        xfr_inf[0].count = dx1 - dx0;
+        // transfer
+        dma_start();
+        dma_wait_completion();
+        dma_clear();
+#if 0
         // draw per K dots (2*K bytes) for faster drawing
         const int K = 8;
         int16_t blocks = (dx1 - dx0) / K;
         int16_t rest = (dx1 - dx0) % K;
 
-        // TODO: Make it DMA
         for (int16_t b = 0; b < blocks; b++) {
             int16_t vx = l->x + dx0 + b * K;
             int8_t* src = &l->vram[dy * l->w + dx0 + b * K];
@@ -145,13 +161,14 @@ void ss_layer_draw_rect_layer(Layer* l, uint16_t x0, uint16_t y0, uint16_t x1,
             }
         }
         // draw the rest
-        /* int16_t vx = l->x + dx0 + blocks * K; */
-        /* for (int16_t r = 0; r < rest; r++) { */
-        /*     if (ss_layer_mgr->map[vy * WIDTH + vx + r] == l->z) { */
-        /*         vram_start[vy * VRAMWIDTH + vx + r] = */
-        /*             l->vram[dy * l->w + blocks * K + dx0 + r]; */
-        /*     } */
-        /* } */
+        int16_t vx = l->x + dx0 + blocks * K;
+        for (int16_t r = 0; r < rest; r++) {
+            if (ss_layer_mgr->map[vy * WIDTH + vx + r] == l->z) {
+                vram_start[vy * VRAMWIDTH + vx + r] =
+                    l->vram[dy * l->w + blocks * K + dx0 + r];
+            }
+        }
+#endif
 
 #if 0
         // original code (slow)
