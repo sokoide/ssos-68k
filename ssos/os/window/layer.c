@@ -49,7 +49,9 @@ void ss_layer_set(Layer* layer, uint8_t* vram, uint16_t x, uint16_t y,
 
     for (int dy = 0; dy < layer->h / 8; dy++) {
         for (int dx = 0; dx < layer->w / 8; dx++) {
-            ss_layer_mgr->map[(y / 8 + dy) * WIDTH / 8 + x / 8 + dx] = lid;
+            ss_layer_mgr
+                ->map[(layer->y / 8 + dy) * WIDTH / 8 + layer->x / 8 + dx] =
+                lid;
         }
     }
 }
@@ -130,21 +132,30 @@ void ss_layer_draw_rect_layer(Layer* l) {
         if (vy < 0 || vy >= HEIGHT)
             continue;
         // DMA transfer
-        // draw dx1-dx0 dots
-        dma_clear();
-        // only 1 line (block)
-        int16_t vx = l->x + dx0;
-        if (ss_layer_mgr->map[vy / 8 * WIDTH / 8 + vx / 8] == l->z) {
-            // src offscreen vram addr, block count
-            // target vram addr must be an add addr
-            dma_init(((uint8_t*)&vram_start[vy * VRAMWIDTH + vx]) + 1, 1);
-            // dst vram addr
-            xfr_inf[0].addr = &l->vram[dy * l->w + dx0];
-            xfr_inf[0].count = dx1 - dx0;
-            // transfer
-            dma_start();
-            dma_wait_completion();
-            dma_clear();
+        int16_t startdx = -1;
+        for (int16_t dx = dx0; dx < dx1; dx += 8) {
+            if (ss_layer_mgr->map[vy / 8 * WIDTH / 8 + (l->x + dx) / 8] ==
+                l->z) {
+                // set the first addr to transfer -> startdx
+                if (startdx == -1)
+                    startdx = dx;
+            } else if (startdx >= 0) {
+                // transfer between startdx and dx
+                int16_t vx = l->x + startdx;
+                ss_layer_draw_rect_layer_dma(
+                    l, &l->vram[dy * l->w + startdx],
+                    ((uint8_t*)&vram_start[vy * VRAMWIDTH + vx]) + 1,
+                    dx - startdx);
+                startdx = -1;
+            }
+        }
+        // DMA if the last block is not transferred yet
+        if (startdx >= 0) {
+            int16_t vx = l->x + startdx;
+            ss_layer_draw_rect_layer_dma(
+                l, &l->vram[dy * l->w + startdx],
+                ((uint8_t*)&vram_start[vy * VRAMWIDTH + vx]) + 1,
+                dx1 - startdx);
         }
 #if 0
         // draw per K dots (2*K bytes) for faster drawing
@@ -175,9 +186,7 @@ void ss_layer_draw_rect_layer(Layer* l) {
                     l->vram[dy * l->w + blocks * K + dx0 + r];
             }
         }
-#endif
 
-#if 0
         // original code (slow)
         for (uint16_t dx = dx0; dx < dx1; dx++) {
             uint16_t vx = layer->x + dx;
@@ -188,6 +197,23 @@ void ss_layer_draw_rect_layer(Layer* l) {
         }
 #endif
     }
+}
+
+void ss_layer_draw_rect_layer_dma(Layer* l, uint8_t* src, uint8_t* dst,
+                                  uint16_t block_count) {
+    // DMA
+    dma_clear();
+    // only 1 line (block)
+    // dst vram addr must be an add addr
+    dma_init(dst, 1);
+    // src offscreen vram addr
+    xfr_inf[0].addr = src;
+    // src block count
+    xfr_inf[0].count = block_count;
+    // transfer
+    dma_start();
+    dma_wait_completion();
+    dma_clear();
 }
 
 /*
