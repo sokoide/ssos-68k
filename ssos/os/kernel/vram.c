@@ -1,9 +1,9 @@
 #include "vram.h"
+#include "kernel.h"
 #include "printf.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "kernel.h"
 
 #pragma warning disable format
 #include <x68k/iocs.h>
@@ -19,10 +19,10 @@ volatile uint16_t* crtc_execution_port = (uint16_t*)0xe80480;
 uint16_t* vram_start = (uint16_t*)0x00c00000;
 uint16_t* vram_end = (uint16_t*)0x00d00000;
 
-void ss_clear_vram(uint16_t* vram) {
+void ss_clear_vram(uint8_t* vram) {
     // only clears HEIGHT (visible height) x SW (vram width)
-    uint16_t* p = vram;
-    uint16_t* limit = p +  VRAMWIDTH * HEIGHT;
+    uint8_t* p = vram;
+    uint8_t* limit = p + VRAMWIDTH * HEIGHT;
 
     while (p < limit) {
         *p++ = 0;
@@ -51,11 +51,13 @@ void ss_wait_for_clear_vram_completion() {
         ;
 }
 
-void ss_fill_rect(uint16_t color, int x0, int y0, int x1, int y1) {
-    ss_fill_rect_v(vram_start, VRAMWIDTH, VRAMHEIGHT, color, x0, y0, x1, y1);
-}
+/* void ss_fill_rect(uint16_t color, int x0, int y0, int x1, int y1) { */
+/*     ss_fill_rect_v(vram_start, VRAMWIDTH, VRAMHEIGHT, color, x0, y0, x1, y1);
+ */
+/* } */
 
-void ss_fill_rect_v(uint16_t* vram, uint16_t w, uint16_t h, uint16_t color, int x0, int y0, int x1, int y1){
+void ss_fill_rect_v(uint8_t* vram, uint16_t w, uint16_t h, uint16_t color,
+                    int x0, int y0, int x1, int y1) {
     for (int y = y0; y <= y1; y++) {
         for (int x = x0; x <= x1; x++)
             vram[y * w + x] = color;
@@ -63,27 +65,33 @@ void ss_fill_rect_v(uint16_t* vram, uint16_t w, uint16_t h, uint16_t color, int 
     return;
 }
 
-void ss_draw_rect(uint16_t color, int x0, int y0, int x1, int y1) {
-    ss_draw_rect_v(vram_start, VRAMWIDTH, VRAMHEIGHT, color, x0, y0, x1, y1);
-}
+/* void ss_draw_rect(uint16_t color, int x0, int y0, int x1, int y1) { */
+/*     ss_draw_rect_v(vram_start, VRAMWIDTH, VRAMHEIGHT, color, x0, y0, x1, y1);
+ */
+/* } */
 
-void ss_draw_rect_v(uint16_t* vram, uint16_t w, uint16_t h, uint16_t color, int x0, int y0, int x1, int y1){
-    for (int y = y0; y <= y1; y+=y1-y0) {
+void ss_draw_rect_v(uint8_t* vram, uint16_t w, uint16_t h, uint16_t color,
+                    int x0, int y0, int x1, int y1) {
+    for (int y = y0; y <= y1; y += y1 - y0) {
         for (int x = x0; x <= x1; x++)
             vram[y * w + x] = color;
     }
-    for (int x=x0;x<=x1;x+=x1-x0){
-        for (int y=y0;y<=y1;y++)
+    for (int x = x0; x <= x1; x += x1 - x0) {
+        for (int y = y0; y <= y1; y++)
             vram[y * w + x] = color;
     }
     return;
 }
 
-void ss_put_char(uint16_t fg_color, uint16_t bg_color, int x, int y, char c) {
-    ss_put_char_v(vram_start, VRAMWIDTH, VRAMHEIGHT, fg_color, bg_color, x, y, c);
-}
+/* void ss_put_char(uint16_t fg_color, uint16_t bg_color, int x, int y, char c)
+ * { */
+/* ss_put_char_v(vram_start, VRAMWIDTH, VRAMHEIGHT, fg_color, bg_color, x,
+ * y, */
+/*               c); */
+/* } */
 
-void ss_put_char_v(uint16_t* vram, uint16_t w, uint16_t h, uint16_t fg_color, uint16_t bg_color, int x, int y, char c) {
+void ss_put_char_v(uint8_t* vram, uint16_t w, uint16_t h, uint16_t fg_color,
+                   uint16_t bg_color, int x, int y, char c) {
     // 8x8 font
     uint8_t* font_base_8_8 = (uint8_t*)0xf3a000;
     // 8x16 font
@@ -123,11 +131,15 @@ int mystrlen(char* str) {
     return r;
 }
 
-void ss_print(uint16_t fg_color, uint16_t bg_color, int x, int y, char* str) {
-    ss_print_v(vram_start, VRAMWIDTH, VRAMHEIGHT, fg_color, bg_color, x, y, str);
-}
+/* void ss_print(uint16_t fg_color, uint16_t bg_color, int x, int y, char* str)
+ * { */
+/*     ss_print_v(vram_start, VRAMWIDTH, VRAMHEIGHT, fg_color, bg_color, x, y,
+ */
+/*                str); */
+/* } */
 
-void ss_print_v(uint16_t* vram, uint16_t w, uint16_t h, uint16_t fg_color, uint16_t bg_color, int x, int y, char* str){
+void ss_print_v(uint8_t* vram, uint16_t w, uint16_t h, uint16_t fg_color,
+                uint16_t bg_color, int x, int y, char* str) {
     int l = mystrlen(str);
     for (int i = 0; i < l; i++) {
         ss_put_char_v(vram, w, h, fg_color, bg_color, x + i * 8, y, str[i]);

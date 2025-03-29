@@ -36,7 +36,7 @@ Layer* ss_layer_get() {
     return l;
 }
 
-void ss_layer_set(Layer* layer, uint16_t* vram, uint16_t x, uint16_t y,
+void ss_layer_set(Layer* layer, uint8_t* vram, uint16_t x, uint16_t y,
                   uint16_t w, uint16_t h) {
     layer->vram = vram;
     layer->x = x;
@@ -127,43 +127,31 @@ void ss_layer_draw_rect_layer(Layer* l, uint16_t x0, uint16_t y0, uint16_t x1,
         const int K = 8;
         int16_t blocks = (dx1 - dx0) / K;
         int16_t rest = (dx1 - dx0) % K;
+
+        // TODO: Make it DMA
         for (int16_t b = 0; b < blocks; b++) {
             int16_t vx = l->x + dx0 + b * K;
-            int16_t* src = &l->vram[dy * l->w + dx0 + b * K];
+            int8_t* src = &l->vram[dy * l->w + dx0 + b * K];
             int16_t* dst = &vram_start[vy * VRAMWIDTH + vx];
             if (ss_layer_mgr->map[vy * WIDTH + vx] == l->z) {
                 dst[0] = src[0];
-            }
-            if (ss_layer_mgr->map[vy * WIDTH + vx + 1] == l->z) {
                 dst[1] = src[1];
-            }
-            if (ss_layer_mgr->map[vy * WIDTH + vx + 2] == l->z) {
                 dst[2] = src[2];
-            }
-            if (ss_layer_mgr->map[vy * WIDTH + vx + 3] == l->z) {
                 dst[3] = src[3];
-            }
-            if (ss_layer_mgr->map[vy * WIDTH + vx + 4] == l->z) {
                 dst[4] = src[4];
-            }
-            if (ss_layer_mgr->map[vy * WIDTH + vx + 5] == l->z) {
                 dst[5] = src[5];
-            }
-            if (ss_layer_mgr->map[vy * WIDTH + vx + 6] == l->z) {
                 dst[6] = src[6];
-            }
-            if (ss_layer_mgr->map[vy * WIDTH + vx + 7] == l->z) {
                 dst[7] = src[7];
             }
         }
         // draw the rest
-        int16_t vx = l->x + dx0 + blocks * K;
-        for (int16_t r = 0; r < rest; r++) {
-            if (ss_layer_mgr->map[vy * WIDTH + vx + r] == l->z) {
-                vram_start[vy * VRAMWIDTH + vx + r] =
-                    l->vram[dy * l->w + blocks * K + dx0 + r];
-            }
-        }
+        /* int16_t vx = l->x + dx0 + blocks * K; */
+        /* for (int16_t r = 0; r < rest; r++) { */
+        /*     if (ss_layer_mgr->map[vy * WIDTH + vx + r] == l->z) { */
+        /*         vram_start[vy * VRAMWIDTH + vx + r] = */
+        /*             l->vram[dy * l->w + blocks * K + dx0 + r]; */
+        /*     } */
+        /* } */
 
 #if 0
         // original code (slow)
@@ -178,6 +166,7 @@ void ss_layer_draw_rect_layer(Layer* l, uint16_t x0, uint16_t y0, uint16_t x1,
     }
 }
 
+/*
 void ss_layer_move(Layer* layer, uint16_t x, uint16_t y) {
     uint16_t prevx = layer->x;
     uint16_t prevy = layer->y;
@@ -186,6 +175,7 @@ void ss_layer_move(Layer* layer, uint16_t x, uint16_t y) {
     ss_all_layer_draw_rect(prevx, prevy, prevx + layer->w, prevy + layer->h);
     ss_all_layer_draw_rect(x, y, x + layer->w, y + layer->h);
 }
+*/
 
 void ss_layer_invalidate(Layer* layer) {
     ss_layer_draw_rect_layer(layer, layer->x, layer->y, layer->x + layer->w,
