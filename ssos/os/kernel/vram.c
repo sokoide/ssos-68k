@@ -19,31 +19,6 @@ volatile uint16_t* crtc_execution_port = (uint16_t*)0xe80480;
 uint16_t* vram_start = (uint16_t*)0x00c00000;
 uint16_t* vram_end = (uint16_t*)0x00d00000;
 
-void ss_clear_vram(uint8_t* vram) {
-    // only clears HEIGHT (visible height) x SW (vram width)
-    uint8_t* p = vram;
-    uint8_t* limit = p + VRAMWIDTH * HEIGHT;
-
-    while (p < limit) {
-        *p++ = 0;
-        *p++ = 0;
-        *p++ = 0;
-        *p++ = 0;
-        *p++ = 0;
-        *p++ = 0;
-        *p++ = 0;
-        *p++ = 0;
-        *p++ = 0;
-        *p++ = 0;
-        *p++ = 0;
-        *p++ = 0;
-        *p++ = 0;
-        *p++ = 0;
-        *p++ = 0;
-        *p++ = 0;
-    }
-}
-
 void ss_clear_vram_fast() { *crtc_execution_port = (*crtc_execution_port) | 2; }
 
 void ss_wait_for_clear_vram_completion() {
@@ -51,47 +26,30 @@ void ss_wait_for_clear_vram_completion() {
         ;
 }
 
-/* void ss_fill_rect(uint16_t color, int x0, int y0, int x1, int y1) { */
-/*     ss_fill_rect_v(vram_start, VRAMWIDTH, VRAMHEIGHT, color, x0, y0, x1, y1);
- */
-/* } */
-
-void ss_fill_rect_v(uint8_t* vram, uint16_t w, uint16_t h, uint16_t color,
+void ss_fill_rect_v(uint8_t* offscreen, uint16_t w, uint16_t h, uint16_t color,
                     int x0, int y0, int x1, int y1) {
     for (int y = y0; y <= y1; y++) {
         for (int x = x0; x <= x1; x++)
-            vram[y * w + x] = color;
+            offscreen[y * w + x] = color;
     }
     return;
 }
 
-/* void ss_draw_rect(uint16_t color, int x0, int y0, int x1, int y1) { */
-/*     ss_draw_rect_v(vram_start, VRAMWIDTH, VRAMHEIGHT, color, x0, y0, x1, y1);
- */
-/* } */
-
-void ss_draw_rect_v(uint8_t* vram, uint16_t w, uint16_t h, uint16_t color,
+void ss_draw_rect_v(uint8_t* offscreen, uint16_t w, uint16_t h, uint16_t color,
                     int x0, int y0, int x1, int y1) {
     for (int y = y0; y <= y1; y += y1 - y0) {
         for (int x = x0; x <= x1; x++)
-            vram[y * w + x] = color;
+            offscreen[y * w + x] = color;
     }
     for (int x = x0; x <= x1; x += x1 - x0) {
         for (int y = y0; y <= y1; y++)
-            vram[y * w + x] = color;
+            offscreen[y * w + x] = color;
     }
     return;
 }
 
-/* void ss_put_char(uint16_t fg_color, uint16_t bg_color, int x, int y, char c)
- * { */
-/* ss_put_char_v(vram_start, VRAMWIDTH, VRAMHEIGHT, fg_color, bg_color, x,
- * y, */
-/*               c); */
-/* } */
-
-void ss_put_char_v(uint8_t* vram, uint16_t w, uint16_t h, uint16_t fg_color,
-                   uint16_t bg_color, int x, int y, char c) {
+void ss_put_char_v(uint8_t* offscreen, uint16_t w, uint16_t h,
+                   uint16_t fg_color, uint16_t bg_color, int x, int y, char c) {
     // 8x8 font
     uint8_t* font_base_8_8 = (uint8_t*)0xf3a000;
     // 8x16 font
@@ -113,14 +71,14 @@ void ss_put_char_v(uint8_t* vram, uint16_t w, uint16_t h, uint16_t fg_color,
             font_addr++;
         }
 
-        vram[ty * w + x] = (t & 0x80) ? fg_color : bg_color;
-        vram[ty * w + x + 1] = (t & 0x40) ? fg_color : bg_color;
-        vram[ty * w + x + 2] = (t & 0x20) ? fg_color : bg_color;
-        vram[ty * w + x + 3] = (t & 0x10) ? fg_color : bg_color;
-        vram[ty * w + x + 4] = (t & 0x08) ? fg_color : bg_color;
-        vram[ty * w + x + 5] = (t & 0x04) ? fg_color : bg_color;
-        vram[ty * w + x + 6] = (t & 0x02) ? fg_color : bg_color;
-        vram[ty * w + x + 7] = (t & 0x01) ? fg_color : bg_color;
+        offscreen[ty * w + x] = (t & 0x80) ? fg_color : bg_color;
+        offscreen[ty * w + x + 1] = (t & 0x40) ? fg_color : bg_color;
+        offscreen[ty * w + x + 2] = (t & 0x20) ? fg_color : bg_color;
+        offscreen[ty * w + x + 3] = (t & 0x10) ? fg_color : bg_color;
+        offscreen[ty * w + x + 4] = (t & 0x08) ? fg_color : bg_color;
+        offscreen[ty * w + x + 5] = (t & 0x04) ? fg_color : bg_color;
+        offscreen[ty * w + x + 6] = (t & 0x02) ? fg_color : bg_color;
+        offscreen[ty * w + x + 7] = (t & 0x01) ? fg_color : bg_color;
     }
 }
 
@@ -131,18 +89,12 @@ int mystrlen(char* str) {
     return r;
 }
 
-/* void ss_print(uint16_t fg_color, uint16_t bg_color, int x, int y, char* str)
- * { */
-/*     ss_print_v(vram_start, VRAMWIDTH, VRAMHEIGHT, fg_color, bg_color, x, y,
- */
-/*                str); */
-/* } */
-
-void ss_print_v(uint8_t* vram, uint16_t w, uint16_t h, uint16_t fg_color,
+void ss_print_v(uint8_t* offscreen, uint16_t w, uint16_t h, uint16_t fg_color,
                 uint16_t bg_color, int x, int y, char* str) {
     int l = mystrlen(str);
     for (int i = 0; i < l; i++) {
-        ss_put_char_v(vram, w, h, fg_color, bg_color, x + i * 8, y, str[i]);
+        ss_put_char_v(offscreen, w, h, fg_color, bg_color, x + i * 8, y,
+                      str[i]);
     }
 }
 

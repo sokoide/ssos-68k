@@ -46,9 +46,10 @@ void ss_layer_set(Layer* layer, uint8_t* vram, uint16_t x, uint16_t y,
     layer->h = (h & 0xFFF8);
 
     uint8_t lid = layer - ss_layer_mgr->layers;
-    for (int dy = 0; dy < h; dy++) {
-        for (int dx = 0; dx < w; dx++) {
-            /* ss_layer_mgr->map[(y + dy) * WIDTH / 8 + (x + dx) / 8] = lid; */
+
+    for (int dy = 0; dy < layer->h / 8; dy++) {
+        for (int dx = 0; dx < layer->w / 8; dx++) {
+            ss_layer_mgr->map[(y / 8 + dy) * WIDTH / 8 + x / 8 + dx] = lid;
         }
     }
 }
@@ -92,14 +93,18 @@ void ss_all_layer_draw_rect(uint16_t x0, uint16_t y0, uint16_t x1,
                             uint16_t y1) {
     for (int i = 0; i < ss_layer_mgr->topLayerIdx; i++) {
         Layer* layer = ss_layer_mgr->zLayers[i];
-        ss_layer_draw_rect_layer(layer, x0, y0, x1, y1);
+        ss_layer_draw_rect_layer(layer);
     }
 }
 
 // Draw the rectangle area (x0, y0) - (x1, y1)
 // in vram coordinates for the layer id
-void ss_layer_draw_rect_layer(Layer* l, uint16_t x0, uint16_t y0, uint16_t x1,
-                              uint16_t y1) {
+void ss_layer_draw_rect_layer(Layer* l) {
+    uint16_t x0 = l->x;
+    uint16_t y0 = l->y;
+    uint16_t x1 = l->x + l->w;
+    uint16_t y1 = l->y + l->h;
+
     if (0 == (l->attr & LAYER_ATTR_VISIBLE))
         return;
     uint8_t lid = l - ss_layer_mgr->layers;
@@ -129,16 +134,18 @@ void ss_layer_draw_rect_layer(Layer* l, uint16_t x0, uint16_t y0, uint16_t x1,
         dma_clear();
         // only 1 line (block)
         int16_t vx = l->x + dx0;
-        // src offscreen vram addr, block count
-        // target vram addr must be an add addr
-        dma_init(((uint8_t*)&vram_start[vy * VRAMWIDTH + vx]) + 1, 1);
-        // dst vram addr
-        xfr_inf[0].addr = &l->vram[dy * l->w + dx0];
-        xfr_inf[0].count = dx1 - dx0;
-        // transfer
-        dma_start();
-        dma_wait_completion();
-        dma_clear();
+        if (ss_layer_mgr->map[vy / 8 * WIDTH / 8 + vx / 8] == l->z) {
+            // src offscreen vram addr, block count
+            // target vram addr must be an add addr
+            dma_init(((uint8_t*)&vram_start[vy * VRAMWIDTH + vx]) + 1, 1);
+            // dst vram addr
+            xfr_inf[0].addr = &l->vram[dy * l->w + dx0];
+            xfr_inf[0].count = dx1 - dx0;
+            // transfer
+            dma_start();
+            dma_wait_completion();
+            dma_clear();
+        }
 #if 0
         // draw per K dots (2*K bytes) for faster drawing
         const int K = 8;
@@ -194,10 +201,7 @@ void ss_layer_move(Layer* layer, uint16_t x, uint16_t y) {
 }
 */
 
-void ss_layer_invalidate(Layer* layer) {
-    ss_layer_draw_rect_layer(layer, layer->x, layer->y, layer->x + layer->w,
-                             layer->y + layer->h);
-}
+void ss_layer_invalidate(Layer* layer) { ss_layer_draw_rect_layer(layer); }
 
 void ss_layer_update_map(Layer* layer) {
     uint8_t lid = 0;
@@ -206,8 +210,8 @@ void ss_layer_update_map(Layer* layer) {
     }
 
     for (int i = lid; i < ss_layer_mgr->topLayerIdx; i++) {
-        for (int dy = layer->y; dy < layer->y + layer->h; dy++) {
-            for (int dx = layer->x; dx < layer->x + layer->w; dx++) {
+        for (int dy = layer->y; dy < (layer->y + layer->h) / 8; dy++) {
+            for (int dx = layer->x; dx < (layer->x + layer->w) / 8; dx++) {
                 ss_layer_mgr->map[dy * WIDTH / 8 + dx / 8] = i;
             }
         }
