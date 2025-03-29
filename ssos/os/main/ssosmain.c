@@ -35,11 +35,11 @@ void ssosmain() {
     ss_layer_init();
 
     Layer* l1 = get_layer_1();
-    /* Layer* l2 = get_layer_2(); */
-    /* Layer* l3 = get_layer_3(); */
+    Layer* l2 = get_layer_2();
+    Layer* l3 = get_layer_3();
 
     ss_all_layer_draw();
-    /* update_layer_2(l2); */
+    update_layer_2(l2);
 
     while (true) {
         // if it's vsync, wait for display period
@@ -69,12 +69,12 @@ void ssosmain() {
 #endif
 
         ss_timerd_counter;
-        /* update_layer_3(l3); */
+        update_layer_3(l3);
 
         if (ss_timerd_counter > prev_counter + 1000 ||
             ss_timerd_counter < prev_counter) {
             prev_counter = ss_timerd_counter;
-            /* update_layer_2(l2); */
+            update_layer_2(l2);
         }
     }
 

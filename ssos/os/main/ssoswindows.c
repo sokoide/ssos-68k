@@ -27,11 +27,11 @@ Layer* get_layer_2() {
     uint16_t bg = 15;
 
     Layer* l = ss_layer_get();
-    const int lw = 510;
-    const int lh = 280;
+    const int lw = 512;
+    const int lh = 288;
 
     uint8_t* lbuf = (uint8_t*)ss_mem_alloc4k(lw * lh);
-    ss_layer_set(l, lbuf, 10, 80, lw, lh);
+    ss_layer_set(l, lbuf, 16, 80, lw, lh);
     ss_fill_rect_v(lbuf, lw, lh, 2, 0, 0, lw - 1, 24);
     ss_fill_rect_v(lbuf, lw, lh, 15, 0, 25, lw - 1, lh - 1);
     ss_draw_rect_v(lbuf, lw, lh, 0, 0, 0, lw - 1, lh - 1);
@@ -47,11 +47,11 @@ Layer* get_layer_3() {
     uint16_t bg = 15;
 
     Layer* l = ss_layer_get();
-    const int lw = 560;
-    const int lh = 100;
+    const int lw = 544;
+    const int lh = 96;
 
     uint8_t* lbuf = (uint8_t*)ss_mem_alloc4k(lw * lh);
-    ss_layer_set(l, lbuf, 200, 20, lw, lh);
+    ss_layer_set(l, lbuf, 192, 24, lw, lh);
     ss_fill_rect_v(lbuf, lw, lh, 3, 0, 0, lw - 1, 24);
     ss_fill_rect_v(lbuf, lw, lh, 15, 0, 25, lw - 1, lh - 1);
     ss_draw_rect_v(lbuf, lw, lh, 5, 0, 0, lw - 1, lh - 1);

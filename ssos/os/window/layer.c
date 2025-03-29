@@ -13,10 +13,10 @@ void ss_layer_init() {
     for (int i = 0; i < MAX_LAYERS; i++) {
         ss_layer_mgr->layers[i].attr = 0;
     }
-    ss_layer_mgr->map = (uint8_t*)ss_mem_alloc4k(WIDTH * HEIGHT);
+    ss_layer_mgr->map = (uint8_t*)ss_mem_alloc4k(WIDTH / 8 * HEIGHT / 8);
     // reset to 0 every 4 bytes
     uint32_t* p = (uint32_t*)ss_layer_mgr->map;
-    for (int i = 0; i < WIDTH * HEIGHT / 4; i++) {
+    for (int i = 0; i < WIDTH / 8 * HEIGHT / 8 / sizeof(uint32_t); i++) {
         *p++ = 0;
     }
 }
@@ -40,15 +40,15 @@ Layer* ss_layer_get() {
 void ss_layer_set(Layer* layer, uint8_t* vram, uint16_t x, uint16_t y,
                   uint16_t w, uint16_t h) {
     layer->vram = vram;
-    layer->x = x;
-    layer->y = y;
-    layer->w = w;
-    layer->h = h;
+    layer->x = (x & 0xFFF8);
+    layer->y = (y & 0xFFF8);
+    layer->w = (w & 0xFFF8);
+    layer->h = (h & 0xFFF8);
 
     uint8_t lid = layer - ss_layer_mgr->layers;
     for (int dy = 0; dy < h; dy++) {
         for (int dx = 0; dx < w; dx++) {
-            ss_layer_mgr->map[(y + dy) * WIDTH + (x + dx)] = lid;
+            /* ss_layer_mgr->map[(y + dy) * WIDTH / 8 + (x + dx) / 8] = lid; */
         }
     }
 }
@@ -208,7 +208,7 @@ void ss_layer_update_map(Layer* layer) {
     for (int i = lid; i < ss_layer_mgr->topLayerIdx; i++) {
         for (int dy = layer->y; dy < layer->y + layer->h; dy++) {
             for (int dx = layer->x; dx < layer->x + layer->w; dx++) {
-                ss_layer_mgr->map[dy * WIDTH + dx] = i;
+                ss_layer_mgr->map[dy * WIDTH / 8 + dx / 8] = i;
             }
         }
     }
