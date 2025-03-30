@@ -422,12 +422,11 @@ timerd_handler:
 	add.l	#1, %d0
 	move.l	%d0, ss_timerd_counter
 
-	# signal trap #0 every 16 ms
+	# call systimer_handler_c every 16ms
 	and.l	#0xf, %d0
-	bne.s	skip_trap
-	trap	#0
-skip_trap:
-
+	bne.s	skip_systimer_handler_c
+	bsr		systimer_handler_c
+skip_systimer_handler_c:
 	movem.l	(%sp)+, %d0/%a0
 	rte
 
@@ -440,12 +439,13 @@ key_input_handler:
 	rte
 
 trap0_handler:
-    # TODO: disable interrupts
+    # disable interrupts
 	move.w	#0x2700, %sr
 
 	add.l   #1, ss_trap0_counter
 
-    # TODO: execution context -> stack
+    # execution context -> stack
+	movem.l	%d0-%d7/%a0-%a6, -(%sp)
 
     # TODO: check the current task
 
@@ -463,7 +463,7 @@ disp_030:
 
     # TODO: restore the execution context on the stack
 
-    # TODO: enable set_interrupts
+    # enable interrupts
 	move.w	#0x2000, %sr
     rte
 

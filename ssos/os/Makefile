@@ -4,6 +4,7 @@ SRCS= \
 	kernel/dma.c \
 	kernel/kernel.c \
 	kernel/memory.c \
+	kernel/task_manager.c \
 	kernel/vram.c \
 	main/ssosmain.c \
 	main/ssoswindows.c \

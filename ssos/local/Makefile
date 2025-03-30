@@ -3,6 +3,7 @@ SRCS=	main.c \
 		../os/kernel/kernel.c \
 		../os/kernel/dma.c \
 		../os/kernel/memory.c \
+		../os/kernel/task_manager.c \
 		../os/kernel/vram.c \
 		../os/main/ssosmain.c \
 		../os/main/ssoswindows.c \

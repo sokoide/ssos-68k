@@ -2,6 +2,11 @@
 
 #include <stdint.h>
 
+// *** constats ***
+#define MAX_TASKS 16
+#define MAX_TASK_PRI 16
+
+// *** VRAM ***
 extern const int VRAMWIDTH;
 extern const int VRAMHEIGHT;
 extern const int WIDTH;
@@ -57,3 +62,73 @@ struct KeyBuffer {
 };
 
 extern struct KeyBuffer ss_kb;
+
+// defined in task_manager.c
+typedef enum {
+    TS_NONEXIST = 1,
+    TS_READY = 2,
+    TS_WAIT = 4,
+    TS_DORMANT = 8
+} TaskState;
+
+typedef enum {
+    TWFCT_NON = 0,
+    TWFCT_DLY = 1, // waited by sk_dly_tsk
+    TWFCT_SLP = 2, // waited by sk_slp_tsk
+    TWFCT_FLG = 3, // waited by sk_wait_flag
+    TWFCT_SEM = 4, // waited by sk_wait_semaphore
+} TaskWaitFactor;
+
+typedef enum { KS_NONEXIST = 0, KS_EXIST = 1 } KernelState;
+
+typedef void (*FUNCPTR)(); /* function pointer */
+
+typedef struct _task_control_block {
+    void* context;
+
+    // task queue pointers
+    struct _task_control_block* prev;
+    struct _task_control_block* next;
+
+    // task info
+    TaskState state;
+    FUNCPTR task_addr;
+    int8_t task_pri;
+    void* stack_addr;
+    int32_t stack_size;
+    int32_t wakeup_count;
+
+    // wait info
+    TaskWaitFactor wait_factor;
+    uint32_t wait_time;
+    uint32_t* wait_err;
+
+    // event flag wait info
+    uint32_t wait_pattern;
+    uint32_t wait_mode;
+    uint32_t* p_flag_pattern; // flag pattern when wait canceled
+
+    // semaphore wait info
+    int32_t wait_semaphore;
+} TaskControlBlock;
+
+typedef struct {
+    KernelState state;
+    uint32_t pattern;
+} FlagControlBlock;
+
+typedef struct {
+    KernelState state;
+    int32_t value;
+    int32_t max_value;
+} SemaphoreControlBlock;
+
+extern TaskControlBlock tcb_table[];
+extern TaskControlBlock* ready_queue[];
+extern TaskControlBlock* curr_task;
+extern TaskControlBlock*
+    scheduled_task; // scheduled task which will be executed after the curr_task
+extern TaskControlBlock* wait_queue;
+extern uint32_t dispatch_running;
+extern FlagControlBlock fcb_table[];
+extern uint32_t global_counter;
