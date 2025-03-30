@@ -3,7 +3,7 @@
 	.section .text
 	.align	2
 	.global	set_interrupts, restore_interrupts
-	.global ss_timera_counter, ss_timerb_counter, ss_timerc_counter, ss_timerd_counter, ss_key_counter, ss_trap0_counter
+	.global ss_timera_counter, ss_timerb_counter, ss_timerc_counter, ss_timerd_counter, ss_key_counter, ss_context_switch_counter
 	.global ss_save_data_base
 	.type	set_interrupts, @function
 	.type	save_interrupts, @function
@@ -89,10 +89,6 @@ set_interrupts:
 	# CRTC H-SYNC
 	lea     nop_handler, %a0
 	move.l  %a0, 0x13c
-
-	# Trap 0
-	lea		trap0_handler, %a0
-	move.l  %a0, 0x80
 
 	# TACR - event count mode
 	move.b  #0x08, 0xe88019
@@ -207,10 +203,6 @@ save_interrupts:
 	move.l	0x13c, %d0
 	move.l	%d0, 38(%a0)
 
-	# Trap 0
-	move.l	0x80, %d0
-	move.l	%d0, 42(%a0)
-
 	# reset interrupt masks
 	move.w	#0x2700, %sr
 
@@ -295,10 +287,6 @@ restore_interrupts:
 	# CRTC HSYNC
 	move.l	38(%a0), %d0
 	move.l	%d0, 0x13c
-
-	# Trap 0
-	move.l	42(%a0), %d0
-	move.l	%d0, 0x80
 
 	# reset interrupt masks
 	move.w	#0x2700, %sr
@@ -412,21 +400,16 @@ timerc_handler_l4_sub:
 timerd_handler:
 	movem.l	%d0/%a0, -(%sp)
 
+	jsr timer_interrupt_handler
+
 	# reset ISRB's Timer D bit
 	move.l	#0xe88011, %a0
 	move.b	(%a0), %d0
 	and.b	0x6f, %d0
 	move.b	%d0, 0xe8800f
 
-	move.l ss_timerd_counter, %d0
-	add.l	#1, %d0
-	move.l	%d0, ss_timerd_counter
+	add.l	#1, ss_timerd_counter
 
-	# call systimer_handler_c every 16ms
-	and.l	#0xf, %d0
-	bne.s	skip_systimer_handler_c
-	bsr		systimer_handler_c
-skip_systimer_handler_c:
 	movem.l	(%sp)+, %d0/%a0
 	rte
 
@@ -438,14 +421,14 @@ key_input_handler:
 	movem.l	(%sp)+, %d0/%a0
 	rte
 
-trap0_handler:
+context_switch:
     # disable interrupts
 	move.w	#0x2700, %sr
 
-	add.l   #1, ss_trap0_counter
+	add.l   #1, ss_context_switch_counter
 
     # execution context -> stack
-	movem.l	%d0-%d7/%a0-%a6, -(%sp)
+	# movem.l	%d0-%d7/%a0-%a6, -(%sp)
 
     # TODO: check the current task
 
@@ -479,7 +462,7 @@ ss_timerd_counter:
 	dc.l	0
 ss_key_counter:
 	dc.l	0
-ss_trap0_counter:
+ss_context_switch_counter:
 	dc.l	0
 
  	.section .bss

@@ -11,6 +11,12 @@ uint32_t global_counter = 0;
 uint16_t main_task_id;
 void initial_task_func(int16_t stacd, void* exinf);
 
-void systimer_handler_c(void) {
+// for some reason, if the function returns non 0,
+// the caller (timerd_interrupt_handler) will crash
+void timer_interrupt_handler() {
     global_counter++;
+    if (global_counter % 16 == 0) {
+        // switch context
+    }
+    // don't switch context
 }

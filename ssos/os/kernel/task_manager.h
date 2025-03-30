@@ -15,4 +15,4 @@ extern FlagControlBlock fcb_table[];
 extern uint32_t global_counter;
 
 // global functions
-extern void systimer_handler_c(void);
+void timer_interrupt_handler();

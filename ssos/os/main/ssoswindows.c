@@ -81,11 +81,11 @@ void update_layer_2(Layer* l) {
     ss_print_v(l->vram, l->w, l->h, fg, bg, x, y, szMessage);
     y += 16;
 
-    sprintf(szMessage, "global_counter:    %9d (every 16ms)", global_counter);
+    sprintf(szMessage, "global_counter:    %9d (every 1ms)", global_counter);
     ss_print_v(l->vram, l->w, l->h, fg, bg, x, y, szMessage);
     y += 16;
 
-    sprintf(szMessage, "Context Switch:    %9d", ss_trap0_counter);
+    sprintf(szMessage, "Context Switch:    %9d (not implemented yet)", ss_context_switch_counter);
     ss_print_v(l->vram, l->w, l->h, fg, bg, x, y, szMessage);
     y += 16;
 
