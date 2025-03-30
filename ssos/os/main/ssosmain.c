@@ -68,7 +68,6 @@ void ssosmain() {
         ;
 #endif
 
-        ss_timerd_counter;
         update_layer_3(l3);
 
         if (ss_timerd_counter > prev_counter + 1000 ||

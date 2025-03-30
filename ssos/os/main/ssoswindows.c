@@ -81,6 +81,10 @@ void update_layer_2(Layer* l) {
     ss_print_v(l->vram, l->w, l->h, fg, bg, x, y, szMessage);
     y += 16;
 
+    sprintf(szMessage, "Context Switch:    %9d", ss_trap0_counter);
+    ss_print_v(l->vram, l->w, l->h, fg, bg, x, y, szMessage);
+    y += 16;
+
     uint32_t ssp;
     uint32_t pc;
     uint16_t sr;

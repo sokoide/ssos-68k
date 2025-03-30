@@ -3,7 +3,7 @@
 	.section .text
 	.align	2
 	.global	set_interrupts, restore_interrupts
-	.global ss_timera_counter, ss_timerb_counter, ss_timerc_counter, ss_timerd_counter, ss_key_counter
+	.global ss_timera_counter, ss_timerb_counter, ss_timerc_counter, ss_timerd_counter, ss_key_counter, ss_trap0_counter
 	.global ss_save_data_base
 	.type	set_interrupts, @function
 	.type	save_interrupts, @function
@@ -89,6 +89,10 @@ set_interrupts:
 	# CRTC H-SYNC
 	lea     nop_handler, %a0
 	move.l  %a0, 0x13c
+
+	# Trap 0
+	lea		trap0_handler, %a0
+	move.l  %a0, 0x80
 
 	# TACR - event count mode
 	move.b  #0x08, 0xe88019
@@ -203,6 +207,10 @@ save_interrupts:
 	move.l	0x13c, %d0
 	move.l	%d0, 38(%a0)
 
+	# Trap 0
+	move.l	0x80, %d0
+	move.l	%d0, 42(%a0)
+
 	# reset interrupt masks
 	move.w	#0x2700, %sr
 
@@ -288,6 +296,9 @@ restore_interrupts:
 	move.l	38(%a0), %d0
 	move.l	%d0, 0x13c
 
+	# Trap 0
+	move.l	42(%a0), %d0
+	move.l	%d0, 0x80
 
 	# reset interrupt masks
 	move.w	#0x2700, %sr
@@ -307,9 +318,7 @@ vdisp_handler:
 	and.b	0xdf, %d0
 	move.b	%d0, 0xe8800f
 
-	move.l	ss_timera_counter, %d0
-	add.l 	#1, %d0
-	move.l	%d0, ss_timera_counter
+	add.l	#1, ss_timera_counter
 
 	movem.l	(%sp)+, %d0/%a0
 	rte
@@ -324,9 +333,7 @@ usart_handler:
 	and.b	0xfe, %d0
 	move.b	%d0, 0xe8800f
 
-	move.l	ss_timerb_counter, %d0
-	add.l 	#1, %d0
-	move.l	%d0, ss_timerb_counter
+	add.l	#1, ss_timerb_counter
 
 	movem.l	(%sp)+, %d0/%a0
 	rte
@@ -340,9 +347,7 @@ timerc_handler:
 	and.b	0x5f, %d0
 	move.b	%d0, 0xe8800f
 
-	move.l	ss_timerc_counter, %d0
-	add.l 	#1, %d0
-	move.l	%d0, ss_timerc_counter
+	add.l	#1, ss_timerc_counter
 
 	# do the same as IOCS's 0xFF1D46-8A
 	lea.l	0x09b4.w, %a0
@@ -413,9 +418,15 @@ timerd_handler:
 	and.b	0x6f, %d0
 	move.b	%d0, 0xe8800f
 
-	move.l	ss_timerd_counter, %d0
-	add.l 	#1, %d0
+	move.l ss_timerd_counter, %d0
+	add.l	#1, %d0
 	move.l	%d0, ss_timerd_counter
+
+	# signal trap #0 every 16 ms
+	and.l	#0xf, %d0
+	bne.s	skip_trap
+	trap	#0
+skip_trap:
 
 	movem.l	(%sp)+, %d0/%a0
 	rte
@@ -423,12 +434,38 @@ timerd_handler:
 key_input_handler:
 	movem.l	%d0/%a0, -(%sp)
 
-	move.l	ss_key_counter, %d0
-	add.l 	#1, %d0
-	move.l	%d0, ss_key_counter
+	add.l	#1, ss_key_counter
 
 	movem.l	(%sp)+, %d0/%a0
 	rte
+
+trap0_handler:
+    # TODO: disable interrupts
+	move.w	#0x2700, %sr
+
+	add.l   #1, ss_trap0_counter
+
+    # TODO: execution context -> stack
+
+    # TODO: check the current task
+
+    # TODO: execution context pointer -> current tasks's TaskControlBlock
+
+disp_010:
+    # TODO: get the next task
+
+    # TODO: if the next task doesn't exist
+
+disp_020:
+
+    # TODO: change the current task
+disp_030:
+
+    # TODO: restore the execution context on the stack
+
+    # TODO: enable set_interrupts
+	move.w	#0x2000, %sr
+    rte
 
 	.section .data
 	.even
@@ -441,6 +478,8 @@ ss_timerc_counter:
 ss_timerd_counter:
 	dc.l	0
 ss_key_counter:
+	dc.l	0
+ss_trap0_counter:
 	dc.l	0
 
  	.section .bss

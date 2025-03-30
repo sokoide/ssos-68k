@@ -39,6 +39,7 @@ extern const volatile uint32_t ss_timerb_counter;
 extern const volatile uint32_t ss_timerc_counter;
 extern const volatile uint32_t ss_timerd_counter;
 extern const volatile uint32_t ss_key_counter;
+extern const volatile uint32_t ss_trap0_counter;
 extern const volatile uint32_t ss_save_data_base;
 
 // defined in kernel.c
