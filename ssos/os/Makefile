@@ -28,7 +28,7 @@ LIB=-L$(XELF_BASE)/m68k-elf/lib -L$(XELF_BASE)/lib/gcc/m68k-elf/13.3.0
 
 CCFLAGS=$(INCLUDE) -g -O2 -Wa,-adhlns="$@.lst"
 #CCFLAGS=$(INCLUDE) -g -Wa,-adhlns="$@.lst"
-# CCFLAGS=$(INCLUDE) -O2 -fomit-frame-pointer
+# CCFLAGS=$(INCLUDE) -g -O2 -Wa,-adhlns="$@.lst" -fomit-frame-pointer -fno-stack-protector
 LDFLAGS=$(LIB) -lx68kiocs -Tlinker.ld -lnosys -nostdlib -lc -lm -lgcc
 # LDFLAGS=$(LIB) -lx68kiocs -Tlinker.ld -lnosys -nostdlib -lgcc
 

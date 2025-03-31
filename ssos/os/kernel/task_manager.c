@@ -11,12 +11,13 @@ uint32_t global_counter = 0;
 uint16_t main_task_id;
 void initial_task_func(int16_t stacd, void* exinf);
 
-// for some reason, if the function returns non 0,
-// the caller (timerd_interrupt_handler) will crash
-void timer_interrupt_handler() {
+__attribute__((optimize("no-stack-protector", "omit-frame-pointer"))) int
+timer_interrupt_handler() {
     global_counter++;
     if (global_counter % 16 == 0) {
         // switch context
+        return 1;
     }
     // don't switch context
+    return 0;
 }

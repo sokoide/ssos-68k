@@ -400,31 +400,34 @@ timerc_handler_l4_sub:
 timerd_handler:
 	movem.l	%d0/%a0, -(%sp)
 
-	jsr timer_interrupt_handler
+	add.l	#1, ss_timerd_counter
 
+	# save d1
+	movem.l %d1, -(%sp)
+	jsr timer_interrupt_handler
+	tst		%d0
+	beq		skip_context_switch
+	# restore d1
+	movem.l (%sp)+, %d1
+	# TODO: context switch
+	bsr.s	context_switch
+	bra.s	timerd_handler_end
+
+skip_context_switch:
+	# restore d1
+	movem.l (%sp)+, %d1
+
+timerd_handler_end:
 	# reset ISRB's Timer D bit
 	move.l	#0xe88011, %a0
 	move.b	(%a0), %d0
 	and.b	0x6f, %d0
 	move.b	%d0, 0xe8800f
 
-	add.l	#1, ss_timerd_counter
-
-	movem.l	(%sp)+, %d0/%a0
-	rte
-
-key_input_handler:
-	movem.l	%d0/%a0, -(%sp)
-
-	add.l	#1, ss_key_counter
-
 	movem.l	(%sp)+, %d0/%a0
 	rte
 
 context_switch:
-    # disable interrupts
-	move.w	#0x2700, %sr
-
 	add.l   #1, ss_context_switch_counter
 
     # execution context -> stack
@@ -446,9 +449,16 @@ disp_030:
 
     # TODO: restore the execution context on the stack
 
-    # enable interrupts
-	move.w	#0x2000, %sr
-    rte
+    rts
+
+key_input_handler:
+	movem.l	%d0/%a0, -(%sp)
+
+	add.l	#1, ss_key_counter
+
+	movem.l	(%sp)+, %d0/%a0
+	rte
+
 
 	.section .data
 	.even
