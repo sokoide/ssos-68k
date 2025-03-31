@@ -5,6 +5,7 @@
 void* ss_ssos_memory_base;
 uint32_t ss_ssos_memory_size;
 SsMemMgr ss_mem_mgr;
+uint8_t* ss_task_stack_base;
 
 void ss_init_memory_info() {
     ss_get_ssos_memory(&ss_ssos_memory_base, &ss_ssos_memory_size);

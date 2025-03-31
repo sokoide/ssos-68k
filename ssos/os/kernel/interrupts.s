@@ -3,11 +3,20 @@
 	.section .text
 	.align	2
 	.global	set_interrupts, restore_interrupts
+	.global	disable_interrupts, enable_interrupts
 	.global ss_timera_counter, ss_timerb_counter, ss_timerc_counter, ss_timerd_counter, ss_key_counter, ss_context_switch_counter
 	.global ss_save_data_base
 	.type	set_interrupts, @function
 	.type	save_interrupts, @function
 	.type	restore_interrupts, @function
+
+disable_interrupts:
+	move.w  #0x2700, %sr
+	rts
+
+enable_interrupts:
+	move.w  #0x2000, %sr
+	rts
 
 set_interrupts:
 	movem.l %d2-%d7/%a2-%a6, -(%sp)
@@ -404,14 +413,13 @@ timerd_handler:
 
 	# save d1
 	movem.l %d1, -(%sp)
+
 	jsr timer_interrupt_handler
 	tst		%d0
 	beq		skip_context_switch
-	# restore d1
-	movem.l (%sp)+, %d1
-	# TODO: context switch
+
+	# context switch
 	bsr.s	context_switch
-	bra.s	timerd_handler_end
 
 skip_context_switch:
 	# restore d1
@@ -428,28 +436,21 @@ timerd_handler_end:
 	rte
 
 context_switch:
-	add.l   #1, ss_context_switch_counter
-
-    # execution context -> stack
-	# movem.l	%d0-%d7/%a0-%a6, -(%sp)
-
-    # TODO: check the current task
-
-    # TODO: execution context pointer -> current tasks's TaskControlBlock
-
-disp_010:
-    # TODO: get the next task
-
-    # TODO: if the next task doesn't exist
-
-disp_020:
-
-    # TODO: change the current task
-disp_030:
-
-    # TODO: restore the execution context on the stack
+    /* move.l  current_task, %a0 */
+    /* move.l  %sp, (%a0)          // SP を保存 */
+    /* movem.l %d1-%d7/%a1-%a6, 4(%a0)  // D1-D7, A1-A6 を保存 */
+    /* move.w  %sr, 36(%a0)        // SR を保存 */
+    /* move.l  (%sp), 40(%a0)      // PC を保存 (割り込みスタックから取得) */
+    /*  */
+    /* jsr scheduler               // 次のタスクを決定 */
+    /* move.l  current_task, %a0   // 新しいタスクのポインタを取得 */
+    /*  */
+    /* move.l  (%a0), %sp          // SP を復元 */
+    /* movem.l 4(%a0), %d1-%d7/%a1-%a6  // D1-D7, A1-A6 を復元 */
+    /* move.w  36(%a0), %sr        // SR を復元 */
 
     rts
+
 
 key_input_handler:
 	movem.l	%d0/%a0, -(%sp)

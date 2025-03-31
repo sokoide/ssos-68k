@@ -1,4 +1,5 @@
 #pragma once
+#include "task_manager.h"
 #include <stdint.h>
 
 /* common)
@@ -19,15 +20,6 @@
  * 11MiB / 4Kib = 2816 chunks
  */
 
-extern void* ss_ssos_memory_base;
-extern uint32_t ss_ssos_memory_size;
-
-void ss_init_memory_info();
-void ss_get_ssos_memory(void** base, uint32_t* sz);
-void ss_get_text(void** base, uint32_t* sz);
-void ss_get_data(void** base, uint32_t* sz);
-void ss_get_bss(void** base, uint32_t* sz);
-
 #define MEM_FREE_BLOCKS 1024
 
 typedef struct {
@@ -40,6 +32,17 @@ typedef struct {
     SsMemFreeBlock free_blocks[MEM_FREE_BLOCKS];
 } SsMemMgr;
 
+extern void* ss_ssos_memory_base;
+extern uint32_t ss_ssos_memory_size;
+extern SsMemMgr ss_mem_mgr;
+extern uint8_t* ss_task_stack_base;
+
+void ss_init_memory_info();
+void ss_get_ssos_memory(void** base, uint32_t* sz);
+void ss_get_text(void** base, uint32_t* sz);
+void ss_get_data(void** base, uint32_t* sz);
+void ss_get_bss(void** base, uint32_t* sz);
+
 void ss_mem_init();
 int ss_mem_free(uint32_t addr, uint32_t sz);
 int ss_mem_free4k(uint32_t addr, uint32_t sz);
@@ -48,5 +51,3 @@ uint32_t ss_mem_alloc4k(uint32_t sz);
 uint32_t ss_mem_total_bytes();
 uint32_t ss_mem_free_bytes();
 
-// temp
-extern SsMemMgr ss_mem_mgr;

@@ -4,6 +4,7 @@
 #include "memory.h"
 #include "printf.h"
 #include "ssoswindows.h"
+#include "task_manager.h"
 #include "vram.h"
 #include <stdbool.h>
 #include <stdint.h>
@@ -17,7 +18,7 @@ void ssosmain() {
     char szMessage[256];
     uint32_t prev_counter = 0;
 
-    // init
+    // init OS
     _iocs_crtmod(16); // 768x512 dots, 16 colors, 1 screen
     _iocs_g_clr_on(); // clear gvram, reset palette, access page 0
     _iocs_b_curoff(); // stop cursor
@@ -32,8 +33,27 @@ void ssosmain() {
     ss_init_memory_info();
     ss_mem_init();
 
+    ss_task_stack_base = (uint8_t*)ss_mem_alloc4k(4096 * MAX_TASKS);
+
+    // initialize tcb_table
+    for (uint16_t i = 0; i < MAX_TASKS; i++) {
+        tcb_table[i].state = TS_NONEXIST;
+    }
+
+    main_task.stack = (uint8_t*)(ss_save_data_base * TASK_STACK_SIZE - 1);
+    main_task_id = ss_create_task(&main_task);
+
+#if 0
+    ss_start_task(main_task_id, 0);
+
+    while (1)
+        ; // never reaches here
+#endif
+
+#if 1
     ss_layer_init();
 
+    // make layers
     Layer* l1 = get_layer_1();
     Layer* l2 = get_layer_2();
     Layer* l3 = get_layer_3();
@@ -85,4 +105,5 @@ CLEANUP:
     _iocs_g_clr_on(); // clear graphics, reset palette to the default,
                       // access page 0
     _iocs_crtmod(16); // 768x512 dots, 16 colors, 1 screen
+#endif
 }

@@ -47,6 +47,9 @@ extern const volatile uint32_t ss_key_counter;
 extern const volatile uint32_t ss_context_switch_counter;
 extern const volatile uint32_t ss_save_data_base;
 
+extern void disable_interrupts(void);
+extern void enable_interrupts(void);
+
 // defined in kernel.c
 extern volatile uint8_t* mfp;
 
@@ -81,7 +84,7 @@ typedef enum {
 
 typedef enum { KS_NONEXIST = 0, KS_EXIST = 1 } KernelState;
 
-typedef void (*FUNCPTR)(); /* function pointer */
+typedef void (*FUNCPTR)(int16_t, void*); /* function pointer */
 
 typedef struct _task_control_block {
     void* context;
@@ -94,7 +97,7 @@ typedef struct _task_control_block {
     TaskState state;
     FUNCPTR task_addr;
     int8_t task_pri;
-    void* stack_addr;
+    uint8_t* stack_addr;
     int32_t stack_size;
     int32_t wakeup_count;
 
