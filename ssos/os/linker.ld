@@ -6,7 +6,7 @@ MEMORY
 {
 	/* 128K = 128 sectors */
 	/* modify the following line in boot/main.s if you load more */
-	/* move.l	#1024*(X), %d3 */
+	/* move.l	#1024*(X), d3 */
 	ROM (rx):		ORIGIN = 0x00010000, LENGTH = 128K
 	RAM (rwx):		ORIGIN = 0x00030000, LENGTH = 64K
 	/* 0x010000-0x150000: 1280KiB for SSOS .text+.data+.bss */

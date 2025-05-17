@@ -7,17 +7,16 @@
 
 entry:
 	# ssp
-	move.l	#0x010000, %a0
-	move.l	%a0, %sp
-	clr.l	-(%sp)
+	move.l	#0x010000, a0
+	move.l	a0, sp
+	clr.l	-(sp)
 
 	# usp
-	/* move.l	#0x280000, %a0 */
-	/* move.l	%a0, %usp */
+	/* move.l	#0x280000, a0 */
+	/* move.l	a0, %usp */
 
 	bsr set_interrupts
 
 	jmp		premain
 
 	.end entry
-

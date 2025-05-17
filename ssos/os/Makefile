@@ -31,6 +31,7 @@ CCFLAGS=$(INCLUDE) -g -O2 -Wa,-adhlns="$@.lst"
 # CCFLAGS=$(INCLUDE) -g -O2 -Wa,-adhlns="$@.lst" -fomit-frame-pointer -fno-stack-protector
 LDFLAGS=$(LIB) -lx68kiocs -Tlinker.ld -lnosys -nostdlib -lc -lm -lgcc
 # LDFLAGS=$(LIB) -lx68kiocs -Tlinker.ld -lnosys -nostdlib -lgcc
+ASFLAGS=-m68000 --register-prefix-optional --traditional-format -I../include -I./kernel
 
 .PHONY:
 	all clean dump readelf compiledb
@@ -45,7 +46,7 @@ $(TARGET): $(OBJS) linker.ld
 	elf2x68k.py -s -o $(TARGET) $(TARGET).elf
 
 %.o: %.s
-	$(AS) --strip-local-absolute $^ -o $@ -m68000 -I../include -I./kernel
+	$(AS) --strip-local-absolute $^ -o $@ $(ASFLAGS)
 
 %.o: %.c
 	$(CC) -c $< -o $@ $(CCFLAGS)

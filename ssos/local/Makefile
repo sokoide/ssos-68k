@@ -28,6 +28,7 @@ LIB=-L$(XELF_BASE)/m68k-elf/lib
 CCFLAGS=$(INCLUDE) -O2 -g -DLOCAL_MODE
 # LDFLAGS=$(LIB) -lx68kiocs -nostdlib -lc -lm -lgcc -Tlinker.ld
 LDFLAGS=$(LIB) -lx68kiocs -nostdlib -lc -lm -lgcc
+ASFLAGS=-m68000 --register-prefix-optional --traditional-format -I../include -I../os/kernel
 
 .PHONY:
 	clean install dump compiledb
@@ -39,7 +40,7 @@ $(TARGET): $(OBJS)
 	$(CC) $^ -o $(TARGET) -Xlinker "$(LDFLAGS)"
 
 %.o: %.s
-	$(AS) --strip-local-absolute $^ -o $@ -m68000 -I../include -I../os/kernel
+	$(AS) --strip-local-absolute $^ -o $@ $(ASFLAGS)
 
 %.o: %.c
 	$(CC) -Wa,-adhlns="$@.lst" -c $< -o $@ $(CCFLAGS)
