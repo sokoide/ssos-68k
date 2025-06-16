@@ -1,10 +1,21 @@
 #pragma once
 
 #include <stdint.h>
+#include <stdbool.h>
 
-// *** constats ***
+// *** constants ***
 #define MAX_TASKS 16
 #define MAX_TASK_PRI 16
+
+// Hardware constants
+#define MFP_ADDRESS 0xe88001
+#define VSYNC_BIT 0x10
+
+// Key constants  
+#define ESC_SCANCODE 0x011b
+
+// Timer constants
+#define CONTEXT_SWITCH_INTERVAL 16
 
 // *** VRAM ***
 extern const int VRAMWIDTH;
@@ -53,12 +64,17 @@ extern void enable_interrupts(void);
 // defined in kernel.c
 extern volatile uint8_t* mfp;
 
+#define KEY_BUFFER_SIZE 32
+
 void ss_wait_for_vsync();
 
 int ss_handle_keys();
+void ss_kb_init();
+int ss_kb_read();
+bool ss_kb_is_empty();
 
 struct KeyBuffer {
-    int data[32];
+    int data[KEY_BUFFER_SIZE];
     int idxr;
     int idxw;
     int len;

@@ -1,6 +1,7 @@
 #include "memory.h"
 #include "kernel.h"
 #include <stdint.h>
+#include <stddef.h>
 
 void* ss_ssos_memory_base;
 uint32_t ss_ssos_memory_size;
@@ -12,6 +13,9 @@ void ss_init_memory_info() {
 }
 
 void ss_get_ssos_memory(void** base, uint32_t* sz) {
+    if (base == NULL || sz == NULL)
+        return;
+        
 #ifdef LOCAL_MODE
     *base = local_ssos_memory_base;
     *sz = local_ssos_memory_size;
@@ -22,6 +26,9 @@ void ss_get_ssos_memory(void** base, uint32_t* sz) {
 }
 
 void ss_get_text(void** base, uint32_t* sz) {
+    if (base == NULL || sz == NULL)
+        return;
+        
 #ifdef LOCAL_MODE
     *base = (void*)0;
     *sz = local_text_size;
@@ -32,6 +39,9 @@ void ss_get_text(void** base, uint32_t* sz) {
 }
 
 void ss_get_data(void** base, uint32_t* sz) {
+    if (base == NULL || sz == NULL)
+        return;
+        
 #ifdef LOCAL_MODE
     *base = (void*)0;
     *sz = local_data_size;
@@ -42,6 +52,9 @@ void ss_get_data(void** base, uint32_t* sz) {
 }
 
 void ss_get_bss(void** base, uint32_t* sz) {
+    if (base == NULL || sz == NULL)
+        return;
+        
 #ifdef LOCAL_MODE
     *base = (void*)0;
     *sz = local_bss_size;
@@ -86,7 +99,7 @@ int ss_mem_free(uint32_t addr, uint32_t sz) {
     }
     if (i < ss_mem_mgr.num_free_blocks) {
         // check the next block
-        if (ss_mem_mgr.free_blocks[i].sz == addr + sz) {
+        if (ss_mem_mgr.free_blocks[i].addr == addr + sz) {
             // can combine
             ss_mem_mgr.free_blocks[i].addr = addr;
             ss_mem_mgr.free_blocks[i].sz += sz;
@@ -109,13 +122,19 @@ int ss_mem_free(uint32_t addr, uint32_t sz) {
 }
 
 int ss_mem_free4k(uint32_t addr, uint32_t sz) {
-    sz = (sz + 0xfff) & 0xfffff000;
+    if (sz == 0)
+        return -1;
+    sz = (sz + MEM_ALIGN_4K - 1) & MEM_ALIGN_4K_MASK;
     return ss_mem_free(addr, sz);
 }
 
 uint32_t ss_mem_alloc(uint32_t sz) {
     int i;
     uint32_t addr;
+    
+    if (sz == 0)
+        return 0;
+        
     for (i = 0; i < ss_mem_mgr.num_free_blocks; i++) {
         if (ss_mem_mgr.free_blocks[i].sz >= sz) {
             addr = ss_mem_mgr.free_blocks[i].addr;
@@ -136,7 +155,9 @@ uint32_t ss_mem_alloc(uint32_t sz) {
 }
 
 uint32_t ss_mem_alloc4k(uint32_t sz) {
-    sz = (sz + 0xfff) & 0xfffff000;
+    if (sz == 0)
+        return 0;
+    sz = (sz + MEM_ALIGN_4K - 1) & MEM_ALIGN_4K_MASK;
     return ss_mem_alloc(sz);
 }
 

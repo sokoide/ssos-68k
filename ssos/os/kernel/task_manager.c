@@ -31,7 +31,7 @@ void initial_task_func(int16_t stacd /* not used */,
 __attribute__((optimize("no-stack-protector", "omit-frame-pointer"))) int
 timer_interrupt_handler() {
     global_counter++;
-    if (global_counter % 16 == 0) {
+    if (global_counter % CONTEXT_SWITCH_INTERVAL == 0) {
         // switch context
         return 1;
     }
@@ -43,11 +43,15 @@ uint16_t ss_create_task(const TaskInfo* ti) {
     uint16_t id;
     uint16_t i;
 
+    if (ti == NULL)
+        return E_PAR;
+    if (ti->task == NULL)
+        return E_PAR;
     if (ti->task_attr & ~(TA_RNG3 | TA_HLNG | TA_USERBUF))
         return E_RSATR;
     if (ti->task_pri <= 0 || ti->task_pri > MAX_TASK_PRI)
         return E_PAR;
-    if ((ti->task_attr & TA_USERBUF) && (ti->stack_size == 0))
+    if ((ti->task_attr & TA_USERBUF) && (ti->stack_size == 0 || ti->stack == NULL))
         return E_PAR;
 
     disable_interrupts();
@@ -92,17 +96,16 @@ uint16_t ss_start_task(uint16_t id, int16_t stacd /* not used */) {
         return E_ID;
     disable_interrupts();
 
-    /* tcb = &tcb_table[id - 1]; */
-    /* if (tcb->state == TS_DORMANT) { */
-    /*     tcb->state = TS_READY; */
-    /*     tcb->context = */
-    /*         make_context(tcb->stack_addr, tcb->stack_size, tcb->task_addr);
-     */
-    /*     task_queue_add_entry(&ready_queue[tcb->task_pri], tcb); */
-    /*     scheduler(); */
-    /* } else { */
-    /*     err = E_OBJ; */
-    /* } */
+    tcb = &tcb_table[id - 1];
+    if (tcb->state == TS_DORMANT) {
+        tcb->state = TS_READY;
+        // TODO: Implement make_context and scheduler functions
+        // tcb->context = make_context(tcb->stack_addr, tcb->stack_size, tcb->task_addr);
+        // task_queue_add_entry(&ready_queue[tcb->task_pri], tcb);
+        // scheduler();
+    } else {
+        err = E_OBJ;
+    }
 
     enable_interrupts();
     return err;

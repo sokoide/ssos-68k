@@ -21,6 +21,8 @@
  */
 
 #define MEM_FREE_BLOCKS 1024
+#define MEM_ALIGN_4K 0x1000
+#define MEM_ALIGN_4K_MASK 0xfffff000
 
 typedef struct {
     uint32_t addr;
