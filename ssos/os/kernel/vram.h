@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdint.h>
+#include <stddef.h>
 
 // Macro taken from https://sourceforge.net/projects/x68000-doom/
 // Merge 3x 8bit values to 15bit + intensity in GRB format
@@ -40,6 +41,23 @@ void ss_print_v(uint8_t* offscreen, uint16_t sw, uint16_t sh, uint16_t fg_color,
                 uint16_t bg_color, int x, int y, char* str);
 
 void ss_init_palette();
+
+// Memory alignment helpers for 68000 optimization
+static inline int ss_is_aligned_32(void* ptr) {
+    return ((uintptr_t)ptr & 3) == 0;
+}
+
+static inline int ss_is_aligned_16(void* ptr) {
+    return ((uintptr_t)ptr & 1) == 0;
+}
+
+// Fast memory copy functions optimized for 68000
+void ss_memcpy_32(uint32_t* dst, const uint32_t* src, size_t count);
+void ss_memset_32(uint32_t* dst, uint32_t value, size_t count);
+
+// Optimized rectangle fill using word-alignment
+void ss_fill_rect_v_fast(uint8_t* offscreen, uint16_t w, uint16_t h, 
+                         uint16_t color, int x0, int y0, int x1, int y1);
 
 // globals
 extern CRTC_REG scroll_data;

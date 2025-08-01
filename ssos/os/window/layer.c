@@ -47,11 +47,17 @@ void ss_layer_set(Layer* layer, uint8_t* vram, uint16_t x, uint16_t y,
 
     uint8_t lid = layer - ss_layer_mgr->layers;
 
-    for (int dy = 0; dy < layer->h / 8; dy++) {
-        for (int dx = 0; dx < layer->w / 8; dx++) {
-            ss_layer_mgr
-                ->map[(layer->y / 8 + dy) * WIDTH / 8 + layer->x / 8 + dx] =
-                lid;
+    // Use bit shifts for faster division by 8
+    uint16_t map_width = WIDTH >> 3;  // WIDTH / 8
+    uint16_t layer_y_div8 = layer->y >> 3;
+    uint16_t layer_x_div8 = layer->x >> 3;
+    uint16_t layer_h_div8 = layer->h >> 3;
+    uint16_t layer_w_div8 = layer->w >> 3;
+    
+    for (int dy = 0; dy < layer_h_div8; dy++) {
+        uint8_t* map_row = &ss_layer_mgr->map[(layer_y_div8 + dy) * map_width + layer_x_div8];
+        for (int dx = 0; dx < layer_w_div8; dx++) {
+            map_row[dx] = lid;
         }
     }
 }
@@ -131,11 +137,14 @@ void ss_layer_draw_rect_layer(Layer* l) {
         int16_t vy = l->y + dy;
         if (vy < 0 || vy >= HEIGHT)
             continue;
-        // DMA transfer
+        // Optimized DMA transfer using bit shifts
+        uint16_t map_width = WIDTH >> 3;  // WIDTH / 8
+        uint16_t vy_div8 = vy >> 3;
+        uint16_t l_x_div8 = l->x >> 3;
+        
         int16_t startdx = -1;
         for (int16_t dx = dx0; dx < dx1; dx += 8) {
-            if (ss_layer_mgr->map[vy / 8 * WIDTH / 8 + (l->x + dx) / 8] ==
-                l->z) {
+            if (ss_layer_mgr->map[vy_div8 * map_width + ((l->x + dx) >> 3)] == l->z) {
                 // set the first addr to transfer -> startdx
                 if (startdx == -1)
                     startdx = dx;
@@ -157,51 +166,40 @@ void ss_layer_draw_rect_layer(Layer* l) {
                 ((uint8_t*)&vram_start[vy * VRAMWIDTH + vx]) + 1,
                 dx1 - startdx);
         }
-#if 0
-        // draw per K dots (2*K bytes) for faster drawing
-        const int K = 8;
-        int16_t blocks = (dx1 - dx0) / K;
-        int16_t rest = (dx1 - dx0) % K;
-
-        for (int16_t b = 0; b < blocks; b++) {
-            int16_t vx = l->x + dx0 + b * K;
-            int8_t* src = &l->vram[dy * l->w + dx0 + b * K];
-            int16_t* dst = &vram_start[vy * VRAMWIDTH + vx];
-            if (ss_layer_mgr->map[vy * WIDTH + vx] == l->z) {
-                dst[0] = src[0];
-                dst[1] = src[1];
-                dst[2] = src[2];
-                dst[3] = src[3];
-                dst[4] = src[4];
-                dst[5] = src[5];
-                dst[6] = src[6];
-                dst[7] = src[7];
-            }
-        }
-        // draw the rest
-        int16_t vx = l->x + dx0 + blocks * K;
-        for (int16_t r = 0; r < rest; r++) {
-            if (ss_layer_mgr->map[vy * WIDTH + vx + r] == l->z) {
-                vram_start[vy * VRAMWIDTH + vx + r] =
-                    l->vram[dy * l->w + blocks * K + dx0 + r];
-            }
-        }
-
-        // original code (slow)
-        for (uint16_t dx = dx0; dx < dx1; dx++) {
-            uint16_t vx = layer->x + dx;
-            if (vx < 0 || vx >= WIDTH)
-                continue;
-            vram_start[vy * VRAMWIDTH + vx] =
-                layer->vram[dy * layer->w + dx];
-        }
-#endif
     }
 }
 
 void ss_layer_draw_rect_layer_dma(Layer* l, uint8_t* src, uint8_t* dst,
                                   uint16_t block_count) {
-    // DMA
+    // Ensure alignment for optimal DMA performance
+    if (block_count == 0) return;
+    
+    // For small transfers, use direct memory copy instead of DMA overhead
+    if (block_count <= 8) {
+        // Use 32-bit transfers when possible for better performance
+        if (block_count >= 4 && ((uintptr_t)src & 3) == 0 && ((uintptr_t)dst & 3) == 0) {
+            uint32_t* src32 = (uint32_t*)src;
+            uint32_t* dst32 = (uint32_t*)dst;
+            int blocks = block_count >> 2;
+            for (int i = 0; i < blocks; i++) {
+                *dst32++ = *src32++;
+            }
+            // Handle remaining bytes
+            uint8_t* src8 = (uint8_t*)src32;
+            uint8_t* dst8 = (uint8_t*)dst32;
+            for (int i = 0; i < (block_count & 3); i++) {
+                *dst8++ = *src8++;
+            }
+        } else {
+            // Fallback to byte copy
+            for (int i = 0; i < block_count; i++) {
+                dst[i] = src[i];
+            }
+        }
+        return;
+    }
+    
+    // Use DMA for larger transfers
     dma_clear();
     // only 1 line (block)
     // dst vram addr must be an add addr
@@ -235,10 +233,15 @@ void ss_layer_update_map(Layer* layer) {
         lid = layer - ss_layer_mgr->layers;
     }
 
+    uint16_t map_width = WIDTH >> 3;  // WIDTH / 8
+    uint16_t layer_y_end = (layer->y + layer->h) >> 3;
+    uint16_t layer_x_end = (layer->x + layer->w) >> 3;
+    
     for (int i = lid; i < ss_layer_mgr->topLayerIdx; i++) {
-        for (int dy = layer->y; dy < (layer->y + layer->h) / 8; dy++) {
-            for (int dx = layer->x; dx < (layer->x + layer->w) / 8; dx++) {
-                ss_layer_mgr->map[dy * WIDTH / 8 + dx / 8] = i;
+        for (int dy = layer->y >> 3; dy < layer_y_end; dy++) {
+            uint8_t* map_row = &ss_layer_mgr->map[dy * map_width];
+            for (int dx = layer->x >> 3; dx < layer_x_end; dx++) {
+                map_row[dx] = i;
             }
         }
     }
