@@ -15,6 +15,19 @@ SSOS is a simple operating system for the X68000 computer (Motorola 68000 proces
   export PATH=$XELF_BASE/bin:$PATH
   ```
 
+### macOS Setup Notes
+On macOS 15 Sequoia, install dependencies and modify elf2x68k before building:
+```bash
+brew install texinfo gmp mpfr libmpc
+```
+Modify `scripts/binutils.sh` in elf2x68k to include Homebrew library paths:
+```bash
+--with-gmp=/opt/homebrew/Cellar/gmp/6.3.0 \
+--with-mpfr=/opt/homebrew/Cellar/mpfr/4.2.1 \
+--with-mpc=/opt/homebrew/Cellar/libmpc/1.3.1
+```
+See https://github.com/sokoide/x68k-cross-compile for detailed setup instructions.
+
 ## Build Commands
 
 **Important:** Before building, source the elf2x68k environment:
@@ -60,9 +73,11 @@ The OS consists of three main components:
 
 ### Key Files
 - `ssos/os/kernel/entry.s`: OS entry point and low-level initialization
-- `ssos/os/kernel/kernel.c`: Core kernel functionality and event loop
-- `ssos/os/main/ssosmain.c`: Main application initialization and GUI setup
+- `ssos/os/kernel/kernel.c`: Core kernel functionality, V-sync handling, and key input management
+- `ssos/os/kernel/task_manager.c`: Preemptive multitasking with timer-based context switching
+- `ssos/os/main/ssosmain.c`: Main application initialization, graphics mode setup, and memory allocation
 - `ssos/os/window/layer.c`: Window layering and graphics system
+- `ssos/local/main.c`: Local mode entry point that bypasses boot loader
 
 ### Build System
 The project uses recursive Makefiles. The top-level build process:
@@ -72,8 +87,26 @@ The project uses recursive Makefiles. The top-level build process:
 4. Uses `makedisk` to create bootable `.xdf` disk image
 
 ### Local vs OS Mode
-- **OS Mode**: Full bootable system with custom boot loader
-- **Local Mode**: Compiles as Human68K executable with `LOCAL_MODE` define, skips low-level hardware initialization
+- **OS Mode**: Full bootable system with custom boot loader. Requires `make clean` when switching from local mode.
+- **Local Mode**: Compiles as Human68K executable (`.x` file) with `LOCAL_MODE` define. Shares most kernel code but skips low-level hardware initialization. Faster for development iteration.
+
+## Development Workflow
+
+### Typical Development Cycle
+1. Make changes to kernel or application code
+2. For quick testing: `cd ssos && make clean && make local` → test `~/tmp/local.x` on Human68K
+3. For full system testing: `cd ssos && make clean && make` → boot from `~/tmp/ssos.xdf`
+4. Use `make compiledb` to generate LSP support for code editors
+
+### Key Architectural Patterns
+- **Task Management**: Preemptive multitasking with timer interrupts every `CONTEXT_SWITCH_INTERVAL` ticks
+- **Memory Management**: Custom allocator with 4KB page alignment for task stacks
+- **Graphics**: Direct VRAM manipulation with hardware V-sync synchronization
+- **Input Handling**: Interrupt-driven keyboard input with circular buffer (`KEY_BUFFER_SIZE`)
 
 ## Toolchain
 Uses m68k-xelf GCC cross-compiler with X68000-specific libraries (`-lx68kiocs`). Assembly files use Motorola syntax with `--register-prefix-optional` for compatibility.
+
+### Compiler Flags
+- **OS Mode**: Standard compilation with hardware-specific initialization
+- **Local Mode**: Adds `-DLOCAL_MODE` define to conditionally compile for Human68K execution
