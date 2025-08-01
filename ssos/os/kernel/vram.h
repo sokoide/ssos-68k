@@ -40,7 +40,14 @@ void ss_put_char_v(uint8_t* offscreen, uint16_t sw, uint16_t sh,
 void ss_print_v(uint8_t* offscreen, uint16_t sw, uint16_t sh, uint16_t fg_color,
                 uint16_t bg_color, int x, int y, char* str);
 
+// Smart text functions that only redraw when text changes
+int ss_print_v_smart(uint8_t* offscreen, uint16_t sw, uint16_t sh, uint16_t fg_color,
+                     uint16_t bg_color, int x, int y, char* str, char* prev_str);
+
 void ss_init_palette();
+
+// Utility functions
+int mystrlen(char* str);
 
 // Memory alignment helpers for 68000 optimization
 static inline int ss_is_aligned_32(void* ptr) {

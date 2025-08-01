@@ -172,6 +172,37 @@ void ss_print_v(uint8_t* offscreen, uint16_t w, uint16_t h, uint16_t fg_color,
     }
 }
 
+// Smart text printing - only draws if text has changed
+// Returns 1 if text was redrawn, 0 if no change
+int ss_print_v_smart(uint8_t* offscreen, uint16_t w, uint16_t h, uint16_t fg_color,
+                     uint16_t bg_color, int x, int y, char* str, char* prev_str) {
+    // Quick string comparison - if strings are identical, don't redraw
+    if (prev_str != NULL) {
+        int i = 0;
+        while (str[i] != 0 && prev_str[i] != 0) {
+            if (str[i] != prev_str[i]) break;
+            i++;
+        }
+        // If strings are identical, skip drawing
+        if (str[i] == 0 && prev_str[i] == 0) {
+            return 0; // No change
+        }
+    }
+    
+    // Clear the old text area first (fill with background color)
+    int old_len = (prev_str != NULL) ? mystrlen(prev_str) : 0;
+    int new_len = mystrlen(str);
+    int max_len = (old_len > new_len) ? old_len : new_len;
+    
+    // Clear the maximum text area
+    ss_fill_rect_v(offscreen, w, h, bg_color, x, y, x + max_len * 8 - 1, y + 15);
+    
+    // Draw the new text
+    ss_print_v(offscreen, w, h, fg_color, bg_color, x, y, str);
+    
+    return 1; // Text was redrawn
+}
+
 // Fast memory copy using 32-bit transfers
 void ss_memcpy_32(uint32_t* dst, const uint32_t* src, size_t count) {
     for (size_t i = 0; i < count; i++) {

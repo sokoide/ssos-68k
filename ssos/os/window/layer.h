@@ -14,6 +14,9 @@ typedef struct {
     uint16_t w, h;
     uint16_t attr;
     uint8_t* vram;
+    // Dirty rectangle tracking for performance
+    uint16_t dirty_x, dirty_y, dirty_w, dirty_h;
+    uint8_t needs_redraw;
 } Layer;
 
 typedef struct {
@@ -37,4 +40,7 @@ void ss_layer_draw_rect_layer_dma(Layer* l, uint8_t* src, uint8_t* dst,
 void ss_layer_draw_rect_layer(Layer* l);
 void ss_layer_move(Layer* layer, uint16_t x, uint16_t y);
 void ss_layer_invalidate(Layer* layer);
+void ss_layer_mark_dirty(Layer* layer, uint16_t x, uint16_t y, uint16_t w, uint16_t h);
+void ss_layer_mark_clean(Layer* layer);
+void ss_layer_draw_dirty_only();
 void ss_layer_update_map(Layer* layer);

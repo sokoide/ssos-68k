@@ -30,6 +30,13 @@ Layer* ss_layer_get() {
             l->z = ss_layer_mgr->topLayerIdx;
             ss_layer_mgr->zLayers[ss_layer_mgr->topLayerIdx] = l;
             ss_layer_mgr->topLayerIdx++;
+            
+            // Initialize dirty rectangle tracking - mark entire layer as dirty initially
+            l->needs_redraw = 1;
+            l->dirty_x = 0;
+            l->dirty_y = 0;
+            l->dirty_w = 0; // Will be set in ss_layer_set
+            l->dirty_h = 0; // Will be set in ss_layer_set
 
             return l;
         }
@@ -44,6 +51,10 @@ void ss_layer_set(Layer* layer, uint8_t* vram, uint16_t x, uint16_t y,
     layer->y = (y & 0xFFF8);
     layer->w = (w & 0xFFF8);
     layer->h = (h & 0xFFF8);
+    
+    // Mark entire layer as dirty for initial draw
+    layer->dirty_w = layer->w;
+    layer->dirty_h = layer->h;
 
     uint8_t lid = layer - ss_layer_mgr->layers;
 
@@ -225,7 +236,121 @@ void ss_layer_move(Layer* layer, uint16_t x, uint16_t y) {
 }
 */
 
-void ss_layer_invalidate(Layer* layer) { ss_layer_draw_rect_layer(layer); }
+// Mark a rectangular region of a layer as dirty (needs redrawing)
+void ss_layer_mark_dirty(Layer* layer, uint16_t x, uint16_t y, uint16_t w, uint16_t h) {
+    if (!layer || w == 0 || h == 0) return;
+    
+    // Clamp to layer bounds
+    if (x >= layer->w || y >= layer->h) return;
+    if (x + w > layer->w) w = layer->w - x;
+    if (y + h > layer->h) h = layer->h - y;
+    
+    if (layer->needs_redraw == 0) {
+        // First dirty region
+        layer->dirty_x = x;
+        layer->dirty_y = y;
+        layer->dirty_w = w;
+        layer->dirty_h = h;
+        layer->needs_redraw = 1;
+    } else {
+        // Merge with existing dirty region (union)
+        uint16_t x1 = layer->dirty_x;
+        uint16_t y1 = layer->dirty_y;
+        uint16_t x2 = x1 + layer->dirty_w;
+        uint16_t y2 = y1 + layer->dirty_h;
+        
+        uint16_t new_x1 = (x < x1) ? x : x1;
+        uint16_t new_y1 = (y < y1) ? y : y1;
+        uint16_t new_x2 = ((x + w) > x2) ? (x + w) : x2;
+        uint16_t new_y2 = ((y + h) > y2) ? (y + h) : y2;
+        
+        layer->dirty_x = new_x1;
+        layer->dirty_y = new_y1;
+        layer->dirty_w = new_x2 - new_x1;
+        layer->dirty_h = new_y2 - new_y1;
+    }
+}
+
+// Mark entire layer as clean (no redraw needed)
+void ss_layer_mark_clean(Layer* layer) {
+    if (layer) {
+        layer->needs_redraw = 0;
+        layer->dirty_w = 0;
+        layer->dirty_h = 0;
+    }
+}
+
+// Draw a specific rectangle of a layer
+void ss_layer_draw_rect_layer_bounds(Layer* l, uint16_t dx0, uint16_t dy0, uint16_t dx1, uint16_t dy1) {
+    if (0 == (l->attr & LAYER_ATTR_VISIBLE))
+        return;
+    uint8_t lid = l - ss_layer_mgr->layers;
+
+    // Clamp bounds to layer size
+    if (dx1 > l->w) dx1 = l->w;
+    if (dy1 > l->h) dy1 = l->h;
+    if (dx0 >= dx1 || dy0 >= dy1) return;
+
+    for (int16_t dy = dy0; dy < dy1; dy++) {
+        int16_t vy = l->y + dy;
+        if (vy < 0 || vy >= HEIGHT)
+            continue;
+        // Optimized DMA transfer using bit shifts
+        uint16_t map_width = WIDTH >> 3;  // WIDTH / 8
+        uint16_t vy_div8 = vy >> 3;
+        uint16_t l_x_div8 = l->x >> 3;
+        
+        int16_t startdx = -1;
+        for (int16_t dx = dx0; dx < dx1; dx += 8) {
+            if (ss_layer_mgr->map[vy_div8 * map_width + ((l->x + dx) >> 3)] == l->z) {
+                // set the first addr to transfer -> startdx
+                if (startdx == -1)
+                    startdx = dx;
+            } else if (startdx >= 0) {
+                // transfer between startdx and dx
+                int16_t vx = l->x + startdx;
+                ss_layer_draw_rect_layer_dma(
+                    l, &l->vram[dy * l->w + startdx],
+                    ((uint8_t*)&vram_start[vy * VRAMWIDTH + vx]) + 1,
+                    dx - startdx);
+                startdx = -1;
+            }
+        }
+        // DMA if the last block is not transferred yet
+        if (startdx >= 0) {
+            int16_t vx = l->x + startdx;
+            ss_layer_draw_rect_layer_dma(
+                l, &l->vram[dy * l->w + startdx],
+                ((uint8_t*)&vram_start[vy * VRAMWIDTH + vx]) + 1,
+                dx1 - startdx);
+        }
+    }
+}
+
+// Draw only the dirty regions of all layers - MAJOR PERFORMANCE IMPROVEMENT
+void ss_layer_draw_dirty_only() {
+    for (int i = 0; i < ss_layer_mgr->topLayerIdx; i++) {
+        Layer* layer = ss_layer_mgr->zLayers[i];
+        if (layer->needs_redraw && (layer->attr & LAYER_ATTR_VISIBLE)) {
+            if (layer->dirty_w > 0 && layer->dirty_h > 0) {
+                // Only redraw the dirty rectangle
+                ss_layer_draw_rect_layer_bounds(layer, 
+                    layer->dirty_x, layer->dirty_y, 
+                    layer->dirty_x + layer->dirty_w, 
+                    layer->dirty_y + layer->dirty_h);
+            } else {
+                // If no specific dirty rectangle, draw entire layer (for initial draw)
+                ss_layer_draw_rect_layer(layer);
+            }
+            ss_layer_mark_clean(layer);
+        }
+    }
+}
+
+void ss_layer_invalidate(Layer* layer) { 
+    // Instead of immediately redrawing, just mark the entire layer as dirty
+    ss_layer_mark_dirty(layer, 0, 0, layer->w, layer->h);
+}
 
 void ss_layer_update_map(Layer* layer) {
     uint8_t lid = 0;

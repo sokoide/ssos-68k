@@ -60,6 +60,10 @@ void ssosmain() {
 
     ss_all_layer_draw();
     update_layer_2(l2);
+    update_layer_3(l3);
+    
+    // Force initial draw of all layers
+    ss_layer_draw_dirty_only();
 
     while (true) {
         // if it's vsync, wait for display period
@@ -95,6 +99,9 @@ void ssosmain() {
             prev_counter = ss_timerd_counter;
             update_layer_2(l2);
         }
+        
+        // MAJOR OPTIMIZATION: Only draw dirty regions instead of everything!
+        ss_layer_draw_dirty_only();
     }
 
 CLEANUP:
