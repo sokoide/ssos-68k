@@ -6,6 +6,7 @@ SRCS= \
 	kernel/memory.c \
 	kernel/task_manager.c \
 	kernel/vram.c \
+	kernel/ss_perf.c \
 	main/ssosmain.c \
 	main/ssoswindows.c \
 	window/layer.c \

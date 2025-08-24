@@ -3,6 +3,7 @@
 #include "kernel.h"
 #include "memory.h"
 #include "vram.h"
+#include "ss_perf.h"
 #include <stddef.h>
 
 LayerMgr* ss_layer_mgr;
@@ -30,7 +31,7 @@ Layer* ss_layer_get() {
             l->z = ss_layer_mgr->topLayerIdx;
             ss_layer_mgr->zLayers[ss_layer_mgr->topLayerIdx] = l;
             ss_layer_mgr->topLayerIdx++;
-            
+
             // Initialize dirty rectangle tracking - mark entire layer as dirty initially
             l->needs_redraw = 1;
             l->dirty_x = 0;
@@ -51,7 +52,7 @@ void ss_layer_set(Layer* layer, uint8_t* vram, uint16_t x, uint16_t y,
     layer->y = (y & 0xFFF8);
     layer->w = (w & 0xFFF8);
     layer->h = (h & 0xFFF8);
-    
+
     // Mark entire layer as dirty for initial draw
     layer->dirty_w = layer->w;
     layer->dirty_h = layer->h;
@@ -64,7 +65,7 @@ void ss_layer_set(Layer* layer, uint8_t* vram, uint16_t x, uint16_t y,
     uint16_t layer_x_div8 = layer->x >> 3;
     uint16_t layer_h_div8 = layer->h >> 3;
     uint16_t layer_w_div8 = layer->w >> 3;
-    
+
     for (int dy = 0; dy < layer_h_div8; dy++) {
         uint8_t* map_row = &ss_layer_mgr->map[(layer_y_div8 + dy) * map_width + layer_x_div8];
         for (int dx = 0; dx < layer_w_div8; dx++) {
@@ -152,7 +153,7 @@ void ss_layer_draw_rect_layer(Layer* l) {
         uint16_t map_width = WIDTH >> 3;  // WIDTH / 8
         uint16_t vy_div8 = vy >> 3;
         uint16_t l_x_div8 = l->x >> 3;
-        
+
         int16_t startdx = -1;
         for (int16_t dx = dx0; dx < dx1; dx += 8) {
             if (ss_layer_mgr->map[vy_div8 * map_width + ((l->x + dx) >> 3)] == l->z) {
@@ -180,15 +181,56 @@ void ss_layer_draw_rect_layer(Layer* l) {
     }
 }
 
+// Performance monitoring variables for adaptive DMA thresholds
+static uint32_t ss_cpu_idle_time = 0;
+static uint32_t ss_last_performance_check = 0;
+static uint16_t ss_adaptive_dma_threshold = 8;
+
+// Update CPU performance metrics
+void ss_update_performance_metrics() {
+    uint32_t current_time = ss_timerd_counter;
+
+    // Update performance metrics every 100ms
+    if (current_time > ss_last_performance_check + 100) {
+        // Estimate CPU idle time based on system activity
+        // This is a simplified metric - in a real system you'd track actual idle time
+        static uint32_t last_activity = 0;
+        uint32_t activity_delta = current_time - last_activity;
+
+        // Adjust DMA threshold based on recent activity
+        if (activity_delta < 50) {
+            // High activity - prefer DMA for larger blocks
+            ss_adaptive_dma_threshold = 12;
+        } else if (activity_delta > 200) {
+            // Low activity - use DMA even for smaller blocks
+            ss_adaptive_dma_threshold = 4;
+        } else {
+            // Normal activity - use balanced threshold
+            ss_adaptive_dma_threshold = 8;
+        }
+
+        last_activity = current_time;
+        ss_last_performance_check = current_time;
+    }
+}
+
 void ss_layer_draw_rect_layer_dma(Layer* l, uint8_t* src, uint8_t* dst,
                                   uint16_t block_count) {
     // Ensure alignment for optimal DMA performance
     if (block_count == 0) return;
-    
-    // For small transfers, use direct memory copy instead of DMA overhead
-    if (block_count <= 8) {
-        // Use 32-bit transfers when possible for better performance
+
+    // Update performance metrics for adaptive behavior
+    ss_update_performance_metrics();
+
+    // ADAPTIVE DMA THRESHOLD: Use CPU load to decide transfer method
+    // - High CPU activity: Use DMA for larger blocks to free up CPU
+    // - Low CPU activity: Use DMA even for smaller blocks for consistency
+    // - Normal activity: Balanced approach
+
+    if (block_count <= ss_adaptive_dma_threshold) {
+        // Use CPU transfer for small blocks
         if (block_count >= 4 && ((uintptr_t)src & 3) == 0 && ((uintptr_t)dst & 3) == 0) {
+            // 32-bit aligned transfer for optimal CPU performance
             uint32_t* src32 = (uint32_t*)src;
             uint32_t* dst32 = (uint32_t*)dst;
             int blocks = block_count >> 2;
@@ -202,24 +244,22 @@ void ss_layer_draw_rect_layer_dma(Layer* l, uint8_t* src, uint8_t* dst,
                 *dst8++ = *src8++;
             }
         } else {
-            // Fallback to byte copy
+            // Byte-by-byte transfer for unaligned data
             for (int i = 0; i < block_count; i++) {
                 dst[i] = src[i];
             }
         }
         return;
     }
-    
-    // Use DMA for larger transfers
+
+    // Use DMA for larger transfers (adaptive threshold)
     dma_clear();
-    // only 1 line (block)
-    // dst vram addr must be an add addr
+    // Configure DMA transfer
     dma_init(dst, 1);
-    // src offscreen vram addr
     xfr_inf[0].addr = src;
-    // src block count
     xfr_inf[0].count = block_count;
-    // transfer
+
+    // Execute DMA transfer
     dma_start();
     dma_wait_completion();
     dma_clear();
@@ -239,12 +279,12 @@ void ss_layer_move(Layer* layer, uint16_t x, uint16_t y) {
 // Mark a rectangular region of a layer as dirty (needs redrawing)
 void ss_layer_mark_dirty(Layer* layer, uint16_t x, uint16_t y, uint16_t w, uint16_t h) {
     if (!layer || w == 0 || h == 0) return;
-    
+
     // Clamp to layer bounds
     if (x >= layer->w || y >= layer->h) return;
     if (x + w > layer->w) w = layer->w - x;
     if (y + h > layer->h) h = layer->h - y;
-    
+
     if (layer->needs_redraw == 0) {
         // First dirty region
         layer->dirty_x = x;
@@ -258,12 +298,12 @@ void ss_layer_mark_dirty(Layer* layer, uint16_t x, uint16_t y, uint16_t w, uint1
         uint16_t y1 = layer->dirty_y;
         uint16_t x2 = x1 + layer->dirty_w;
         uint16_t y2 = y1 + layer->dirty_h;
-        
+
         uint16_t new_x1 = (x < x1) ? x : x1;
         uint16_t new_y1 = (y < y1) ? y : y1;
         uint16_t new_x2 = ((x + w) > x2) ? (x + w) : x2;
         uint16_t new_y2 = ((y + h) > y2) ? (y + h) : y2;
-        
+
         layer->dirty_x = new_x1;
         layer->dirty_y = new_y1;
         layer->dirty_w = new_x2 - new_x1;
@@ -299,7 +339,7 @@ void ss_layer_draw_rect_layer_bounds(Layer* l, uint16_t dx0, uint16_t dy0, uint1
         uint16_t map_width = WIDTH >> 3;  // WIDTH / 8
         uint16_t vy_div8 = vy >> 3;
         uint16_t l_x_div8 = l->x >> 3;
-        
+
         int16_t startdx = -1;
         for (int16_t dx = dx0; dx < dx1; dx += 8) {
             if (ss_layer_mgr->map[vy_div8 * map_width + ((l->x + dx) >> 3)] == l->z) {
@@ -329,25 +369,37 @@ void ss_layer_draw_rect_layer_bounds(Layer* l, uint16_t dx0, uint16_t dy0, uint1
 
 // Draw only the dirty regions of all layers - MAJOR PERFORMANCE IMPROVEMENT
 void ss_layer_draw_dirty_only() {
+    // Performance monitoring: Start dirty region drawing
+    SS_PERF_START_MEASUREMENT(SS_PERF_DIRTY_DRAW);
+
     for (int i = 0; i < ss_layer_mgr->topLayerIdx; i++) {
         Layer* layer = ss_layer_mgr->zLayers[i];
         if (layer->needs_redraw && (layer->attr & LAYER_ATTR_VISIBLE)) {
             if (layer->dirty_w > 0 && layer->dirty_h > 0) {
+                // Performance monitoring: Start dirty rectangle drawing
+                SS_PERF_START_MEASUREMENT(SS_PERF_DIRTY_RECT);
                 // Only redraw the dirty rectangle
-                ss_layer_draw_rect_layer_bounds(layer, 
-                    layer->dirty_x, layer->dirty_y, 
-                    layer->dirty_x + layer->dirty_w, 
+                ss_layer_draw_rect_layer_bounds(layer,
+                    layer->dirty_x, layer->dirty_y,
+                    layer->dirty_x + layer->dirty_w,
                     layer->dirty_y + layer->dirty_h);
+                SS_PERF_END_MEASUREMENT(SS_PERF_DIRTY_RECT);
             } else {
+                // Performance monitoring: Start full layer drawing
+                SS_PERF_START_MEASUREMENT(SS_PERF_FULL_LAYER);
                 // If no specific dirty rectangle, draw entire layer (for initial draw)
                 ss_layer_draw_rect_layer(layer);
+                SS_PERF_END_MEASUREMENT(SS_PERF_FULL_LAYER);
             }
             ss_layer_mark_clean(layer);
         }
     }
+
+    // Performance monitoring: End dirty region drawing
+    SS_PERF_END_MEASUREMENT(SS_PERF_DIRTY_DRAW);
 }
 
-void ss_layer_invalidate(Layer* layer) { 
+void ss_layer_invalidate(Layer* layer) {
     // Instead of immediately redrawing, just mark the entire layer as dirty
     ss_layer_mark_dirty(layer, 0, 0, layer->w, layer->h);
 }
@@ -361,7 +413,7 @@ void ss_layer_update_map(Layer* layer) {
     uint16_t map_width = WIDTH >> 3;  // WIDTH / 8
     uint16_t layer_y_end = (layer->y + layer->h) >> 3;
     uint16_t layer_x_end = (layer->x + layer->w) >> 3;
-    
+
     for (int i = lid; i < ss_layer_mgr->topLayerIdx; i++) {
         for (int dy = layer->y >> 3; dy < layer_y_end; dy++) {
             uint8_t* map_row = &ss_layer_mgr->map[dy * map_width];

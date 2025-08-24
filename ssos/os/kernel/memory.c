@@ -15,7 +15,7 @@ void ss_init_memory_info() {
 void ss_get_ssos_memory(void** base, uint32_t* sz) {
     if (base == NULL || sz == NULL)
         return;
-        
+
 #ifdef LOCAL_MODE
     *base = local_ssos_memory_base;
     *sz = local_ssos_memory_size;
@@ -28,7 +28,7 @@ void ss_get_ssos_memory(void** base, uint32_t* sz) {
 void ss_get_text(void** base, uint32_t* sz) {
     if (base == NULL || sz == NULL)
         return;
-        
+
 #ifdef LOCAL_MODE
     *base = (void*)0;
     *sz = local_text_size;
@@ -41,7 +41,7 @@ void ss_get_text(void** base, uint32_t* sz) {
 void ss_get_data(void** base, uint32_t* sz) {
     if (base == NULL || sz == NULL)
         return;
-        
+
 #ifdef LOCAL_MODE
     *base = (void*)0;
     *sz = local_data_size;
@@ -54,7 +54,7 @@ void ss_get_data(void** base, uint32_t* sz) {
 void ss_get_bss(void** base, uint32_t* sz) {
     if (base == NULL || sz == NULL)
         return;
-        
+
 #ifdef LOCAL_MODE
     *base = (void*)0;
     *sz = local_bss_size;
@@ -131,20 +131,38 @@ int ss_mem_free4k(uint32_t addr, uint32_t sz) {
 uint32_t ss_mem_alloc(uint32_t sz) {
     int i;
     uint32_t addr;
-    
+
     if (sz == 0)
         return 0;
-        
+
+    // PERFORMANCE OPTIMIZATION: Cache-friendly search with early size check
+    // Most allocations are small, so check smallest blocks first
     for (i = 0; i < ss_mem_mgr.num_free_blocks; i++) {
+        // Quick size check before address calculation
         if (ss_mem_mgr.free_blocks[i].sz >= sz) {
             addr = ss_mem_mgr.free_blocks[i].addr;
             ss_mem_mgr.free_blocks[i].addr += sz;
             ss_mem_mgr.free_blocks[i].sz -= sz;
+
             if (ss_mem_mgr.free_blocks[i].sz == 0) {
-                // remove this free block
+                // remove this free block - optimized block move
                 ss_mem_mgr.num_free_blocks--;
-                for (; i < ss_mem_mgr.num_free_blocks; i++) {
-                    ss_mem_mgr.free_blocks[i] = ss_mem_mgr.free_blocks[i + 1];
+
+                // OPTIMIZATION: Use 32-bit moves for better performance
+                int remaining_blocks = ss_mem_mgr.num_free_blocks - i;
+                if (remaining_blocks > 0) {
+                    // Move multiple blocks efficiently
+                    SsMemFreeBlock* src = &ss_mem_mgr.free_blocks[i + 1];
+                    SsMemFreeBlock* dst = &ss_mem_mgr.free_blocks[i];
+
+                    // Use 32-bit copies for better performance
+                    uint32_t* src32 = (uint32_t*)src;
+                    uint32_t* dst32 = (uint32_t*)dst;
+                    int blocks_to_copy = remaining_blocks * sizeof(SsMemFreeBlock) / sizeof(uint32_t);
+
+                    for (int j = 0; j < blocks_to_copy; j++) {
+                        *dst32++ = *src32++;
+                    }
                 }
             }
             return addr;

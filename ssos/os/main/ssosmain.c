@@ -6,6 +6,7 @@
 #include "ssoswindows.h"
 #include "task_manager.h"
 #include "vram.h"
+#include "ss_perf.h"
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -32,6 +33,9 @@ void ssosmain() {
 
     ss_init_memory_info();
     ss_mem_init();
+
+    // Initialize performance monitoring system
+    ss_perf_init();
 
     ss_task_stack_base = (uint8_t*)ss_mem_alloc4k(4096 * MAX_TASKS);
 
@@ -61,48 +65,61 @@ void ssosmain() {
     ss_all_layer_draw();
     update_layer_2(l2);
     update_layer_3(l3);
-    
+
     // Force initial draw of all layers
     ss_layer_draw_dirty_only();
+while (true) {
+    // Performance monitoring: Start frame timing
+    SS_PERF_START_MEASUREMENT(SS_PERF_FRAME_TIME);
 
-    while (true) {
-        // if it's vsync, wait for display period
-        while (!((*mfp) & 0x10)) {
-            if (ss_handle_keys() == -1)
-#ifdef LOCAL_MODE
-                goto CLEANUP;
-#else
-                ;
-#endif
-        }
-        // wait for vsync
-        while ((*mfp) & 0x10) {
-            if (ss_handle_keys() == -1)
-#ifdef LOCAL_MODE
-                goto CLEANUP;
-#else
-                ;
-#endif
-        }
-
+    // if it's vsync, wait for display period
+    while (!((*mfp) & 0x10)) {
         if (ss_handle_keys() == -1)
 #ifdef LOCAL_MODE
-            break;
+            goto CLEANUP;
+#else
+            ;
+#endif
+    }
+    // wait for vsync
+    while ((*mfp) & 0x10) {
+        if (ss_handle_keys() == -1)
+#ifdef LOCAL_MODE
+            goto CLEANUP;
+#else
+            ;
+#endif
+    }
 
-        ;
+    if (ss_handle_keys() == -1)
+#ifdef LOCAL_MODE
+        break;
+
+    ;
+
 #endif
 
-        update_layer_3(l3);
+    // Performance monitoring: Start layer update timing
+    SS_PERF_START_MEASUREMENT(SS_PERF_LAYER_UPDATE);
+    update_layer_3(l3);
 
-        if (ss_timerd_counter > prev_counter + 1000 ||
-            ss_timerd_counter < prev_counter) {
-            prev_counter = ss_timerd_counter;
-            update_layer_2(l2);
-        }
-        
-        // MAJOR OPTIMIZATION: Only draw dirty regions instead of everything!
-        ss_layer_draw_dirty_only();
+    if (ss_timerd_counter > prev_counter + 1000 ||
+        ss_timerd_counter < prev_counter) {
+        prev_counter = ss_timerd_counter;
+        update_layer_2(l2);
     }
+
+    // Performance monitoring: End layer update timing
+    SS_PERF_END_MEASUREMENT(SS_PERF_LAYER_UPDATE);
+
+    // MAJOR OPTIMIZATION: Only draw dirty regions instead of everything!
+    SS_PERF_START_MEASUREMENT(SS_PERF_DRAW_TIME);
+    ss_layer_draw_dirty_only();
+    SS_PERF_END_MEASUREMENT(SS_PERF_DRAW_TIME);
+
+    // Performance monitoring: End frame timing
+    SS_PERF_END_MEASUREMENT(SS_PERF_FRAME_TIME);
+}
 
 CLEANUP:
     // uninit

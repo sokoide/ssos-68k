@@ -48,10 +48,16 @@
 #ifdef SS_DEBUG
 #define SS_CONFIG_ENABLE_ASSERTIONS       1
 #define SS_CONFIG_ENABLE_ERROR_LOGGING    1
+#define SS_CONFIG_ENABLE_PERFORMANCE_MONITORING 1
 #else
 #define SS_CONFIG_ENABLE_ASSERTIONS       0
 #define SS_CONFIG_ENABLE_ERROR_LOGGING    0
+#define SS_CONFIG_ENABLE_PERFORMANCE_MONITORING 0
 #endif
+
+// Performance Monitoring Configuration
+#define SS_CONFIG_PERF_SAMPLE_INTERVAL    1000  // Sample every 1000 timer ticks
+#define SS_CONFIG_PERF_MAX_SAMPLES        100   // Keep last 100 samples
 
 // Compatibility macros for existing code (excluding conflicting ones)
 #define MAX_TASKS               SS_CONFIG_MAX_TASKS
