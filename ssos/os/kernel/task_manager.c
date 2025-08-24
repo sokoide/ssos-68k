@@ -1,5 +1,6 @@
 #include "task_manager.h"
 #include "errors.h"
+#include "ss_errors.h"
 #include "memory.h"
 #include "ssosmain.h"
 #include <stdio.h>
@@ -30,8 +31,14 @@ void initial_task_func(int16_t stacd /* not used */,
 }
 __attribute__((optimize("no-stack-protector", "omit-frame-pointer"))) int
 timer_interrupt_handler() {
+    // Use interrupt-safe counter increment
+    // Disable interrupts temporarily for atomic increment
+    disable_interrupts();
     global_counter++;
-    if (global_counter % CONTEXT_SWITCH_INTERVAL == 0) {
+    uint32_t current_counter = global_counter;
+    enable_interrupts();
+
+    if (current_counter % CONTEXT_SWITCH_INTERVAL == 0) {
         // switch context
         return 1;
     }
@@ -43,45 +50,70 @@ uint16_t ss_create_task(const TaskInfo* ti) {
     uint16_t id;
     uint16_t i;
 
-    if (ti == NULL)
-        return E_PAR;
-    if (ti->task == NULL)
-        return E_PAR;
-    if (ti->task_attr & ~(TA_RNG3 | TA_HLNG | TA_USERBUF))
+    // Enhanced NULL and parameter validation
+    SS_CHECK_NULL(ti);
+    SS_CHECK_NULL(ti->task);
+    SS_CHECK_RANGE(ti->task_pri, 1, MAX_TASK_PRI);
+
+    // Validate task attributes
+    if (ti->task_attr & ~(TA_RNG3 | TA_HLNG | TA_USERBUF)) {
+        ss_set_error(SS_ERROR_INVALID_PARAM, SS_SEVERITY_ERROR,
+                    __func__, __FILE__, __LINE__, "Invalid task attributes");
         return E_RSATR;
-    if (ti->task_pri <= 0 || ti->task_pri > MAX_TASK_PRI)
+    }
+
+    // Validate user buffer configuration
+    if ((ti->task_attr & TA_USERBUF) &&
+        (ti->stack_size == 0 || ti->stack == NULL)) {
+        ss_set_error(SS_ERROR_INVALID_PARAM, SS_SEVERITY_ERROR,
+                    __func__, __FILE__, __LINE__, "Invalid user buffer configuration");
         return E_PAR;
-    if ((ti->task_attr & TA_USERBUF) && (ti->stack_size == 0 || ti->stack == NULL))
-        return E_PAR;
+    }
 
     disable_interrupts();
 
+    // Find unused TCB with bounds checking
     for (i = 0; i < MAX_TASKS; i++) {
-        // find unused TCB
-        if (tcb_table[i].state == TS_NONEXIST)
+        if (tcb_table[i].state == TS_NONEXIST) {
             break;
+        }
     }
 
-    // init tcb_table
+    // Initialize TCB if available
     if (i < MAX_TASKS) {
+        // Initialize TCB structure
         tcb_table[i].state = TS_DORMANT;
         tcb_table[i].prev = NULL;
         tcb_table[i].next = NULL;
+        tcb_table[i].wait_factor = TWFCT_NON;
+        tcb_table[i].wakeup_count = 0;
 
+        // Set task properties
         tcb_table[i].task_addr = ti->task;
         tcb_table[i].task_pri = ti->task_pri;
+
+        // Configure stack
         if (ti->task_attr & TA_USERBUF) {
             tcb_table[i].stack_size = ti->stack_size;
             tcb_table[i].stack_addr = ti->stack;
         } else {
             tcb_table[i].stack_size = TASK_STACK_SIZE;
-            tcb_table[i].stack_addr =
-                ss_task_stack_base + (i + 1) * TASK_STACK_SIZE - 1;
+            // Check if task stack base is initialized
+            if (ss_task_stack_base == NULL) {
+                enable_interrupts();
+                ss_set_error(SS_ERROR_NOT_INITIALIZED, SS_SEVERITY_ERROR,
+                            __func__, __FILE__, __LINE__, "Task stack base not initialized");
+                return E_SYS;
+            }
+            tcb_table[i].stack_addr = ss_task_stack_base + (i + 1) * TASK_STACK_SIZE - 1;
         }
 
         id = i + 1;
     } else {
-        id = (uint16_t)E_LIMIT;
+        enable_interrupts();
+        ss_set_error(SS_ERROR_OUT_OF_RESOURCES, SS_SEVERITY_ERROR,
+                    __func__, __FILE__, __LINE__, "No available task slots");
+        return E_LIMIT;
     }
 
     enable_interrupts();
@@ -92,18 +124,39 @@ uint16_t ss_start_task(uint16_t id, int16_t stacd /* not used */) {
     TaskControlBlock* tcb;
     uint16_t err = E_OK;
 
-    if (id <= 0 || id > MAX_TASKS)
-        return E_ID;
+    // Enhanced ID validation
+    SS_CHECK_ID(id, MAX_TASKS);
+
     disable_interrupts();
 
     tcb = &tcb_table[id - 1];
+
+    // Validate TCB state and task validity
     if (tcb->state == TS_DORMANT) {
+        // Additional validation before starting task
+        if (tcb->task_addr == NULL) {
+            enable_interrupts();
+            ss_set_error(SS_ERROR_INVALID_STATE, SS_SEVERITY_ERROR,
+                        __func__, __FILE__, __LINE__, "Task has no valid entry point");
+            return E_OBJ;
+        }
+
+        if (tcb->stack_addr == NULL) {
+            enable_interrupts();
+            ss_set_error(SS_ERROR_INVALID_STATE, SS_SEVERITY_ERROR,
+                        __func__, __FILE__, __LINE__, "Task has no valid stack");
+            return E_OBJ;
+        }
+
         tcb->state = TS_READY;
+
         // TODO: Implement make_context and scheduler functions
         // tcb->context = make_context(tcb->stack_addr, tcb->stack_size, tcb->task_addr);
         // task_queue_add_entry(&ready_queue[tcb->task_pri], tcb);
         // scheduler();
     } else {
+        ss_set_error(SS_ERROR_INVALID_STATE, SS_SEVERITY_ERROR,
+                    __func__, __FILE__, __LINE__, "Task not in dormant state");
         err = E_OBJ;
     }
 

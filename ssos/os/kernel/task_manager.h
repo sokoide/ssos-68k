@@ -18,7 +18,6 @@
 #define TA_WSGL 0x00000000  // don't allow multiple task wait
 #define TA_WMUL 0x00000008  // allow multiple task wait
 
-#define TASK_STACK_SIZE (4 * 1024)
 
 // structs
 typedef struct {

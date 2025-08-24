@@ -2,22 +2,15 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "ss_config.h"
+#include "ss_errors.h"
 
 // *** constants ***
-#define MAX_TASKS 16
-#define MAX_TASK_PRI 16
-
-// Hardware constants
-#define MFP_ADDRESS 0xe88001
-#define VSYNC_BIT 0x10
-
-// Key constants  
-#define ESC_SCANCODE 0x011b
-
-// Timer constants
-#define CONTEXT_SWITCH_INTERVAL 16
+// All constants now defined in ss_config.h for better maintainability
+// These compatibility macros are provided for existing code
 
 // *** VRAM ***
+// Extern declarations for constants defined in kernel.c
 extern const int VRAMWIDTH;
 extern const int VRAMHEIGHT;
 extern const int WIDTH;
@@ -64,7 +57,7 @@ extern void enable_interrupts(void);
 // defined in kernel.c
 extern volatile uint8_t* mfp;
 
-#define KEY_BUFFER_SIZE 32
+// KEY_BUFFER_SIZE now defined in ss_config.h
 
 void ss_wait_for_vsync();
 
