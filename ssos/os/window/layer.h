@@ -1,8 +1,7 @@
 #pragma once
 #include <stdbool.h>
 #include <stdint.h>
-
-#define MAX_LAYERS 256
+#include "ss_config.h"
 
 enum LayerAttr {
     LAYER_ATTR_USED = 0x01,

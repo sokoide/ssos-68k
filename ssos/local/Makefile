@@ -1,3 +1,8 @@
+# Check if cross-compilation toolchain is available
+ifeq ($(shell which m68k-xelf-gcc),)
+$(error Cross-compilation toolchain not found. Please run: . ~/.elf2x68k)
+endif
+
 TARGET=	local.x
 SRCS=	main.c \
 		../os/kernel/kernel.c \

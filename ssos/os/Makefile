@@ -1,3 +1,8 @@
+# Check if cross-compilation toolchain is available
+ifeq ($(shell which m68k-xelf-gcc),)
+$(error Cross-compilation toolchain not found. Please run: . ~/.elf2x68k)
+endif
+
 TARGET=SSOS.X
 SRCS= \
 	kernel/premain.c \
@@ -7,6 +12,7 @@ SRCS= \
 	kernel/task_manager.c \
 	kernel/vram.c \
 	kernel/ss_perf.c \
+	kernel/ss_errors.c \
 	main/ssosmain.c \
 	main/ssoswindows.c \
 	window/layer.c \
