@@ -44,6 +44,9 @@
 // Layer Configuration
 #define SS_CONFIG_MAX_LAYERS              256
 
+// DMA Configuration
+#define SS_CONFIG_DMA_MAX_TRANSFERS       512
+
 // Debug Configuration
 #ifdef SS_DEBUG
 #define SS_CONFIG_ENABLE_ASSERTIONS       1

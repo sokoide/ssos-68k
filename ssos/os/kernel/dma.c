@@ -1,6 +1,7 @@
 #include "dma.h"
+#include "ss_config.h"
 
-XFR_INF xfr_inf[512];
+XFR_INF xfr_inf[SS_CONFIG_DMA_MAX_TRANSFERS];
 volatile DMA_REG* dma = (volatile DMA_REG*)0xe84080; // channel #2
 
 void dma_init(uint8_t* dst, uint16_t block_count) {

@@ -1,7 +1,6 @@
 #pragma once
 
 #include "kernel.h"
-#include "task_manager.h"
 
 // task attributes
 #define TA_HLNG 0x0000001    // the task is written in high level language

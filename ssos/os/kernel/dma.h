@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdint.h>
+#include "ss_config.h"
 
 typedef struct {
     uint8_t csr;
@@ -45,7 +46,7 @@ typedef struct {
     uint16_t count;
 } XFR_INF;
 
-extern XFR_INF xfr_inf[512];
+extern XFR_INF xfr_inf[SS_CONFIG_DMA_MAX_TRANSFERS];
 extern volatile DMA_REG* dma;
 
 void dma_init(uint8_t* dst, uint16_t block_count);

@@ -117,3 +117,5 @@ const char* ss_error_to_string(SsError error);
 #define E_ID SS_E_ID
 #define E_LIMIT SS_E_LIMIT
 #define E_OBJ SS_E_OBJ
+#define E_RSATR SS_E_PAR    // Invalid attributes - map to parameter error
+#define E_SYS SS_ERROR_SYSTEM_ERROR  // System error
