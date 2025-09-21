@@ -400,8 +400,12 @@ void ss_layer_draw_dirty_only() {
 }
 
 void ss_layer_invalidate(Layer* layer) {
-    // Instead of immediately redrawing, just mark the entire layer as dirty
-    ss_layer_mark_dirty(layer, 0, 0, layer->w, layer->h);
+    // Mark the entire layer as dirty and ensure needs_redraw is set
+    layer->dirty_x = 0;
+    layer->dirty_y = 0;
+    layer->dirty_w = layer->w;
+    layer->dirty_h = layer->h;
+    layer->needs_redraw = 1;
 }
 
 void ss_layer_update_map(Layer* layer) {

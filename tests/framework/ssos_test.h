@@ -137,7 +137,13 @@ void reset_mocks(void);
 static inline void _print_value(uintptr_t val) {
     // Check if this looks like a pointer (high bit set or specific address ranges)
     // For native testing, valid pointers are usually in higher address ranges
-    if ((val > 0x10000 && val < 0xFFFFFFFFFFFFFFFFULL) || val == 0) {
+    // Handle negative integers by checking the high bits
+    if (val == 0) {
+        printf("0");
+    } else if ((val & 0x8000000000000000ULL) != 0) {
+        // High bit is set, this is likely a negative integer in two's complement
+        printf("%d", (int)val);
+    } else if (val >= 0x1000 && val <= 0xFFFFFFFFFFFFFFFFULL) {
         printf("%p", (void*)val);
     } else {
         // Treat as regular integer
