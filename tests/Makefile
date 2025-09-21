@@ -38,18 +38,19 @@ FRAMEWORK_SRCS = framework/test_runner.c \
 
 # Unit test sources
 UNIT_TEST_SRCS = unit/test_memory.c \
-                 unit/test_scheduler.c \
-                 unit/test_layers.c \
-                 unit/test_errors.c
+                  unit/test_scheduler.c \
+                  unit/test_layers.c \
+                  unit/test_errors.c \
+                  unit/test_kernel.c
 
 # SSOS kernel sources (subset for testing)
 KERNEL_SRCS = $(SSOS_ROOT)/os/kernel/memory.c \
-              $(SSOS_ROOT)/os/kernel/task_manager.c \
-              $(SSOS_ROOT)/os/kernel/kernel.c \
-              $(SSOS_ROOT)/os/kernel/ss_errors.c \
-              $(SSOS_ROOT)/os/kernel/ss_perf.c \
-              $(SSOS_ROOT)/os/window/layer.c \
-              $(SSOS_ROOT)/os/util/printf.c
+               $(SSOS_ROOT)/os/kernel/task_manager.c \
+               $(SSOS_ROOT)/os/kernel/ss_errors.c \
+               $(SSOS_ROOT)/os/kernel/ss_perf.c \
+               $(SSOS_ROOT)/os/kernel/ss_config.c \
+               $(SSOS_ROOT)/os/window/layer.c \
+               $(SSOS_ROOT)/os/util/printf.c
 
 # Assembly sources (excluded for testing - conflicts with mocks)
 # ASM_SRCS = $(SSOS_ROOT)/os/kernel/interrupts.s
@@ -74,7 +75,7 @@ native:
 	gcc -I$(SSOS_ROOT)/os/kernel -I$(SSOS_ROOT)/os/window -I$(SSOS_ROOT)/os/main -I$(SSOS_ROOT)/os/util -Iframework \
 	    -O2 -g -DLOCAL_MODE -DTESTING -DNATIVE_TEST \
 	    framework/test_runner.c framework/test_mocks.c \
-	    unit/test_memory.c unit/test_scheduler.c unit/test_layers.c unit/test_errors.c unit/test_performance.c \
+	    unit/test_memory.c unit/test_scheduler.c unit/test_layers.c unit/test_errors.c unit/test_performance.c unit/test_kernel.c \
 	    $(SSOS_ROOT)/os/kernel/ss_perf.c \
 	    -o test_runner_native -lm
 	@echo "Running native tests..."
