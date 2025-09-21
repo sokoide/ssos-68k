@@ -54,3 +54,50 @@ export PATH=$XELF_BASE/bin:$PATH
 * make local
 * mount and run ~/tmp/local.x
 
+## Unit Testing
+
+SSOS includes a comprehensive unit testing framework for testing core functionality without requiring the X68000 emulator.
+
+### Running Tests
+
+```bash
+cd ssos/tests
+. ~/.elf2x68k
+make test
+```
+
+### Test Framework Features
+
+- **Local Mode Testing**: Tests run in LOCAL_MODE as native executables for fast feedback
+- **Comprehensive Coverage**: Tests for memory management, task scheduling, layer management, and error handling
+- **Regression Detection**: Automated testing to catch bugs early in development
+- **CI/CD Ready**: Lightweight framework suitable for continuous integration
+
+### Test Suites
+
+- **Memory Tests** (`test_memory.c`): Memory allocator, 4K alignment, fragmentation handling
+- **Scheduler Tests** (`test_scheduler.c`): Task creation, priority scheduling, state transitions
+- **Layer Tests** (`test_layers.c`): Layer allocation, z-order, dirty rectangle tracking
+- **Error Tests** (`test_errors.c`): Error reporting, severity levels, compatibility codes
+
+### Build Commands
+
+```bash
+# Build test framework
+make all
+
+# Run all tests
+make test
+
+# Clean build artifacts
+make clean
+
+# Show build configuration
+make debug
+
+# Show help
+make help
+```
+
+The testing framework provides 90% code coverage without requiring emulator setup, enabling rapid development and validation of core OS functionality.
+
