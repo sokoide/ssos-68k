@@ -1,3 +1,4 @@
+# SSOS
 tags
 *.x
 *.o
@@ -8,3 +9,55 @@ empty.xdf
 compile_commands.json
 .cache
 makedisk/makedisk
+
+# ---- OS / Editor ----
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# VSCode / Claude / MCP / Codex / Gemini
+.vscode/
+.claude/
+.serena/
+.codex/
+.gemini/
+
+# ---- Build artifacts ----
+*.o
+*.obj
+*.so
+*.dll
+*.dylib
+*.a
+*.lib
+*.lo
+*.la
+*.lai
+*.out
+*.exe
+
+# ---- C/C++ specific ----
+*.d
+*.gcda
+*.gcno
+*.gcov
+*.profraw
+*.profdata
+
+# ---- Build system dirs ----
+/build/
+/dist/
+/out/
+/bin/
+/CMakeFiles/
+/CMakeCache.txt
+cmake_install.cmake
+compile_commands.json
+
+# ---- Logs & Temp ----
+*.log
+*.tmp
+*.bak
+
