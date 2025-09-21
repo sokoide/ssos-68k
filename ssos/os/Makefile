@@ -12,6 +12,7 @@ SRCS= \
 	kernel/task_manager.c \
 	kernel/vram.c \
 	kernel/ss_perf.c \
+	kernel/ss_config.c \
 	kernel/ss_errors.c \
 	main/ssosmain.c \
 	main/ssoswindows.c \

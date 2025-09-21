@@ -15,12 +15,11 @@ typedef struct {
     uint32_t cpu_idle_time;
 } SsPerformanceSample;
 
-// Performance monitoring configuration
-#define SS_PERF_MAX_SAMPLES 100
-#define SS_PERF_SAMPLE_INTERVAL 1000
+// Performance monitoring configuration - using centralized config
+#include "ss_config.h"
 
 typedef struct {
-    SsPerformanceSample samples[SS_PERF_MAX_SAMPLES];
+    SsPerformanceSample samples[SS_CONFIG_PERF_MAX_SAMPLES];
     uint32_t current_sample;
     uint32_t sample_count;
     uint32_t last_sample_time;

@@ -18,7 +18,7 @@ static SsTimingMetric ss_timing_metrics[SS_PERF_MAX_METRICS];
 // Initialize performance monitoring
 void ss_perf_init(void) {
     // Clear all performance data
-    for (int i = 0; i < SS_PERF_MAX_SAMPLES; i++) {
+    for (int i = 0; i < SS_CONFIG_PERF_MAX_SAMPLES; i++) {
         ss_perf_monitor.samples[i].timestamp = 0;
         ss_perf_monitor.samples[i].interrupt_count = 0;
         ss_perf_monitor.samples[i].context_switches = 0;
@@ -38,7 +38,7 @@ void ss_perf_init(void) {
     ss_perf_monitor.system_start_time = ss_timerd_counter;
 
     // Initialize timing metrics
-    for (int i = 0; i < SS_PERF_MAX_METRICS; i++) {
+    for (int i = 0; i < SS_CONFIG_PERF_MAX_METRICS; i++) {
         ss_timing_metrics[i].start_time = 0;
         ss_timing_metrics[i].total_time = 0;
         ss_timing_metrics[i].measurement_count = 0;
@@ -52,7 +52,7 @@ void ss_perf_sample(void) {
     uint32_t current_time = ss_timerd_counter;
 
     // Only sample at configured intervals
-    if (current_time - ss_perf_monitor.last_sample_time < SS_PERF_SAMPLE_INTERVAL) {
+    if (current_time - ss_perf_monitor.last_sample_time < SS_CONFIG_PERF_SAMPLE_INTERVAL) {
         return;
     }
 
@@ -68,8 +68,8 @@ void ss_perf_sample(void) {
     sample->cpu_idle_time = 0; // Would need separate tracking
 
     // Update counters
-    ss_perf_monitor.current_sample = (ss_perf_monitor.current_sample + 1) % SS_PERF_MAX_SAMPLES;
-    if (ss_perf_monitor.sample_count < SS_PERF_MAX_SAMPLES) {
+    ss_perf_monitor.current_sample = (ss_perf_monitor.current_sample + 1) % SS_CONFIG_PERF_MAX_SAMPLES;
+    if (ss_perf_monitor.sample_count < SS_CONFIG_PERF_MAX_SAMPLES) {
         ss_perf_monitor.sample_count++;
     }
     ss_perf_monitor.last_sample_time = current_time;

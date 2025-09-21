@@ -193,6 +193,54 @@ SS_PERF_START_MEASUREMENT(SS_PERF_DRAW_TIME);
     - Priority queues for efficient task management
     - Interrupt batching to reduce overhead
 
+## Configuration Management System
+
+### Runtime Configuration Architecture
+
+**New Feature**: Comprehensive runtime configuration system addressing the "Hard-coded limits" enhancement area.
+
+```
+┌─────────────────────────────────────────────────────────┐
+│               Runtime Configuration                     │
+│  ┌─────────────┬─────────────┬─────────────┬─────────┐  │
+│  │   Tasks     │   Memory    │ Performance │ Layers  │  │
+│  │ • Max tasks │ • Block size│ • Sample    │ • Max   │  │
+│  │ • Priority  │ • Blocks    │   interval  │   layers│  │
+│  │ • Stack size│ • Total mem │ • Max samples│         │  │
+│  └─────────────┴─────────────┴─────────────┴─────────┘  │
+└─────────────────────────────────────────────────────────┘
+```
+
+**Key Features**:
+
+-   **Centralized Configuration**: All limits consolidated in `ss_config.h`/`ss_config.c`
+-   **Runtime Modification**: System limits can be changed during execution
+-   **Validation System**: Comprehensive bounds checking and error reporting
+-   **Backward Compatibility**: Existing code continues to work unchanged
+-   **Performance Monitoring Integration**: Configurable sampling intervals and buffer sizes
+
+**Configuration Functions**:
+
+```c
+// Initialize with default values
+SsConfigResult ss_config_init(void);
+
+// Set specific limits with validation
+SsConfigResult ss_config_set_task_limits(uint16_t max_tasks, uint16_t max_priority);
+SsConfigResult ss_config_set_memory_limits(uint32_t block_size, uint32_t blocks);
+SsConfigResult ss_config_set_performance_limits(uint32_t interval, uint32_t samples);
+
+// Validate current configuration
+SsConfigResult ss_config_validate(void);
+```
+
+**Benefits**:
+
+-   ✅ **Flexibility**: System can be tuned for different workloads
+-   ✅ **Testing**: Limits can be adjusted for test scenarios
+-   ✅ **Maintainability**: Single location for all configuration values
+-   ✅ **Safety**: Comprehensive validation prevents invalid configurations
+
 ## Code Quality Assessment
 
 ### Strengths
@@ -202,12 +250,12 @@ SS_PERF_START_MEASUREMENT(SS_PERF_DRAW_TIME);
 -   ✅ **Hardware Optimization**: Direct hardware access with efficient abstractions
 -   ✅ **Modular Design**: Clean separation of concerns across subsystems
 -   ✅ **Cross-Platform Build**: Dual-target compilation for development efficiency
+-   ✅ **Configuration Management**: Comprehensive runtime configuration system
 
 ### Areas for Enhancement
 
 -   ⚠️ **Documentation**: Some complex algorithms could benefit from more inline documentation
 -   ⚠️ **Testing**: Limited unit test coverage for critical kernel functions
--   ⚠️ **Resource Limits**: Hard-coded limits could be made configurable
 
 ## Technical Innovation
 
