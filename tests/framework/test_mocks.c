@@ -553,7 +553,12 @@ void enable_interrupts(void) {
 }
 
 // Mock timer counter (needed by ss_errors.c and ss_perf.c)
-const volatile uint32_t ss_timerd_counter = 0;
+volatile uint32_t ss_timerd_counter = 0;
+
+// Test helper to advance timer counter
+void advance_timer_counter(uint32_t ticks) {
+    ss_timerd_counter += ticks;
+}
 
 // Mock main application function
 void ssosmain(void) {

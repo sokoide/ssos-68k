@@ -46,6 +46,7 @@ int main() {
     extern void run_scheduler_tests(void);
     extern void run_layer_tests(void);
     extern void run_error_tests(void);
+    extern void run_performance_tests(void);
 
     // Run all test suites
     printf("Running Memory Tests...\n");
@@ -59,6 +60,9 @@ int main() {
 
     printf("\nRunning Error Tests...\n");
     run_error_tests();
+
+    printf("\nRunning Performance Tests...\n");
+    run_performance_tests();
 
     test_framework_report();
     return test_framework_exit_code();

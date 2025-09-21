@@ -70,7 +70,8 @@ native:
 	gcc -I$(SSOS_ROOT)/os/kernel -I$(SSOS_ROOT)/os/window -I$(SSOS_ROOT)/os/main -I$(SSOS_ROOT)/os/util -Iframework \
 	    -O2 -g -DLOCAL_MODE -DTESTING -DNATIVE_TEST \
 	    framework/test_runner.c framework/test_mocks.c \
-	    unit/test_memory.c unit/test_scheduler.c unit/test_layers.c unit/test_errors.c \
+	    unit/test_memory.c unit/test_scheduler.c unit/test_layers.c unit/test_errors.c unit/test_performance.c \
+	    $(SSOS_ROOT)/os/kernel/ss_perf.c \
 	    -o test_runner_native -lm
 	@echo "Running native tests..."
 	./test_runner_native
