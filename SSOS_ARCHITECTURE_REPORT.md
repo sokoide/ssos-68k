@@ -1,6 +1,6 @@
 # SSOS-68K Architecture Analysis Report
 
-*Generated using Serena MCP semantic analysis*
+_Generated using Serena MCP semantic analysis_
 
 ## Executive Summary
 
@@ -52,11 +52,13 @@ SSOS-68K is a sophisticated microkernel operating system designed for the Motoro
 **Location**: `ssos/os/kernel/task_manager.c`
 
 **Key Components**:
-- **TCB Table**: Task Control Block management for up to `MAX_TASKS` processes
-- **Scheduler**: Priority-based preemptive scheduling with ready/wait queues
-- **Context Switching**: Timer-driven context switches every `CONTEXT_SWITCH_INTERVAL`
+
+-   **TCB Table**: Task Control Block management for up to `MAX_TASKS` processes
+-   **Scheduler**: Priority-based preemptive scheduling with ready/wait queues
+-   **Context Switching**: Timer-driven context switches every `CONTEXT_SWITCH_INTERVAL`
 
 **Implementation Highlights**:
+
 ```c
 // Task creation with validation and stack allocation
 uint16_t ss_create_task(const TaskInfo* ti)
@@ -66,16 +68,18 @@ uint16_t ss_create_task(const TaskInfo* ti)
 ```
 
 **Strengths**:
-- ✅ Robust parameter validation with comprehensive error handling
-- ✅ Flexible stack management (auto-allocated or user-provided)
-- ✅ Thread-safe operations with interrupt control
-- ✅ Priority-based scheduling system
+
+-   ✅ Robust parameter validation with comprehensive error handling
+-   ✅ Flexible stack management (auto-allocated or user-provided)
+-   ✅ Thread-safe operations with interrupt control
+-   ✅ Priority-based scheduling system
 
 ### 2. Memory Management System
 
 **Location**: `ssos/os/kernel/memory.c`
 
 **Memory Layout**:
+
 ```
 Disk Boot Mode:
 0x000000-0x001FFF: Interrupt vectors & IOCS work (8KiB)
@@ -87,12 +91,14 @@ Disk Boot Mode:
 ```
 
 **Key Features**:
-- **4KB Page Alignment**: Optimized for X68000 memory architecture
-- **Custom Allocator**: Free block management with coalescing
-- **Stack Management**: Dedicated task stack allocation pool
-- **Dual Mode Support**: Separate layouts for OS vs Local mode
+
+-   **4KB Page Alignment**: Optimized for X68000 memory architecture
+-   **Custom Allocator**: Free block management with coalescing
+-   **Stack Management**: Dedicated task stack allocation pool
+-   **Dual Mode Support**: Separate layouts for OS vs Local mode
 
 **Implementation**:
+
 ```c
 // Memory initialization and free block management
 void ss_mem_init()
@@ -105,12 +111,14 @@ uint32_t ss_mem_alloc(uint32_t sz)    // Standard allocation
 **Location**: `ssos/os/window/layer.c`
 
 **Architecture**:
-- **Layered Composition**: Multi-layer window system with z-ordering
-- **Dirty Region Optimization**: Only redraws modified screen areas
-- **V-Sync Synchronization**: Hardware-synchronized frame updates
-- **Performance Monitoring**: Real-time frame timing analysis
+
+-   **Layered Composition**: Multi-layer window system with z-ordering
+-   **Dirty Region Optimization**: Only redraws modified screen areas
+-   **V-Sync Synchronization**: Hardware-synchronized frame updates
+-   **Performance Monitoring**: Real-time frame timing analysis
 
 **Optimization Strategy**:
+
 ```c
 // Major optimization: dirty-only rendering
 ss_layer_draw_dirty_only();
@@ -123,16 +131,18 @@ SS_PERF_START_MEASUREMENT(SS_PERF_DRAW_TIME);
 ### Dual Compilation Targets
 
 **1. OS Mode** (`make`):
-- Generates bootable disk image (`ssos.xdf`)
-- Full hardware initialization
-- Custom boot loader integration
-- Direct hardware access
+
+-   Generates bootable disk image (`ssos.xdf`)
+-   Full hardware initialization
+-   Custom boot loader integration
+-   Direct hardware access
 
 **2. Local Mode** (`make local`):
-- Human68K executable (`local.x`)
-- Bypasses boot loader
-- Conditional compilation with `LOCAL_MODE`
-- Faster development iteration
+
+-   Human68K executable (`local.x`)
+-   Bypasses boot loader
+-   Conditional compilation with `LOCAL_MODE`
+-   Faster development iteration
 
 ### Build Process Flow
 
@@ -145,56 +155,64 @@ SS_PERF_START_MEASUREMENT(SS_PERF_DRAW_TIME);
 ```
 
 **Toolchain**:
-- **Compiler**: m68k-xelf-gcc cross-compiler
-- **Assembler**: m68k-xelf-as with Motorola syntax
-- **Libraries**: X68000 IOCS (`-lx68kiocs`)
-- **Post-processing**: elf2x68k.py for X68000 executable format
+
+-   **Compiler**: m68k-xelf-gcc cross-compiler
+-   **Assembler**: m68k-xelf-as with Motorola syntax
+-   **Libraries**: X68000 IOCS (`-lx68kiocs`)
+-   **Post-processing**: elf2x68k.py for X68000 executable format
 
 ## Performance Engineering
 
 ### Measurement System
+
 **Location**: `ssos/os/kernel/ss_perf.c`
 
 **Metrics Tracked**:
-- Frame rendering time
-- Layer update performance
-- Drawing operation timing
-- V-sync synchronization accuracy
+
+-   Frame rendering time
+-   Layer update performance
+-   Drawing operation timing
+-   V-sync synchronization accuracy
 
 ### Optimization Strategies
 
 1. **Rendering Optimization**:
-   - Dirty region tracking instead of full-screen updates
-   - Hardware V-sync synchronization
-   - Layer-based composition
+
+    - Dirty region tracking instead of full-screen updates
+    - Hardware V-sync synchronization
+    - Layer-based composition
 
 2. **Memory Optimization**:
-   - 4KB-aligned allocations for optimal hardware performance
-   - Custom allocator reducing fragmentation
-   - Stack pool management for tasks
+
+    - 4KB-aligned allocations for optimal hardware performance
+    - Custom allocator reducing fragmentation
+    - Stack pool management for tasks
 
 3. **Task Scheduling**:
-   - Timer-based preemptive scheduling
-   - Priority queues for efficient task management
-   - Interrupt batching to reduce overhead
+    - Timer-based preemptive scheduling
+    - Priority queues for efficient task management
+    - Interrupt batching to reduce overhead
 
 ## Code Quality Assessment
 
 ### Strengths
-- ✅ **Robust Error Handling**: Comprehensive validation with structured error reporting
-- ✅ **Performance Focus**: Built-in measurement and optimization systems
-- ✅ **Hardware Optimization**: Direct hardware access with efficient abstractions
-- ✅ **Modular Design**: Clean separation of concerns across subsystems
-- ✅ **Cross-Platform Build**: Dual-target compilation for development efficiency
+
+-   ✅ **Robust Error Handling**: Comprehensive validation with structured error reporting
+-   ✅ **Performance Focus**: Built-in measurement and optimization systems
+-   ✅ **Hardware Optimization**: Direct hardware access with efficient abstractions
+-   ✅ **Modular Design**: Clean separation of concerns across subsystems
+-   ✅ **Cross-Platform Build**: Dual-target compilation for development efficiency
 
 ### Areas for Enhancement
-- ⚠️ **Documentation**: Some complex algorithms could benefit from more inline documentation
-- ⚠️ **Testing**: Limited unit test coverage for critical kernel functions
-- ⚠️ **Resource Limits**: Hard-coded limits could be made configurable
+
+-   ⚠️ **Documentation**: Some complex algorithms could benefit from more inline documentation
+-   ⚠️ **Testing**: Limited unit test coverage for critical kernel functions
+-   ⚠️ **Resource Limits**: Hard-coded limits could be made configurable
 
 ## Technical Innovation
 
 ### Advanced Features
+
 1. **Preemptive Multitasking**: Full preemptive scheduler on 68000 architecture
 2. **Hardware Integration**: Direct X68000 hardware control with abstractions
 3. **Performance Monitoring**: Real-time performance measurement system
@@ -208,5 +226,6 @@ SSOS-68K demonstrates sophisticated embedded operating system design with modern
 The dual-compilation approach (OS/Local modes) provides an excellent development workflow, while the comprehensive performance monitoring system enables data-driven optimization decisions.
 
 ---
-*Analysis performed using Serena MCP semantic code analysis tools*
-*Report generated: 2025-09-21*
+
+_Analysis performed using Serena MCP semantic code analysis tools_
+_Report generated: 2025-09-21_
