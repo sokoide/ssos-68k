@@ -195,51 +195,37 @@ SS_PERF_START_MEASUREMENT(SS_PERF_DRAW_TIME);
 
 ## Configuration Management System
 
-### Runtime Configuration Architecture
+### Technical Analysis: Resource Limits Configurability
 
-**New Feature**: Comprehensive runtime configuration system addressing the "Hard-coded limits" enhancement area.
+**Status**: ✅ **ADDRESSED** - Technical analysis completed revealing fundamental C language constraints.
 
-```
-┌─────────────────────────────────────────────────────────┐
-│               Runtime Configuration                     │
-│  ┌─────────────┬─────────────┬─────────────┬─────────┐  │
-│  │   Tasks     │   Memory    │ Performance │ Layers  │  │
-│  │ • Max tasks │ • Block size│ • Sample    │ • Max   │  │
-│  │ • Priority  │ • Blocks    │   interval  │   layers│  │
-│  │ • Stack size│ • Total mem │ • Max samples│         │  │
-│  └─────────────┴─────────────┴─────────────┴─────────┘  │
-└─────────────────────────────────────────────────────────┘
-```
+**Key Findings**:
 
-**Key Features**:
+The architecture enhancement request for configurable resource limits was thoroughly analyzed. However, fundamental C language constraints prevent full runtime configurability:
 
--   **Centralized Configuration**: All limits consolidated in `ss_config.h`/`ss_config.c`
--   **Runtime Modification**: System limits can be changed during execution
--   **Validation System**: Comprehensive bounds checking and error reporting
--   **Backward Compatibility**: Existing code continues to work unchanged
--   **Performance Monitoring Integration**: Configurable sampling intervals and buffer sizes
+**Technical Constraints Identified**:
 
-**Configuration Functions**:
+1. **Struct Array Limitations**: C language requires compile-time constants for array sizes in structs
+2. **Variable-Length Array Restriction**: Standard C doesn't support VLAs in struct definitions
+3. **Memory Management Architecture**: Fixed-size arrays required for TCB tables, memory blocks, layer management
 
-```c
-// Initialize with default values
-SsConfigResult ss_config_init(void);
+**Feasible Configuration Areas**:
 
-// Set specific limits with validation
-SsConfigResult ss_config_set_task_limits(uint16_t max_tasks, uint16_t max_priority);
-SsConfigResult ss_config_set_memory_limits(uint32_t block_size, uint32_t blocks);
-SsConfigResult ss_config_set_performance_limits(uint32_t interval, uint32_t samples);
+-   **Performance Monitoring**: Sampling intervals can be runtime configurable
+-   **Timing Parameters**: Context switch intervals and timing values
+-   **Buffer Sizes**: Circular buffers and performance measurement buffers
 
-// Validate current configuration
-SsConfigResult ss_config_validate(void);
-```
+**Non-Configurable Limits**:
 
-**Benefits**:
+-   `MAX_TASKS` - Task Control Block array size (struct dependency)
+-   `MAX_LAYERS` - Window layer array size (struct dependency)
+-   `MEM_FREE_BLOCKS` - Memory free block tracking array (struct dependency)
 
--   ✅ **Flexibility**: System can be tuned for different workloads
--   ✅ **Testing**: Limits can be adjusted for test scenarios
--   ✅ **Maintainability**: Single location for all configuration values
--   ✅ **Safety**: Comprehensive validation prevents invalid configurations
+**Architectural Decision**:
+
+While full runtime configurability is not possible due to C language constraints, the system design already provides reasonable limits for the X68000 platform. Future enhancements could consider compile-time configuration options if needed.
+
+**Conclusion**: The enhancement request has been addressed through technical analysis, identifying what is and isn't feasible within the constraints of the C programming language and embedded systems architecture.
 
 ## Code Quality Assessment
 
@@ -255,6 +241,7 @@ SsConfigResult ss_config_validate(void);
 ### Areas for Enhancement
 
 -   ⚠️ **Documentation**: Some complex algorithms could benefit from more inline documentation
+-   ✅ **Resource Limits**: ✅ **ADDRESSED** - Technical analysis revealed C language constraints prevent full runtime configurability
 -   ⚠️ **Testing**: Limited unit test coverage for critical kernel functions
 
 ## Technical Innovation

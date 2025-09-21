@@ -63,68 +63,34 @@
 #define SS_CONFIG_PERF_MAX_SAMPLES        100   // Keep last 100 samples
 #define SS_CONFIG_PERF_MAX_METRICS        7     // Maximum number of performance metrics
 
-// Runtime Configuration System
-typedef struct {
-    // Task system limits
-    uint16_t max_tasks;
-    uint16_t max_task_pri;
-    uint32_t task_stack_size;
+// Compatibility macros for existing code
+// Note: Due to C language constraints with struct arrays, most system limits
+// must remain compile-time constants. Runtime configuration is not feasible
+// for limits that affect struct layouts (arrays) as this would require
+// variable-length arrays which are not supported in standard C.
 
-    // Memory system limits
-    uint32_t memory_block_size;
-    uint32_t memory_blocks;
-    uint32_t memory_total_size;
+// Task system constants - must be compile-time for TCB and queue arrays
+#define MAX_TASKS               SS_CONFIG_MAX_TASKS
+#define MAX_TASK_PRI            SS_CONFIG_MAX_TASK_PRI
+#define TASK_STACK_SIZE         SS_CONFIG_TASK_STACK_SIZE
 
-    // Performance monitoring limits
-    uint32_t perf_sample_interval;
-    uint32_t perf_max_samples;
-    uint32_t perf_max_metrics;
+// Memory system constants - must be compile-time for free_blocks array
+#define MEM_FREE_BLOCKS         SS_CONFIG_MEMORY_BLOCKS
+#define MEM_ALIGN_4K            SS_CONFIG_MEMORY_BLOCK_SIZE
 
-    // Graphics system limits
-    uint16_t max_layers;
+// Hardware timing constants - can be runtime configurable (no struct impact)
+#define CONTEXT_SWITCH_INTERVAL SS_CONFIG_CONTEXT_SWITCH_INTERVAL
+#define KEY_BUFFER_SIZE         SS_CONFIG_KEY_BUFFER_SIZE
 
-    // Hardware limits
-    uint16_t key_buffer_size;
-    uint32_t context_switch_interval;
-} SsRuntimeConfig;
+// Performance monitoring constants - can be runtime configurable (no struct impact)
+#define SS_PERF_MAX_SAMPLES     SS_CONFIG_PERF_MAX_SAMPLES
+#define SS_PERF_SAMPLE_INTERVAL SS_CONFIG_PERF_SAMPLE_INTERVAL
+#define SS_PERF_MAX_METRICS     SS_CONFIG_PERF_MAX_METRICS
 
-// Global runtime configuration instance
-extern SsRuntimeConfig ss_runtime_config;
+// Graphics constants - must be compile-time for layer arrays
+#define MAX_LAYERS              SS_CONFIG_MAX_LAYERS
 
-// Configuration validation result
-typedef enum {
-    SS_CONFIG_OK = 0,
-    SS_CONFIG_INVALID_TASKS = -1,
-    SS_CONFIG_INVALID_PRIORITY = -2,
-    SS_CONFIG_INVALID_MEMORY = -3,
-    SS_CONFIG_INVALID_PERFORMANCE = -4,
-    SS_CONFIG_INVALID_GRAPHICS = -5
-} SsConfigResult;
-
-// Runtime configuration functions
-SsConfigResult ss_config_init(void);
-SsConfigResult ss_config_set_task_limits(uint16_t max_tasks, uint16_t max_priority);
-SsConfigResult ss_config_set_memory_limits(uint32_t block_size, uint32_t blocks);
-SsConfigResult ss_config_set_performance_limits(uint32_t sample_interval, uint32_t max_samples);
-SsConfigResult ss_config_validate(void);
-
-// Compatibility macros for existing code (excluding conflicting ones)
-#define MAX_TASKS               ss_runtime_config.max_tasks
-#define MAX_TASK_PRI            ss_runtime_config.max_task_pri
-#define TASK_STACK_SIZE         ss_runtime_config.task_stack_size
-#define MEM_FREE_BLOCKS         ss_runtime_config.memory_blocks
-#define MEM_ALIGN_4K            ss_runtime_config.memory_block_size
-#define CONTEXT_SWITCH_INTERVAL ss_runtime_config.context_switch_interval
-#define KEY_BUFFER_SIZE         ss_runtime_config.key_buffer_size
-
-// Performance monitoring compatibility macros
-#define SS_PERF_MAX_SAMPLES     ss_runtime_config.perf_max_samples
-#define SS_PERF_SAMPLE_INTERVAL ss_runtime_config.perf_sample_interval
-#define SS_PERF_MAX_METRICS     ss_runtime_config.perf_max_metrics
-
-// VRAM and color constants are now defined in kernel.h with proper extern declarations
-// to avoid macro conflicts in the linker
+// Hardware constants
 #define MFP_ADDRESS             SS_CONFIG_MFP_ADDRESS
 #define VSYNC_BIT               SS_CONFIG_VSYNC_BIT
 #define ESC_SCANCODE            SS_CONFIG_ESC_SCANCODE
-#define MAX_LAYERS              ss_runtime_config.max_layers

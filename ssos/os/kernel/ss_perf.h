@@ -54,7 +54,7 @@ uint32_t ss_perf_get_uptime(void);
 #define SS_PERF_DIRTY_RECT      4
 #define SS_PERF_FULL_LAYER      5
 #define SS_PERF_MEMORY_OP       6
-#define SS_PERF_MAX_METRICS     7
+// SS_PERF_MAX_METRICS defined in ss_config.h as an alias
 
 // Timing measurement functions
 void ss_perf_start_measurement(uint32_t metric_id);

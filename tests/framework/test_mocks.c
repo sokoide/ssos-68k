@@ -21,10 +21,8 @@ typedef struct {
     void* stack;
 } TaskInfo;
 
-// Task manager constants and types
-#define MAX_TASKS 16
-#define MAX_TASK_PRI 16
-#define TASK_STACK_SIZE 4096
+// Task manager constants and types - use centralized configuration
+#include "ss_config.h"  // Include first to get configuration constants
 
 // Error codes (matching kernel definitions)
 #define E_OK (0)
