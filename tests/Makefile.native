@@ -1,0 +1,52 @@
+# Native testing Makefile - runs on host system without cross-compiler
+# Usage: make -f Makefile.native
+
+TARGET = test_runner_native
+CC = gcc
+
+# Include paths
+SSOS_ROOT = ../ssos
+INCLUDE = -I$(SSOS_ROOT)/os/kernel \
+          -I$(SSOS_ROOT)/os/window \
+          -I$(SSOS_ROOT)/os/main \
+          -I$(SSOS_ROOT)/os/util \
+          -Iframework
+
+# Compiler flags for native testing
+CFLAGS = $(INCLUDE) -O2 -g -DLOCAL_MODE -DTESTING -DNATIVE_TEST
+LDFLAGS = -lm
+
+# Test framework sources
+FRAMEWORK_SRCS = framework/test_runner.c \
+                 framework/test_mocks.c
+
+# Unit test sources
+UNIT_TEST_SRCS = unit/test_memory.c \
+                 unit/test_scheduler.c \
+                 unit/test_layers.c \
+                 unit/test_errors.c
+
+# All sources for native testing
+ALL_SRCS = $(FRAMEWORK_SRCS) $(UNIT_TEST_SRCS)
+
+.PHONY: all test clean
+
+all: $(TARGET)
+
+test: $(TARGET)
+	@echo "Running SSOS Native Unit Tests..."
+	@echo "=================================="
+	./$(TARGET)
+
+$(TARGET): $(ALL_SRCS)
+	$(CC) $(CFLAGS) $^ -o $(TARGET) $(LDFLAGS)
+
+clean:
+	rm -f $(TARGET)
+
+help:
+	@echo "Native SSOS Test Framework"
+	@echo "=========================="
+	@echo "make -f Makefile.native        - Build native tests"
+	@echo "make -f Makefile.native test   - Build and run tests"
+	@echo "make -f Makefile.native clean  - Clean build artifacts"

@@ -66,27 +66,27 @@ void ss_get_bss(void** base, uint32_t* sz) {
 
 /**
  * @brief Initialize the SSOS memory management system
- * 
+ *
  * Initializes the memory manager by resetting the free block count and
  * adding the entire SSOS memory region to the free block list.
  * This should be called once during system initialization.
  */
-void ss_mem_init() {
+__attribute__((weak)) void ss_mem_init() {
     ss_mem_mgr.num_free_blocks = 0;
     ss_mem_free((uint32_t)ss_ssos_memory_base, ss_ssos_memory_size);
 }
 
 /**
  * @brief Free a memory block and add it back to the free pool
- * 
+ *
  * Frees a previously allocated memory block and attempts to coalesce it
  * with adjacent free blocks to reduce fragmentation. The memory manager
  * maintains free blocks in address order for efficient coalescing.
- * 
+ *
  * @param addr Address of memory block to free
  * @param sz Size of memory block in bytes
  * @return 0 on success, -1 if free block table is full
- * 
+ *
  * Implementation uses coalescing algorithm to merge adjacent free blocks:
  * 1. Find insertion point in sorted free block list
  * 2. Attempt to merge with previous block
@@ -95,32 +95,32 @@ void ss_mem_init() {
  */
 int ss_mem_free(uint32_t addr, uint32_t sz) {
     int i;
-    
+
     // Input validation
     if (addr == 0 || sz == 0) {
         return -1;
     }
-    
+
     // Find insertion point in sorted free block list
     for (i = 0; i < ss_mem_mgr.num_free_blocks; i++) {
         if (ss_mem_mgr.free_blocks[i].addr > addr)
             break;
     }
-    
+
     // Try to coalesce with previous block
     if (i > 0) {
         // check if the block to be freed can be combined with the previous block
         if (ss_mem_mgr.free_blocks[i - 1].addr + ss_mem_mgr.free_blocks[i - 1].sz == addr) {
             // can combine
             ss_mem_mgr.free_blocks[i - 1].sz += sz;
-            
+
             // check the next free block for triple merge
             if (i < ss_mem_mgr.num_free_blocks &&
                 ss_mem_mgr.free_blocks[i].addr == addr + sz) {
                 // combine it with the next block (triple merge)
                 ss_mem_mgr.free_blocks[i - 1].sz += ss_mem_mgr.free_blocks[i].sz;
                 ss_mem_mgr.num_free_blocks--;
-                
+
                 // Shift remaining blocks down
                 for (; i < ss_mem_mgr.num_free_blocks; i++) {
                     ss_mem_mgr.free_blocks[i] = ss_mem_mgr.free_blocks[i + 1];
@@ -129,7 +129,7 @@ int ss_mem_free(uint32_t addr, uint32_t sz) {
             return 0;
         }
     }
-    
+
     // Try to coalesce with next block
     if (i < ss_mem_mgr.num_free_blocks) {
         if (ss_mem_mgr.free_blocks[i].addr == addr + sz) {
@@ -139,14 +139,14 @@ int ss_mem_free(uint32_t addr, uint32_t sz) {
             return 0;
         }
     }
-    
+
     // Cannot coalesce - insert new free block
     if (ss_mem_mgr.num_free_blocks < MEM_FREE_BLOCKS) {
         // Shift blocks to make room for insertion
         for (int j = ss_mem_mgr.num_free_blocks; j > i; j--) {
             ss_mem_mgr.free_blocks[j] = ss_mem_mgr.free_blocks[j - 1];
         }
-        
+
         // Insert new free block
         ss_mem_mgr.free_blocks[i].addr = addr;
         ss_mem_mgr.free_blocks[i].sz = sz;
@@ -169,20 +169,20 @@ int ss_mem_free4k(uint32_t addr, uint32_t sz) {
 
 /**
  * @brief Allocate memory from the SSOS memory pool
- * 
+ *
  * Allocates a block of memory of the specified size from the free memory pool.
  * Uses first-fit allocation strategy with performance optimizations for
  * cache-friendly searching and efficient block management.
- * 
+ *
  * @param sz Size in bytes to allocate
  * @return Address of allocated memory block, or 0 if allocation failed
- * 
+ *
  * Performance optimizations:
  * - Cache-friendly search starting with smallest blocks
  * - 32-bit aligned memory operations for better performance
  * - Optimized free block list management
  */
-uint32_t ss_mem_alloc(uint32_t sz) {
+__attribute__((weak)) uint32_t ss_mem_alloc(uint32_t sz) {
     int i;
     uint32_t addr;
 
@@ -226,16 +226,16 @@ uint32_t ss_mem_alloc(uint32_t sz) {
     return 0;
 }
 
-uint32_t ss_mem_alloc4k(uint32_t sz) {
+__attribute__((weak)) uint32_t ss_mem_alloc4k(uint32_t sz) {
     if (sz == 0)
         return 0;
     sz = (sz + MEM_ALIGN_4K - 1) & MEM_ALIGN_4K_MASK;
     return ss_mem_alloc(sz);
 }
 
-uint32_t ss_mem_total_bytes() { return ss_ssos_memory_size; }
+__attribute__((weak)) uint32_t ss_mem_total_bytes() { return ss_ssos_memory_size; }
 
-uint32_t ss_mem_free_bytes() {
+__attribute__((weak)) uint32_t ss_mem_free_bytes() {
     uint32_t ret = 0;
     for (int i = 0; i < ss_mem_mgr.num_free_blocks; i++) {
         ret += ss_mem_mgr.free_blocks[i].sz;
