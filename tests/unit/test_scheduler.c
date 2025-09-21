@@ -88,14 +88,14 @@ TEST(scheduler_task_creation_invalid_params) {
     };
 
     int task_result = ss_create_task(&invalid_task);
-    ASSERT_EQ(task_result, -17);  // Should return -17 for invalid parameters
+    ASSERT_EQ(task_result, 0xFFEF);  // Should return 0xFFEF (65519 = -17 as uint16_t) for invalid priority
 
     // Test NULL task address
     invalid_task.task_pri = 5;  // Fix priority
     invalid_task.task = NULL;  // Invalid address
 
     task_result = ss_create_task(&invalid_task);
-    ASSERT_EQ(task_result, -17);  // Should return -17 for NULL task
+    ASSERT_EQ(task_result, 0xFFEF);  // Should return 0xFFEF (65519 = -17 as uint16_t) for NULL task
 }
 
 // Test task resource exhaustion

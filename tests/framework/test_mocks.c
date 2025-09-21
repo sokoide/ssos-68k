@@ -34,15 +34,41 @@ typedef struct {
 
 typedef enum { TS_NONEXIST = 1, TS_READY = 2, TS_WAIT = 4, TS_DORMANT = 8 } TaskState;
 
+typedef enum {
+    TWFCT_NON = 0,
+    TWFCT_DLY = 1, // waited by sk_dly_tsk
+    TWFCT_SLP = 2, // waited by sk_slp_tsk
+    TWFCT_FLG = 3, // waited by sk_wait_flag
+    TWFCT_SEM = 4, // waited by sk_wait_semaphore
+} TaskWaitFactor;
+
 typedef struct _task_control_block {
     void* context;
+
+    // task queue pointers
     struct _task_control_block* prev;
     struct _task_control_block* next;
+
+    // task info
     TaskState state;
     FUNCPTR task_addr;
     int8_t task_pri;
     uint8_t* stack_addr;
     int32_t stack_size;
+    int32_t wakeup_count;
+
+    // wait info
+    TaskWaitFactor wait_factor;
+    uint32_t wait_time;
+    uint32_t* wait_err;
+
+    // event flag wait info
+    uint32_t wait_pattern;
+    uint32_t wait_mode;
+    uint32_t* p_flag_pattern; // flag pattern when wait canceled
+
+    // semaphore wait info
+    int32_t wait_semaphore;
 } TaskControlBlock;
 
 TaskControlBlock tcb_table[MAX_TASKS];  // Will be initialized by reset_scheduler_state()
@@ -140,6 +166,21 @@ void reset_scheduler_state(void) {
         memset(&tcb_table[i], 0, sizeof(TaskControlBlock));
         // Then set the proper non-existent state
         tcb_table[i].state = TS_NONEXIST;
+        tcb_table[i].task_pri = 0;
+        tcb_table[i].next = NULL;
+        tcb_table[i].prev = NULL;
+        tcb_table[i].task_addr = NULL;
+        tcb_table[i].stack_addr = NULL;
+        tcb_table[i].stack_size = 0;
+        tcb_table[i].context = NULL;
+        tcb_table[i].wait_factor = TWFCT_NON;
+        tcb_table[i].wakeup_count = 0;
+        tcb_table[i].wait_time = 0;
+        tcb_table[i].wait_err = NULL;
+        tcb_table[i].wait_pattern = 0;
+        tcb_table[i].wait_mode = 0;
+        tcb_table[i].p_flag_pattern = NULL;
+        tcb_table[i].wait_semaphore = 0;
     }
 
     // Initialize ready queues
@@ -152,9 +193,9 @@ void reset_scheduler_state(void) {
 }
 
 // Mock task functions
-int ss_create_task(const TaskInfo* info) {
-    if (!info || !info->task || info->task_pri >= MAX_TASK_PRI) {
-        return E_PAR;  // Invalid parameters
+uint16_t ss_create_task(const TaskInfo* info) {
+    if (!info || !info->task || info->task_pri < 1 || info->task_pri > MAX_TASK_PRI) {
+        return E_PAR;  // Invalid parameters - matches kernel behavior
     }
 
     // Find available task slot
@@ -229,14 +270,14 @@ int ss_start_task(int task_id, int arg) {
 
     // Call scheduler to update scheduled_task
     ss_scheduler();
-    
+
     return 0;  // Success
 }
 
 // Mock scheduler function - selects highest priority ready task
 void ss_scheduler(void) {
     scheduled_task = NULL;
-    
+
     // Find highest priority ready task (lowest index = highest priority)
     for (int i = 0; i < MAX_TASK_PRI; i++) {
         if (ready_queue[i] != NULL) {
