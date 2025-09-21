@@ -4,9 +4,9 @@
 # Default target for cross-compilation
 TARGET = test_runner
 
-# Check if cross-compilation toolchain is available (only for non-native targets)
-ifeq ($(MAKECMDGOALS),native)
-  # Native target doesn't need cross-compilation toolchain
+# Check if cross-compilation toolchain is available (skip check for native builds)
+ifeq ($(filter-out native clean debug help,$(MAKECMDGOALS)),)
+  # Native-only targets don't need cross-compilation toolchain
 else
   ifeq ($(shell which m68k-xelf-gcc),)
     $(error Cross-compilation toolchain not found. Please run: . ~/.elf2x68k)
