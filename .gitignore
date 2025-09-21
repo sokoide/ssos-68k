@@ -9,6 +9,7 @@ empty.xdf
 compile_commands.json
 .cache
 makedisk/makedisk
+test_runner_native
 
 # ---- OS / Editor ----
 .DS_Store
@@ -37,6 +38,7 @@ Thumbs.db
 *.lai
 *.out
 *.exe
+*.dSYM/
 
 # ---- C/C++ specific ----
 *.d
@@ -60,4 +62,3 @@ compile_commands.json
 *.log
 *.tmp
 *.bak
-
