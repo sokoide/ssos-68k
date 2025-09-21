@@ -20,46 +20,13 @@ void dummy_task_func(int16_t stacd, void* exinf) {
     (void)exinf; // Suppress unused parameter warning
 }
 
-// Test helper: Reset scheduler state
-static void reset_scheduler_state(void) {
-    printf("DEBUG: Resetting scheduler state\n");
-
-    // Clear all TCBs
-    int reset_count = 0;
-    printf("DEBUG: TCB states before reset:");
+// Test helper: Debug function to show TCB states
+static void debug_tcb_states(const char* label) {
+    printf("DEBUG: %s - TCB states:", label);
     for (int i = 0; i < 5; i++) {  // Check first 5
         printf(" %d", tcb_table[i].state);
     }
     printf("\n");
-
-    for (int i = 0; i < MAX_TASKS; i++) {
-        tcb_table[i].state = TS_NONEXIST;
-        tcb_table[i].task_pri = 0;
-        tcb_table[i].next = NULL;
-        tcb_table[i].prev = NULL;
-        tcb_table[i].task_addr = NULL;
-        tcb_table[i].stack_addr = NULL;
-        reset_count++;
-    }
-    printf("DEBUG: Reset %d TCB entries to TS_NONEXIST\n", reset_count);
-
-    printf("DEBUG: TCB states after reset:");
-    for (int i = 0; i < 5; i++) {  // Check first 5
-        printf(" %d", tcb_table[i].state);
-    }
-    printf("\n");
-
-    // Clear ready queues
-    for (int i = 0; i < MAX_TASK_PRI; i++) {
-        ready_queue[i] = NULL;
-    }
-
-    scheduled_task = NULL;
-    main_task_id = 0;
-
-    // Reset error state
-    ss_error_count = 0;
-    ss_last_error.error_code = SS_SUCCESS;
 }
 
 // Test helper: Create a test task with specific priority
@@ -89,7 +56,9 @@ static int create_test_task(int priority) {
 
 // Test basic task creation
 TEST(scheduler_task_creation_basic) {
+    debug_tcb_states("Before reset");
     reset_scheduler_state();
+    debug_tcb_states("After reset");
     ss_mem_init();  // Initialize memory for stack allocation
 
     int task_id = create_test_task(5);
@@ -158,7 +127,11 @@ TEST(scheduler_priority_based_scheduling) {
 
     // Create tasks with different priorities
     int high_pri_task = create_test_task(1);    // High priority (lower number)
+    printf("DEBUG: After creating high pri task, state = %d\n", tcb_table[high_pri_task - 1].state);
+
     int med_pri_task = create_test_task(5);     // Medium priority
+    int temp_state = tcb_table[med_pri_task - 1].state;  // Read state without printf
+    printf("DEBUG: After creating med pri task, state = %d\n", temp_state);
 
     printf("DEBUG: Created tasks - high: %d, med: %d\n", high_pri_task, med_pri_task);
 

@@ -12,6 +12,9 @@ extern int total_tests;
 extern int failed_tests;
 extern const char* current_test_name;
 
+// Mock functions
+void reset_scheduler_state(void);
+
 // Test definition macros
 #define TEST(name) \
     void test_##name(void); \

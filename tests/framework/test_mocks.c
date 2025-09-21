@@ -11,7 +11,7 @@
 
 // Mock SSOS types for native testing
 typedef void (*FUNCPTR)(int16_t, void*);
-typedef enum { TA_HLNG = 1 } TaskAttr;
+typedef enum { TA_HLNG = 1, TA_USERBUF = 0x20 } TaskAttr;
 typedef struct {
     void* exinf; // extended info, not used
     uint16_t task_attr;
@@ -63,6 +63,7 @@ MemoryManager ss_mem_mgr = {0};
 
 // Forward declaration
 uint32_t ss_mem_free_bytes(void);
+void ss_scheduler(void);
 
 // Mock memory functions - Return real host memory addresses for native testing
 uint32_t ss_mem_alloc(uint32_t size) {
@@ -133,13 +134,12 @@ uint32_t ss_mem_free_bytes(void) {
 
 // Initialize scheduler state
 void reset_scheduler_state(void) {
-    // Initialize TCB table
+    // Initialize TCB table - make sure ALL slots are properly reset
     for (int i = 0; i < MAX_TASKS; i++) {
+        // Zero out entire structure first to ensure clean state
+        memset(&tcb_table[i], 0, sizeof(TaskControlBlock));
+        // Then set the proper non-existent state
         tcb_table[i].state = TS_NONEXIST;
-        tcb_table[i].task_pri = 0;
-        tcb_table[i].next = NULL;
-        tcb_table[i].prev = NULL;
-        tcb_table[i].context = NULL;
     }
 
     // Initialize ready queues
@@ -166,12 +166,31 @@ int ss_create_task(const TaskInfo* info) {
             tcb_table[i].task_pri = info->task_pri;
             tcb_table[i].stack_size = info->stack_size;
 
-            // Allocate stack memory
-            uint32_t stack_addr = ss_mem_alloc(info->stack_size);
-            if (stack_addr == 0) {
-                return E_LIMIT;  // Stack allocation failed (out of memory)
+            // Handle stack allocation based on task attributes
+            if (info->task_attr & TA_USERBUF) {
+                // User provided their own stack buffer
+                tcb_table[i].stack_addr = (uint8_t*)info->stack;
+                if (tcb_table[i].stack_addr == NULL) {
+                    // Reset the slot if user didn't provide stack
+                    tcb_table[i].state = TS_NONEXIST;
+                    tcb_table[i].task_addr = NULL;
+                    tcb_table[i].task_pri = 0;
+                    tcb_table[i].stack_size = 0;
+                    return E_PAR;  // Invalid parameters
+                }
+            } else {
+                // System allocates stack memory
+                uint32_t stack_addr = ss_mem_alloc(info->stack_size);
+                if (stack_addr == 0) {
+                    // Reset the slot if memory allocation fails
+                    tcb_table[i].state = TS_NONEXIST;
+                    tcb_table[i].task_addr = NULL;
+                    tcb_table[i].task_pri = 0;
+                    tcb_table[i].stack_size = 0;
+                    return E_LIMIT;  // Stack allocation failed (out of memory)
+                }
+                tcb_table[i].stack_addr = (uint8_t*)(uintptr_t)stack_addr;
             }
-            tcb_table[i].stack_addr = (uint8_t*)(uintptr_t)stack_addr;
             tcb_table[i].next = NULL;
             tcb_table[i].prev = NULL;
             tcb_table[i].context = NULL;
@@ -198,16 +217,33 @@ int ss_start_task(int task_id, int arg) {
 
     // Add to ready queue based on priority
     int pri = tcb->task_pri;
-    if (pri >= 0 && pri < MAX_TASK_PRI) {
-        // Add to front of priority queue (higher priority tasks first)
-        // Priority 1 (highest) goes to ready_queue[1]
-        // Priority 2 goes to ready_queue[2]
+    if (pri >= 1 && pri <= MAX_TASK_PRI) {
+        // Convert 1-based priority to 0-based array index
+        // Priority 1 (highest) goes to ready_queue[0]
+        // Priority 2 goes to ready_queue[1]
         // etc.
-        tcb->next = ready_queue[pri];
-        ready_queue[pri] = tcb;
+        int queue_index = pri - 1;
+        tcb->next = ready_queue[queue_index];
+        ready_queue[queue_index] = tcb;
     }
 
+    // Call scheduler to update scheduled_task
+    ss_scheduler();
+    
     return 0;  // Success
+}
+
+// Mock scheduler function - selects highest priority ready task
+void ss_scheduler(void) {
+    scheduled_task = NULL;
+    
+    // Find highest priority ready task (lowest index = highest priority)
+    for (int i = 0; i < MAX_TASK_PRI; i++) {
+        if (ready_queue[i] != NULL) {
+            scheduled_task = ready_queue[i];
+            break;
+        }
+    }
 }
 
 // Task manager structures already defined above
@@ -343,7 +379,13 @@ void ss_layer_mark_clean(Layer* layer) {
 }
 
 void ss_layer_invalidate(Layer* layer) {
-    // Mock implementation
+    if (layer) {
+        layer->needs_redraw = 1;
+        layer->dirty_x = 0;
+        layer->dirty_y = 0;
+        layer->dirty_w = layer->w;
+        layer->dirty_h = layer->h;
+    }
 }
 
 // Mock error handling system
