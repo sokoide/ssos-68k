@@ -14,7 +14,7 @@ all: $(DISK)
 	cp $(DISK) ~/tmp
 
 $(DISK): $(SUBDIRS)
-	../makedisk/makedisk ./boot/BOOT.X.bin ./os/SSOS.X.bin $(DISK)
+	../tools/makedisk/makedisk ./boot/BOOT.X.bin ./os/SSOS.X.bin $(DISK)
 
 clean:
 	cd local; make clean
