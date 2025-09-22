@@ -35,20 +35,22 @@ See https://github.com/sokoide/x68k-cross-compile for detailed setup instruction
 . ~/.elf2x68k
 ```
 
-### Full OS Build (Bootable Disk)
+### Build All Targets
 ```bash
 cd ssos
-make clean  # Required when switching between targets
+make clean  # Clean all build artifacts
 make
-# Outputs: ~/tmp/ssos.xdf (bootable disk image)
+# Outputs:
+#   ~/tmp/ssos.xdf (bootable disk image)
+#   ~/tmp/standalone.x (Human68K executable)
 ```
 
-### Standalone Development Build
+### Individual Target Builds
 ```bash
-cd ssos
-make clean  # Required when switching between targets
-make standalone
-# Outputs: ~/tmp/standalone.x (executable for Human68K)
+# Build specific components
+make -C standalone  # Standalone executable only
+make -C os         # OS components only
+make -C boot       # Boot loader only
 ```
 
 ### Other Commands
@@ -94,8 +96,8 @@ The project uses recursive Makefiles. The top-level build process:
 
 ### Typical Development Cycle
 1. Make changes to kernel or application code
-2. For quick testing: `cd ssos && make clean && make standalone` → test `~/tmp/standalone.x` on Human68K
-3. For full system testing: `cd ssos && make clean && make` → boot from `~/tmp/ssos.xdf`
+2. Build and test: `cd ssos && make` → creates both `~/tmp/ssos.xdf` and `~/tmp/standalone.x`
+3. For quick iteration: `make -C standalone` → builds only standalone executable
 4. Use `make compiledb` to generate LSP support for code editors
 
 ### Key Architectural Patterns

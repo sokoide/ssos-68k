@@ -55,30 +55,34 @@ export PATH=$XELF_BASE/bin:$PATH
 . ~/.elf2x68k
 ```
 
-### OS Build (Bootable Disk)
+### Build All Targets
 
-Build the complete bootable operating system:
+Build both the bootable OS disk image and standalone executable:
 
 ```bash
 cd ssos
-make clean  # Required when switching between targets
+make clean  # Clean all build artifacts
 make
-# Output: ~/tmp/ssos.xdf (bootable disk image)
+# Outputs:
+#   ~/tmp/ssos.xdf (bootable disk image)
+#   ~/tmp/standalone.x (Human68K executable)
 ```
 
 Boot from the generated XDF file in your X68000 emulator:
 
 ![ssos](./docs/ssos.png)
 
-### Standalone Development Build
+### Individual Target Builds
 
-For faster development iteration, build as a standalone Human68K executable:
+For development iteration, you can build individual targets:
 
 ```bash
-cd ssos
-make clean  # Required when switching between targets
-make standalone
-# Output: ~/tmp/standalone.x (executable for Human68K)
+# Build just the standalone executable
+make -C standalone
+
+# Build just the OS components
+make -C os
+make -C boot
 ```
 
 ### Additional Build Commands
