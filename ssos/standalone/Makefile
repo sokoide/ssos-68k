@@ -19,8 +19,14 @@ SRCS=	main.c \
 ASRCS= \
 		../os/kernel/interrupts.s
 
+# Separate object directory to avoid conflicts with OS build
+OBJDIR=obj
 HEADERS=$(wildcard *.h)
-OBJS=$(ASRCS:.s=.o) $(SRCS:.c=.o)
+
+# Generate object paths with obj/ prefix
+SRC_OBJS=$(patsubst %.c,$(OBJDIR)/%.o,$(notdir $(SRCS)))
+ASM_OBJS=$(patsubst %.s,$(OBJDIR)/%.o,$(notdir $(ASRCS)))
+OBJS=$(ASM_OBJS) $(SRC_OBJS)
 
 CC=m68k-xelf-gcc
 AS=m68k-xelf-as
@@ -49,14 +55,36 @@ install: $(TARGET)
 $(TARGET): $(OBJS)
 	$(CC) $^ -o $(TARGET) -Xlinker "$(LDFLAGS)"
 
-%.o: %.s
-	$(AS) --strip-local-absolute $^ -o $@ $(ASFLAGS)
+# Create object directory
+$(OBJDIR):
+	@mkdir -p $(OBJDIR)
 
-%.o: %.c
+# Assembly file compilation with directory creation
+$(OBJDIR)/%.o: ../os/kernel/%.s | $(OBJDIR)
+	$(AS) --strip-local-absolute $< -o $@ $(ASFLAGS)
+
+# Local C file compilation
+$(OBJDIR)/%.o: %.c | $(OBJDIR)
+	$(CC) -Wa,-adhlns="$@.lst" -c $< -o $@ $(CCFLAGS)
+
+# OS kernel C files
+$(OBJDIR)/%.o: ../os/kernel/%.c | $(OBJDIR)
+	$(CC) -Wa,-adhlns="$@.lst" -c $< -o $@ $(CCFLAGS)
+
+# OS main C files
+$(OBJDIR)/%.o: ../os/main/%.c | $(OBJDIR)
+	$(CC) -Wa,-adhlns="$@.lst" -c $< -o $@ $(CCFLAGS)
+
+# OS window C files
+$(OBJDIR)/%.o: ../os/window/%.c | $(OBJDIR)
+	$(CC) -Wa,-adhlns="$@.lst" -c $< -o $@ $(CCFLAGS)
+
+# OS util C files
+$(OBJDIR)/%.o: ../os/util/%.c | $(OBJDIR)
 	$(CC) -Wa,-adhlns="$@.lst" -c $< -o $@ $(CCFLAGS)
 
 clean:
-	rm -rf $(TARGET) *.elf *.o *.lst ../os/kernel/*.o ../os/util/*.o
+	rm -rf $(TARGET) $(OBJDIR) *.elf *.o *.lst
 
 dump: $(TARGET)
 	$(OBJDUMP) -D $(TARGET).elf
