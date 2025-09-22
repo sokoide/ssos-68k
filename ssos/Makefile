@@ -2,7 +2,7 @@ TOPTARGETS := all clean
 SUBDIRS := boot os
 DISK := ssos.xdf
 
-.PHONY: $(TARGETS) $(SUBDIRS) all compiledb local
+.PHONY: $(TARGETS) $(SUBDIRS) all compiledb standalone
 .default: all
 
 $(TOPTARGETS): $(SUBDIRS)
@@ -17,11 +17,11 @@ $(DISK): $(SUBDIRS)
 	../tools/makedisk/makedisk ./boot/BOOT.X.bin ./os/SSOS.X.bin $(DISK)
 
 clean:
-	cd local; make clean
+	cd standalone; make clean
 	rm -rf $(DISK)
 
 compiledb: $(SRCS)
 	compiledb make
 
-local:
-	cd local; make
+standalone:
+	cd standalone; make

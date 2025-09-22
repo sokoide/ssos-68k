@@ -3,7 +3,7 @@ ifeq ($(shell which m68k-xelf-gcc),)
 $(error Cross-compilation toolchain not found. Please run: . ~/.elf2x68k)
 endif
 
-TARGET=	local.x
+TARGET=	standalone.x
 SRCS=	main.c \
 		../os/kernel/kernel.c \
 		../os/kernel/dma.c \
@@ -39,6 +39,9 @@ ASFLAGS=-m68000 --register-prefix-optional --traditional-format -I../include -I.
 
 .PHONY:
 	clean install dump compiledb
+
+all: $(TARGET)
+	cp $(TARGET) $(HOME)/tmp
 
 install: $(TARGET)
 	cp $(TARGET) $(HOME)/tmp

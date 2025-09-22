@@ -70,15 +70,15 @@ Boot from the generated XDF file in your X68000 emulator:
 
 ![ssos](./docs/ssos.png)
 
-### Local Development Build
+### Standalone Development Build
 
-For faster development iteration, build as a Human68K executable:
+For faster development iteration, build as a standalone Human68K executable:
 
 ```bash
 cd ssos
 make clean  # Required when switching between targets
-make local
-# Output: ~/tmp/local.x (executable for Human68K)
+make standalone
+# Output: ~/tmp/standalone.x (executable for Human68K)
 ```
 
 ### Additional Build Commands
@@ -198,7 +198,7 @@ SSOS is architected as a modular operating system with clear separation of conce
 ### Development Mode Support
 
 -   **OS Mode**: Full bootable system with custom boot loader
--   **LOCAL Mode**: Compiles as Human68K executable for faster development cycles
+-   **Standalone Mode**: Compiles as Human68K executable for faster development cycles
 -   **Native Testing**: Host-system compilation for rapid test execution
 
 ## Project Status

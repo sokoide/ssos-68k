@@ -43,12 +43,12 @@ make
 # Outputs: ~/tmp/ssos.xdf (bootable disk image)
 ```
 
-### Local Development Build
+### Standalone Development Build
 ```bash
 cd ssos
-make clean  # Required when switching between targets  
-make local
-# Outputs: ~/tmp/local.x (executable for Human68K)
+make clean  # Required when switching between targets
+make standalone
+# Outputs: ~/tmp/standalone.x (executable for Human68K)
 ```
 
 ### Other Commands
@@ -77,7 +77,7 @@ The OS consists of three main components:
 - `ssos/os/kernel/task_manager.c`: Preemptive multitasking with timer-based context switching
 - `ssos/os/main/ssosmain.c`: Main application initialization, graphics mode setup, and memory allocation
 - `ssos/os/window/layer.c`: Window layering and graphics system
-- `ssos/local/main.c`: Local mode entry point that bypasses boot loader
+- `ssos/standalone/main.c`: Standalone mode entry point that bypasses boot loader
 
 ### Build System
 The project uses recursive Makefiles. The top-level build process:
@@ -86,15 +86,15 @@ The project uses recursive Makefiles. The top-level build process:
 3. Compiles OS kernel to `SSOS.X.bin`  
 4. Uses `makedisk` to create bootable `.xdf` disk image
 
-### Local vs OS Mode
-- **OS Mode**: Full bootable system with custom boot loader. Requires `make clean` when switching from local mode.
-- **Local Mode**: Compiles as Human68K executable (`.x` file) with `LOCAL_MODE` define. Shares most kernel code but skips low-level hardware initialization. Faster for development iteration.
+### Standalone vs OS Mode
+- **OS Mode**: Full bootable system with custom boot loader. Requires `make clean` when switching from standalone mode.
+- **Standalone Mode**: Compiles as Human68K executable (`.x` file) with `LOCAL_MODE` define. Shares most kernel code but skips low-level hardware initialization. Faster for development iteration.
 
 ## Development Workflow
 
 ### Typical Development Cycle
 1. Make changes to kernel or application code
-2. For quick testing: `cd ssos && make clean && make local` → test `~/tmp/local.x` on Human68K
+2. For quick testing: `cd ssos && make clean && make standalone` → test `~/tmp/standalone.x` on Human68K
 3. For full system testing: `cd ssos && make clean && make` → boot from `~/tmp/ssos.xdf`
 4. Use `make compiledb` to generate LSP support for code editors
 
