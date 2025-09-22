@@ -174,6 +174,7 @@ SSOS is architected as a modular operating system with clear separation of conce
 
 ### Core Components
 
+-   **Build Tools** (`tools/`): Utilities for creating bootable disk images
 -   **Boot Loader** (`ssos/boot/`): Assembly-based boot sector for system initialization
 -   **OS Kernel** (`ssos/os/kernel/`): Core OS functionality with advanced features:
     -   **Memory Management**: Custom allocator with 4KB alignment and coalescing

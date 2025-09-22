@@ -8,7 +8,7 @@ tags
 empty.xdf
 compile_commands.json
 .cache
-makedisk/makedisk
+tools/makedisk/makedisk
 test_runner_native
 
 # ---- OS / Editor ----

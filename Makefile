@@ -1,5 +1,5 @@
 TOPTARGETS := all clean
-SUBDIRS := makedisk ssos
+SUBDIRS := tools/makedisk ssos
 DISK := ssos.xdf
 
 .PHONY: $(TARGETS) $(SUBDIRS) all
