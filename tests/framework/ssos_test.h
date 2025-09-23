@@ -128,6 +128,18 @@ void reset_scheduler_state(void);
         } \
     } while(0)
 
+#define ASSERT_STREQ(str1, str2) \
+    do { \
+        if (strcmp(str1, str2) != 0) { \
+            printf("FAIL\n"); \
+            printf("  %s:%d: String mismatch\n", __FILE__, __LINE__); \
+            printf("    Expected: \"%s\"\n", str2); \
+            printf("    Got:      \"%s\"\n", str1); \
+            failed_tests++; \
+            return; \
+        } \
+    } while(0)
+
 // Test utilities
 void test_framework_init(void);
 void test_framework_report(void);

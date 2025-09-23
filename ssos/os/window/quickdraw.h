@@ -3,11 +3,15 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-// 768x512, 16 colour (4bpp) front buffer layout
+// 768x512, 16 colour (4bpp) front buffer layout - Standard 8-bit VRAM
+// Match Layer system's VRAM usage (2 bytes per 2 pixels, 16-bit VRAM with 4 unused bits)
 #define QD_SCREEN_WIDTH   768
 #define QD_SCREEN_HEIGHT  512
-#define QD_BYTES_PER_ROW  (QD_SCREEN_WIDTH / 2)
-#define QD_VRAM_BYTES     ((QD_SCREEN_WIDTH * QD_SCREEN_HEIGHT) / 2)
+#define QD_PIXELS_PER_ROW (QD_SCREEN_WIDTH)
+// X68000 16-color VRAM: 2 bytes per pixel (16-bit), with 1024-pixel VRAM stride
+#define QD_BYTES_PER_ROW  (QD_SCREEN_WIDTH * 2)    // 1536 bytes per row (display data)
+#define QD_VRAM_STRIDE    (SS_CONFIG_VRAM_WIDTH * 2) // 2048 bytes per VRAM row (full stride)
+#define QD_VRAM_BYTES     (QD_BYTES_PER_ROW * QD_SCREEN_HEIGHT)
 
 enum {
     QD_COLOR_BLACK = 0,

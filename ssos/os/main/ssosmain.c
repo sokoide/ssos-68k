@@ -2,12 +2,12 @@
 #include "kernel.h"
 #include "layer.h"
 #include "memory.h"
+#include "task_manager.h"
 #include "printf.h"
 #include "quickdraw.h"
 #include "quickdraw_monitor.h"
 #include "quickdraw_shell.h"
 #include "ssoswindows.h"
-#include "task_manager.h"
 #include "vram.h"
 #include "ss_perf.h"
 #include <stdbool.h>
@@ -22,7 +22,8 @@ enum {
 };
 
 #ifndef SS_BOOT_UI_MODE
-#define SS_BOOT_UI_MODE SS_UI_MODE_LAYER
+// #define SS_BOOT_UI_MODE SS_UI_MODE_LAYER
+#define SS_BOOT_UI_MODE SS_UI_MODE_QUICKDRAW
 #endif
 
 static bool ss_escape_requested(void) {
@@ -37,7 +38,21 @@ static bool ss_escape_requested(void) {
 
 static void ss_run_quickdraw_mode(void) {
     qd_init();
-    qd_set_vram_buffer((uint8_t*)vram_start);
+    // Use VRAM offset for 768x512 mode - try different offsets to fix 1/4 screen issue
+    // Option 1: Start from beginning of VRAM (original)
+    // uint8_t* vram_screen = (uint8_t*)vram_start;
+
+    // Option 2: Center the display area (196,608 bytes offset)
+    // uint8_t* vram_screen = (uint8_t*)vram_start + (512 * 384);
+
+    // Option 3: Try quarter offset (might fix the 1/4 screen issue)
+    // uint8_t* vram_screen = (uint8_t*)vram_start + (256 * 384); // 98,304 bytes offset
+
+    // Use standard VRAM layout matching Layer system (no offset needed)
+    // X68000 16-color VRAM: 2 pixels per byte, but we use 1-byte per pixel for compatibility
+    uint8_t* vram_screen = (uint8_t*)vram_start + 0; // Start from beginning
+
+    qd_set_vram_buffer(vram_screen);
     ss_init_palette();
 
     ss_layer_compat_select(SS_LAYER_BACKEND_QUICKDRAW);

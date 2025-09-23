@@ -494,9 +494,20 @@ uint32_t local_text_size = 0x10000;              // 64KB text section
 uint32_t local_data_size = 0x1000;               // 4KB data section
 uint32_t local_bss_size = 0x1000;                // 4KB BSS section
 
-// VRAM base address for testing
-uint8_t test_vram_buffer[SS_CONFIG_VRAM_WIDTH * SS_CONFIG_VRAM_HEIGHT];
+// VRAM base address for testing (X68000: 1024x1024 VRAM, 16-color mode, 2 bytes per pixel)
+uint8_t test_vram_buffer[SS_CONFIG_VRAM_WIDTH * SS_CONFIG_VRAM_HEIGHT * 2];
 uint8_t* vram_start = test_vram_buffer;
+
+// Keep VRAMWIDTH definition for compatibility with existing code
+const int VRAMWIDTH = SS_CONFIG_VRAM_WIDTH;
+const int VRAMHEIGHT = SS_CONFIG_VRAM_HEIGHT;
+
+// Provide kernel constant definitions for native tests
+const int VRAMWIDTH = SS_CONFIG_VRAM_WIDTH;
+const int VRAMHEIGHT = SS_CONFIG_VRAM_HEIGHT;
+const int WIDTH = SS_CONFIG_DISPLAY_WIDTH;
+const int HEIGHT = SS_CONFIG_DISPLAY_HEIGHT;
+const uint16_t color_fg = SS_CONFIG_COLOR_FOREGROUND;
 
 // DMA transfer info structure (mock)
 typedef struct {
@@ -568,3 +579,17 @@ void ssosmain(void) {
     // Mock implementation for testing - do nothing
     // This prevents the task manager from trying to start the real main app
 }
+
+// Provide kernel constant definitions for native tests
+const int VRAMWIDTH = SS_CONFIG_VRAM_WIDTH;
+const int VRAMHEIGHT = SS_CONFIG_VRAM_HEIGHT;
+const int WIDTH = SS_CONFIG_DISPLAY_WIDTH;
+const int HEIGHT = SS_CONFIG_DISPLAY_HEIGHT;
+const uint16_t color_fg = SS_CONFIG_COLOR_FOREGROUND;
+
+// Layer compatibility constants
+#define SS_LAYER_BACKEND_QUICKDRAW 1
+#define SS_LAYER_BACKEND_LEGACY 0
+#define SS_LAYER_COMPAT_DESKTOP 0
+#define SS_LAYER_COMPAT_MONITOR 1
+#define SS_LAYER_COMPAT_TASKBAR 2

@@ -11,7 +11,7 @@
 
 extern uint32_t global_counter;
 
-static uint8_t test_vram[768 * 512 * 2] __attribute__((aligned(4))); // X68000 VRAM: 2 bytes per pixel
+static uint8_t test_vram[768 * 512] __attribute__((aligned(4))); // Match Layer system: 768x512
 static uint8_t test_font[256 * 16];
 
 static void reset_vram_buffer(void) {
@@ -162,7 +162,7 @@ TEST(quickdraw_boundary_validation) {
 TEST(quickdraw_vram_operations) {
     setup_quickdraw_system();
 
-    uint8_t custom_vram[768 * 512 * 2] = {0}; // X68000 VRAM: 2 bytes per pixel
+    uint8_t custom_vram[768 * 512] = {0}; // Match Layer system: 768x512
     qd_set_vram_buffer(custom_vram);
     qd_clear_screen(QD_COLOR_BLACK);
 

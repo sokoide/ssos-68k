@@ -149,9 +149,23 @@ void qd_clear_screen(uint8_t color) {
         return;
     }
 
-    uint8_t packed = (color & 0x0F);
-    packed |= (packed << 4);
-    memset(s_qd_state.vram_base, packed, QD_VRAM_BYTES);
+    uint8_t value = color & 0x0F;
+    uint8_t* vram = s_qd_state.vram_base;
+
+    // X68000 16-color VRAM: 2 bytes per pixel (16-bit per pixel)
+    // VRAM structure: 768 display pixels + 256 ignored pixels = 1024 pixels per row
+    // Clear only the display pixels (0-767), ignore the rest (768-1023)
+    for (int y = 0; y < QD_SCREEN_HEIGHT; y++) {
+        for (int x = 0; x < QD_SCREEN_WIDTH; x++) {
+            size_t offset = (size_t)y * (SS_CONFIG_VRAM_WIDTH * 2) + (size_t)x * 2;
+            if (offset < (SS_CONFIG_VRAM_WIDTH * SS_CONFIG_VRAM_HEIGHT * 2)) {
+                uint8_t* pixel_bytes = vram + offset;
+                // Write 16-bit pixel value (little-endian)
+                pixel_bytes[0] = 0x00;  // Low byte (always 0 for 4-bit colors)
+                pixel_bytes[1] = value;  // High byte (4-bit color value)
+            }
+        }
+    }
 }
 
 void qd_clear_rect(int16_t x, int16_t y, uint16_t width, uint16_t height, uint8_t color) {
@@ -167,19 +181,18 @@ void qd_set_pixel(int16_t x, int16_t y, uint8_t color) {
         return;
     }
 
-    size_t offset = (size_t)y * QD_BYTES_PER_ROW + ((size_t)x >> 1);
-    if (offset >= QD_VRAM_BYTES) {
+    // X68000 16-color VRAM: 2 bytes per pixel (16-bit per pixel)
+    // VRAM structure: 768 display pixels + 256 ignored pixels = 1024 pixels per row
+    // Match Layer system's VRAM access pattern: vram_start[vy * VRAMWIDTH + vx]
+    size_t offset = (size_t)y * (SS_CONFIG_VRAM_WIDTH * 2) + (size_t)x * 2;
+    if (offset >= (SS_CONFIG_VRAM_WIDTH * SS_CONFIG_VRAM_HEIGHT * 2)) {
         return;
     }
 
-    uint8_t* byte = s_qd_state.vram_base + offset;
-    uint8_t value = color & 0x0F;
-
-    if (x & 1) {
-        *byte = (uint8_t)((*byte & 0x0F) | (value << 4));
-    } else {
-        *byte = (uint8_t)((*byte & 0xF0) | value);
-    }
+    uint8_t* pixel_bytes = s_qd_state.vram_base + offset;
+    // Write 16-bit pixel value (little-endian: low byte first, high byte second)
+    pixel_bytes[0] = 0x00;  // Low byte (always 0 for 4-bit colors)
+    pixel_bytes[1] = color & 0x0F;  // High byte (4-bit color value)
 }
 
 uint8_t qd_get_pixel(int16_t x, int16_t y) {
@@ -191,13 +204,17 @@ uint8_t qd_get_pixel(int16_t x, int16_t y) {
         return 0;
     }
 
-    size_t offset = (size_t)y * QD_BYTES_PER_ROW + ((size_t)x >> 1);
-    if (offset >= QD_VRAM_BYTES) {
+    // X68000 16-color VRAM: 2 bytes per pixel (16-bit per pixel)
+    // VRAM structure: 768 display pixels + 256 ignored pixels = 1024 pixels per row
+    // Match Layer system's VRAM access pattern
+    size_t offset = (size_t)y * (SS_CONFIG_VRAM_WIDTH * 2) + (size_t)x * 2;
+    if (offset >= (SS_CONFIG_VRAM_WIDTH * SS_CONFIG_VRAM_HEIGHT * 2)) {
         return 0;
     }
 
-    uint8_t byte = s_qd_state.vram_base[offset];
-    return (x & 1) ? (uint8_t)((byte >> 4) & 0x0F) : (uint8_t)(byte & 0x0F);
+    uint8_t* pixel_bytes = s_qd_state.vram_base + offset;
+    // Read 16-bit pixel value (little-endian: low byte first, high byte second)
+    return (uint8_t)pixel_bytes[1];  // High byte contains the 4-bit color value
 }
 
 void qd_draw_hline(int16_t x, int16_t y, uint16_t length, uint8_t color) {
