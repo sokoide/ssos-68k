@@ -3,6 +3,8 @@
 #include <string.h>
 
 #include "../../os/window/quickdraw.h"
+#include "../../os/window/quickdraw_monitor.h"
+#include "../../os/kernel/memory.h"
 
 static uint8_t test_vram[QD_VRAM_BYTES] __attribute__((aligned(4)));
 static uint8_t test_font[256 * 16];
@@ -224,6 +226,83 @@ TEST(quickdraw_text_rendering) {
     ASSERT_EQ(qd_get_pixel(47, 56), QD_COLOR_BLACK);
 }
 
+TEST(quickdraw_monitor_initialization_draws_panel) {
+    setup_quickdraw_system();
+
+    ss_ssos_memory_base = (void*)0x00100000;
+    ss_ssos_memory_size = 0x00010000;
+    memset(&ss_mem_mgr, 0, sizeof(ss_mem_mgr));
+
+    qd_monitor_panel_init();
+
+    int16_t header_x = (int16_t)(QD_MONITOR_PANEL_LEFT + 1);
+    int16_t header_y = (int16_t)(QD_MONITOR_PANEL_TOP + 1);
+    ASSERT_EQ(qd_get_pixel(header_x, header_y), QD_MONITOR_HEADER_COLOR);
+
+    int16_t body_x = (int16_t)(QD_MONITOR_PANEL_LEFT + QD_MONITOR_PANEL_TEXT_PADDING_X);
+    int16_t body_y = (int16_t)(QD_MONITOR_PANEL_TOP + QD_MONITOR_PANEL_HEADER_HEIGHT + QD_MONITOR_PANEL_TEXT_TOP_OFFSET);
+    ASSERT_EQ(qd_get_pixel(body_x, body_y), QD_MONITOR_BODY_COLOR);
+
+    ASSERT_EQ(qd_monitor_panel_get_cached_line_count(), 0);
+}
+
+TEST(quickdraw_monitor_tick_updates_and_caches_lines) {
+    setup_quickdraw_system();
+
+    ss_ssos_memory_base = (void*)0x00100000;
+    ss_ssos_memory_size = 0x00020000;
+    memset(&ss_mem_mgr, 0, sizeof(ss_mem_mgr));
+
+    qd_monitor_panel_init();
+
+    ASSERT_TRUE(qd_monitor_panel_tick());
+
+    ASSERT_TRUE(qd_monitor_panel_get_cached_line_count() >= 13);
+
+    const char* header_line = qd_monitor_panel_get_cached_line(0);
+    ASSERT_STREQ("layer id: QuickDraw", header_line);
+
+    const char* timer_line = qd_monitor_panel_get_cached_line(1);
+    ASSERT_STREQ("A: V-DISP counter:         0 (vsync count)", timer_line);
+
+    ASSERT_FALSE(qd_monitor_panel_tick());
+}
+
+TEST(quickdraw_monitor_handles_memory_block_changes) {
+    setup_quickdraw_system();
+
+    ss_ssos_memory_base = (void*)0x00100000;
+    ss_ssos_memory_size = 0x00020000;
+    memset(&ss_mem_mgr, 0, sizeof(ss_mem_mgr));
+
+    qd_monitor_panel_init();
+    ASSERT_TRUE(qd_monitor_panel_tick());
+    uint16_t base_line_count = qd_monitor_panel_get_cached_line_count();
+
+    ss_mem_mgr.num_free_blocks = 2;
+    ss_mem_mgr.free_blocks[0].addr = 0x00200000;
+    ss_mem_mgr.free_blocks[0].sz = 0x00001000;
+    ss_mem_mgr.free_blocks[1].addr = 0x00201000;
+    ss_mem_mgr.free_blocks[1].sz = 0x00000800;
+
+    ASSERT_TRUE(qd_monitor_panel_tick());
+    ASSERT_EQ(qd_monitor_panel_get_cached_line_count(), (uint16_t)(base_line_count + 2));
+
+    if (base_line_count < QD_MONITOR_MAX_LINES) {
+        const char* block_line = qd_monitor_panel_get_cached_line(base_line_count);
+        ASSERT_STREQ("memory mgr: block: 0, addr: 0x200000, sz:4096", block_line);
+    }
+
+    ss_mem_mgr.num_free_blocks = 0;
+    ASSERT_TRUE(qd_monitor_panel_tick());
+    ASSERT_EQ(qd_monitor_panel_get_cached_line_count(), base_line_count);
+
+    if (base_line_count < QD_MONITOR_MAX_LINES) {
+        const char* cleared_line = qd_monitor_panel_get_cached_line(base_line_count);
+        ASSERT_TRUE(cleared_line == NULL || cleared_line[0] == '\0');
+    }
+}
+
 void run_quickdraw_tests(void) {
     RUN_TEST(quickdraw_initialization_basic);
     RUN_TEST(quickdraw_pixel_operations);
@@ -236,4 +315,7 @@ void run_quickdraw_tests(void) {
     RUN_TEST(quickdraw_performance_basic);
     RUN_TEST(quickdraw_line_operations);
     RUN_TEST(quickdraw_text_rendering);
+    RUN_TEST(quickdraw_monitor_initialization_draws_panel);
+    RUN_TEST(quickdraw_monitor_tick_updates_and_caches_lines);
+    RUN_TEST(quickdraw_monitor_handles_memory_block_changes);
 }

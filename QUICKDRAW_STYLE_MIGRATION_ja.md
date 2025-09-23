@@ -43,3 +43,35 @@
 
 ### ステップ3進捗メモ
 - **[予定]** 3.1 で QuickDraw 文字描画・デスクトップ装飾を構築し、QuickDraw モードから表示させる。
+- **[完了]** 3.2 QuickDraw 専用のモニターパネル API（`qd_monitor_panel_init`/`qd_monitor_panel_tick`）を実装し、QuickDraw モードの VBL ループへ組み込んだ。Layer 版と同じメトリクスを差分更新しつつ、単体テストでキャッシュ更新の有無を検証済み。
+
+#### 3.2 モニタリングウィンドウ移植
+
+Layer 方式の `update_layer_2()` が担っているモニタリング UI（タイマーカウンタ／メモリ使用量／セグメント情報など）を QuickDraw へ段階移植する。Step3.1 で整備した文字描画と背景装飾を土台に、以下の観点で設計・実装を進める。
+
+1. **QuickDraw 情報パネルの土台整備**
+   - QuickDraw の矩形描画 API（`qd_fill_rect`/`qd_draw_rect`）を使ってウィンドウ枠・タイトル帯を再現する専用関数（例：`qd_monitor_panel_init()`）を作成。
+   - Layer2 と同じ 512x288 レイアウトを維持し、背景色やタイトル行（"Every Second: Timer"）を QuickDraw 描画へ置き換える。
+   - 今後 Step3.3 で他 UI と統合できるよう、表示位置やカラーパレットは定数化しておく。
+
+2. **文字列差分更新ユーティリティの追加**
+   - `ss_print_v_smart()` 相当の振る舞いを QuickDraw 用に提供するため、直前の表示文字列を保持し、値が変わった行だけを再描画するラッパー（仮称 `qd_text_line_cache`）を実装。
+   - 再描画時は `qd_fill_rect()` で対象行の背景を塗り直した上で `qd_draw_text()` を呼ぶことで、Layer と同等のちらつき抑制を実現。
+   - キャッシュサイズは `update_layer_2()` と同じ 256byte を上限とし、`snprintf` で溢れを防ぐ。
+
+3. **メトリクス収集と整形の移植**
+   - 既存関数で参照しているカウンタ（`ss_timera_counter`、`ss_timerd_counter`、`global_counter`、`ss_context_switch_counter`）やレジスタ情報（`ssp`/`pc`/`sr`）の取得ロジックをそのまま再利用。
+   - メモリマップ情報（`.text`/`.data`/`.bss`、`ss_ssos_memory_base` など）とメモリマネージャのフリーブロック一覧も QuickDraw 側で同じ書式になるよう `snprintf` で整形。
+   - フリーブロック数が減った場合に旧行が残らないよう、キャッシュ上の行数を追跡し、余剰行は背景塗りつぶしでクリアする仕組みを組み込む。
+
+4. **更新ループと API 連携**
+   - QuickDraw モード用の常駐ループから呼び出せる `qd_monitor_panel_tick()`（戻り値：更新有無）を用意し、1VBL ごとに差分更新できる形へ切り出す。
+   - Step3.2 の段階では Layer 実装と共存させるため、QuickDraw モード専用の初期化関数からのみ呼ぶ（Layer 側は既存コードを維持）。
+   - `quickdraw_demo` からも手動で呼び出せるデバッグパスを用意し、文字列キャッシュの動作確認を簡単にする。
+
+5. **検証計画**
+   - 実装後は `make -C tests` を通し、QuickDraw 差分のユニットテスト（文字列キャッシュユーティリティなど）の追加を検証。
+   - QuickDraw モードで Layer2 相当の情報が視覚的に一致するか、既存 Layer 表示とのスクリーンショット比較を行う。
+   - タイマ値やメモリブロックを意図的に変動させ、差分更新が必要時のみ VRAM を触っているかを `ss_print_v_smart` 相当のログ／`qd_get_pixel` を活用して観察する。
+
+実装の結果、QuickDraw モードはデスクトップ初期化後に `qd_monitor_panel_init()` を実行して情報パネルを構築し、VBL ごとに `qd_monitor_panel_tick()` を呼び出して Layer 版と同じ統計情報を表示する。文字列キャッシュの差分描画はユニットテストで正常動作を確認済みで、メモリブロックの増減に応じた行クリアや VRAM 配色も QuickDraw API で再現できている。

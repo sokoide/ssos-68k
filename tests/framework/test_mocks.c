@@ -550,8 +550,13 @@ void enable_interrupts(void) {
     // Mock implementation - do nothing in test environment
 }
 
-// Mock timer counter (needed by ss_errors.c and ss_perf.c)
+// Mock timer counters (needed by ss_errors.c and ss_perf.c)
+volatile uint32_t ss_timera_counter = 0;
+volatile uint32_t ss_timerb_counter = 0;
+volatile uint32_t ss_timerc_counter = 0;
 volatile uint32_t ss_timerd_counter = 0;
+volatile uint32_t ss_context_switch_counter = 0;
+volatile uint32_t ss_save_data_base = 0;
 
 // Test helper to advance timer counter
 void advance_timer_counter(uint32_t ticks) {

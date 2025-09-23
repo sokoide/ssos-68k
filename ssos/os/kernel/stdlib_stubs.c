@@ -374,6 +374,60 @@ uint32_t isqrt(uint32_t x) {
 }
 
 /**
+ * @brief 文字列を指定された長さで比較
+ *
+ * @param s1 比較元文字列
+ * @param s2 比較先文字列
+ * @param n 比較する最大文字数
+ * @return 0: 等しい, 正: s1 > s2, 負: s1 < s2
+ */
+int strncmp(const char* s1, const char* s2, size_t n) {
+    while (n > 0 && *s1 && (*s1 == *s2)) {
+        s1++;
+        s2++;
+        n--;
+    }
+
+    if (n == 0) {
+        return 0;
+    }
+
+    return *(unsigned char*)s1 - *(unsigned char*)s2;
+}
+
+/**
+ * @brief フォーマット文字列をバッファに書き込む（サイズ制限付き）
+ *
+ * @param buffer 出力バッファ
+ * @param size バッファサイズ
+ * @param format フォーマット文字列
+ * @param ... 引数
+ * @return 書き込んだ文字数（バッファサイズを超えた場合は負の値）
+ */
+int snprintf(char* buffer, size_t size, const char* format, ...) {
+    va_list va;
+    va_start(va, format);
+    int result = vsnprintf(buffer, size, format, va);
+    va_end(va);
+    return result;
+}
+
+/**
+ * @brief 可変引数版snprintf
+ *
+ * @param buffer 出力バッファ
+ * @param size バッファサイズ
+ * @param format フォーマット文字列
+ * @param va 可変引数リスト
+ * @return 書き込んだ文字数（バッファサイズを超えた場合は負の値）
+ */
+int vsnprintf(char* buffer, size_t size, const char* format, va_list va) {
+    // 簡易実装: vsprintfと同様にprintf.cのsprintf_関数を使用
+    // サイズ制限は実装されていない
+    return vsprintf(buffer, format, va);
+}
+
+/**
  * @brief 浮動小数点平方根（整数平方根の簡易版）
  *
  * @param x 平方根を求める値

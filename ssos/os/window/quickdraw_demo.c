@@ -6,6 +6,7 @@
 #include "quickdraw_demo.h"
 
 #include "quickdraw.h"
+#include "quickdraw_monitor.h"
 #include "quickdraw_shell.h"
 
 static void draw_demo_palette(int16_t x, int16_t y, uint16_t swatch_width,
@@ -43,4 +44,7 @@ void run_quickdraw_demo(void) {
                        QD_COLOR_RED);
 
     draw_demo_palette(48, 280, 20, 24);
+
+    qd_monitor_panel_init();
+    qd_monitor_panel_tick();
 }

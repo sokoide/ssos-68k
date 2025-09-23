@@ -4,7 +4,8 @@
 #include "memory.h"
 #include "printf.h"
 #include "quickdraw.h"
-#include "quickdraw_demo.h"
+#include "quickdraw_monitor.h"
+#include "quickdraw_shell.h"
 #include "ssoswindows.h"
 #include "task_manager.h"
 #include "vram.h"
@@ -39,10 +40,13 @@ static void ss_run_quickdraw_mode(void) {
     qd_set_vram_buffer((uint8_t*)vram_start);
     ss_init_palette();
 
-    run_quickdraw_demo();
+    qd_shell_draw_desktop_chrome();
+    qd_monitor_panel_init();
+    qd_monitor_panel_tick();
 
     while (true) {
         ss_wait_for_vsync();
+        qd_monitor_panel_tick();
         if (ss_escape_requested()) {
 #ifdef LOCAL_MODE
             break;

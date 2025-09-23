@@ -19,6 +19,7 @@ main/ssoswindows.c \
 window/layer.c \
 window/quickdraw.c \
 window/quickdraw_shell.c \
+window/quickdraw_monitor.c \
 window/quickdraw_demo.c \
 util/printf.c
 ASRCS= \
