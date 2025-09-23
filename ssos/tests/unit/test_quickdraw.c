@@ -8,6 +8,9 @@
 static uint8_t test_vram[QD_VRAM_BYTES] __attribute__((aligned(4)));
 static uint8_t test_font[256 * 16];
 
+static uint8_t test_vram[QD_VRAM_BYTES] __attribute__((aligned(4)));
+static uint8_t test_font[256 * 16];
+
 static void reset_vram_buffer(void) {
     memset(test_vram, 0, sizeof(test_vram));
 }
