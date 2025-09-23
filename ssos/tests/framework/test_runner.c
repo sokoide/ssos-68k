@@ -42,23 +42,11 @@ int main() {
     test_framework_init();
 
     // Test function declarations - these will be defined in unit test files
-    extern void run_memory_tests(void);
-    extern void run_scheduler_tests(void);
-    extern void run_layer_tests(void);
-    extern void run_error_tests(void);
+    extern void run_quickdraw_tests(void);
 
     // Run all test suites
-    printf("Running Memory Tests...\n");
-    run_memory_tests();
-
-    printf("\nRunning Scheduler Tests...\n");
-    run_scheduler_tests();
-
-    printf("\nRunning Layer Tests...\n");
-    run_layer_tests();
-
-    printf("\nRunning Error Tests...\n");
-    run_error_tests();
+    printf("Running QuickDraw Tests...\n");
+    run_quickdraw_tests();
 
     test_framework_report();
     return test_framework_exit_code();

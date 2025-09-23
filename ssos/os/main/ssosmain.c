@@ -7,6 +7,7 @@
 #include "task_manager.h"
 #include "vram.h"
 #include "ss_perf.h"
+#include "quickdraw.h"  // QuickDrawシステム追加
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -46,6 +47,11 @@ void ssosmain() {
 
     main_task.stack = (uint8_t*)(ss_save_data_base * TASK_STACK_SIZE - 1);
     main_task_id = ss_create_task(&main_task);
+
+    // QuickDrawシステムのデモ（テスト用）
+    // QuickDrawシステムを初期化して簡単なデモを実行
+    extern void run_quickdraw_demo(void);
+    run_quickdraw_demo();
 
 #if 0
     ss_start_task(main_task_id, 0);

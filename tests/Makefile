@@ -17,13 +17,13 @@ CC = m68k-xelf-gcc
 AS = m68k-xelf-as
 
 # Include paths
-SSOS_ROOT = ../ssos
+SSOS_ROOT = ..
 INCLUDE = -I$(XELF_BASE)/m68k-elf/include \
-          -I$(SSOS_ROOT)/os/kernel \
-          -I$(SSOS_ROOT)/os/window \
-          -I$(SSOS_ROOT)/os/main \
-          -I$(SSOS_ROOT)/os/util \
-          -Iframework
+           -I$(SSOS_ROOT)/ssos/os/kernel \
+           -I$(SSOS_ROOT)/ssos/os/window \
+           -I$(SSOS_ROOT)/ssos/os/main \
+           -I$(SSOS_ROOT)/ssos/os/util \
+           -I$(SSOS_ROOT)/ssos/tests/framework
 
 # Library paths
 LIB = -L$(XELF_BASE)/m68k-elf/lib
@@ -33,24 +33,20 @@ CFLAGS = $(INCLUDE) -O2 -g -DLOCAL_MODE -DTESTING
 LDFLAGS = $(LIB) -lx68kiocs -nostdlib -lc -lm -lgcc
 
 # Test framework sources
-FRAMEWORK_SRCS = framework/test_runner.c \
-                 framework/test_mocks.c
+FRAMEWORK_SRCS = $(SSOS_ROOT)/ssos/tests/framework/test_runner.c \
+                  $(SSOS_ROOT)/ssos/tests/framework/test_mocks.c
 
 # Unit test sources
-UNIT_TEST_SRCS = unit/test_memory.c \
-                  unit/test_scheduler.c \
-                  unit/test_layers.c \
-                  unit/test_errors.c \
-                  unit/test_kernel.c
+UNIT_TEST_SRCS = $(SSOS_ROOT)/ssos/tests/unit/test_quickdraw.c
 
 # SSOS kernel sources (subset for testing)
-KERNEL_SRCS = $(SSOS_ROOT)/os/kernel/memory.c \
-               $(SSOS_ROOT)/os/kernel/task_manager.c \
-               $(SSOS_ROOT)/os/kernel/ss_errors.c \
-               $(SSOS_ROOT)/os/kernel/ss_perf.c \
-               $(SSOS_ROOT)/os/kernel/ss_config.c \
-               $(SSOS_ROOT)/os/window/layer.c \
-               $(SSOS_ROOT)/os/util/printf.c
+KERNEL_SRCS = $(SSOS_ROOT)/ssos/os/kernel/memory.c \
+                $(SSOS_ROOT)/ssos/os/kernel/task_manager.c \
+                $(SSOS_ROOT)/ssos/os/kernel/ss_errors.c \
+                $(SSOS_ROOT)/ssos/os/kernel/ss_perf.c \
+                $(SSOS_ROOT)/ssos/os/window/layer.c \
+                $(SSOS_ROOT)/ssos/os/window/quickdraw.c \
+                $(SSOS_ROOT)/ssos/os/util/printf.c
 
 # Assembly sources (excluded for testing - conflicts with mocks)
 # ASM_SRCS = $(SSOS_ROOT)/os/kernel/interrupts.s
@@ -63,7 +59,7 @@ ALL_OBJS = $(ALL_SRCS:.c=.o) $(ASM_SRCS:.s=.o)
 
 # Assembly flags
 ASFLAGS = -m68000 --register-prefix-optional --traditional-format \
-          -I$(SSOS_ROOT)/include -I$(SSOS_ROOT)/os/kernel
+           -I$(SSOS_ROOT)/ssos/include -I$(SSOS_ROOT)/ssos/os/kernel -I$(SSOS_ROOT)/ssos/tests/framework
 
 .PHONY: all test clean help debug native
 
@@ -72,11 +68,11 @@ all: $(TARGET)
 # Native build target for host system execution
 native:
 	@echo "Building native tests for host system..."
-	gcc -I$(SSOS_ROOT)/os/kernel -I$(SSOS_ROOT)/os/window -I$(SSOS_ROOT)/os/main -I$(SSOS_ROOT)/os/util -Iframework \
+	gcc -I$(SSOS_ROOT)/ssos/os/kernel -I$(SSOS_ROOT)/ssos/os/window -I$(SSOS_ROOT)/ssos/os/main -I$(SSOS_ROOT)/ssos/os/util -I$(SSOS_ROOT)/ssos/tests/framework \
 	    -O2 -g -DLOCAL_MODE -DTESTING -DNATIVE_TEST \
-	    framework/test_runner.c framework/test_mocks.c \
-	    unit/test_memory.c unit/test_scheduler.c unit/test_layers.c unit/test_errors.c unit/test_performance.c unit/test_kernel.c \
-	    $(SSOS_ROOT)/os/kernel/ss_perf.c \
+	    $(SSOS_ROOT)/ssos/tests/framework/test_runner.c \
+	    $(SSOS_ROOT)/ssos/tests/unit/test_quickdraw.c \
+	    $(SSOS_ROOT)/ssos/os/window/quickdraw.c \
 	    -o test_runner_native -lm
 	@echo "Running native tests..."
 	./test_runner_native
@@ -97,10 +93,10 @@ $(TARGET): $(ALL_OBJS)
 
 clean:
 	rm -f $(TARGET) $(ALL_OBJS)
-	rm -f framework/*.o unit/*.o
-	rm -f $(SSOS_ROOT)/os/kernel/*.o
-	rm -f $(SSOS_ROOT)/os/window/*.o
-	rm -f $(SSOS_ROOT)/os/util/*.o
+	rm -f $(SSOS_ROOT)/ssos/tests/framework/*.o $(SSOS_ROOT)/ssos/tests/unit/*.o
+	rm -f $(SSOS_ROOT)/ssos/os/kernel/*.o
+	rm -f $(SSOS_ROOT)/ssos/os/window/*.o
+	rm -f $(SSOS_ROOT)/ssos/os/util/*.o
 
 debug:
 	@echo "FRAMEWORK_SRCS: $(FRAMEWORK_SRCS)"

@@ -6,15 +6,16 @@ endif
 TARGET=	standalone.x
 SRCS=	main.c \
 		../os/kernel/kernel.c \
-		../os/kernel/dma.c \
+		../os/kernel/vram.c \
 		../os/kernel/memory.c \
 		../os/kernel/task_manager.c \
-		../os/kernel/vram.c \
+		../os/kernel/dma.c \
 		../os/kernel/ss_errors.c \
 		../os/kernel/ss_perf.c \
 		../os/main/ssosmain.c \
 		../os/main/ssoswindows.c \
 		../os/window/layer.c \
+		../os/window/quickdraw_demo.c \
 		../os/util/printf.c
 ASRCS= \
 		../os/kernel/interrupts.s
