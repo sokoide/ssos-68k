@@ -59,7 +59,6 @@ void qd_draw_vline(int16_t x, int16_t y, uint16_t length, uint8_t color);
 void qd_draw_rect(int16_t x, int16_t y, uint16_t width, uint16_t height, uint8_t color);
 void qd_fill_rect(int16_t x, int16_t y, uint16_t width, uint16_t height, uint8_t color);
 void qd_draw_line(int16_t x1, int16_t y1, int16_t x2, int16_t y2, uint8_t color);
-
 void qd_set_font_bitmap(const uint8_t* font_bitmap, uint16_t glyph_width, uint16_t glyph_height);
 uint16_t qd_get_font_width(void);
 uint16_t qd_get_font_height(void);
