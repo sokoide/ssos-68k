@@ -14,12 +14,13 @@ SRCS= \
 	kernel/ss_perf.c \
 	kernel/ss_errors.c \
 	kernel/stdlib_stubs.c \
-	main/ssosmain.c \
-	main/ssoswindows.c \
-	window/layer.c \
-	window/quickdraw.c \
-	window/quickdraw_demo.c \
-	util/printf.c
+main/ssosmain.c \
+main/ssoswindows.c \
+window/layer.c \
+window/quickdraw.c \
+window/quickdraw_shell.c \
+window/quickdraw_demo.c \
+util/printf.c
 ASRCS= \
 	kernel/entry.s \
 	kernel/interrupts.s

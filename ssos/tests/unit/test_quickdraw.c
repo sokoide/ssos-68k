@@ -5,6 +5,7 @@
 #include "../../os/window/quickdraw.h"
 
 static uint8_t test_vram[QD_VRAM_BYTES] __attribute__((aligned(4)));
+static uint8_t test_font[256 * 16];
 
 static void reset_vram_buffer(void) {
     memset(test_vram, 0, sizeof(test_vram));
@@ -15,6 +16,17 @@ static void setup_quickdraw_system(void) {
     qd_init();
     qd_set_vram_buffer(test_vram);
     qd_clear_screen(QD_COLOR_BLACK);
+}
+
+static void setup_font_stub(void) {
+    memset(test_font, 0, sizeof(test_font));
+
+    for (int row = 0; row < 16; ++row) {
+        test_font[((size_t)'A' * 16) + row] = (row == 0 || row == 15) ? 0x7E : 0x81;
+        test_font[((size_t)'B' * 16) + row] = (row == 0 || row == 7 || row == 15) ? 0xFE : 0x81;
+    }
+
+    qd_set_font_bitmap(test_font, 8, 16);
 }
 
 TEST(quickdraw_initialization_basic) {
@@ -185,6 +197,33 @@ TEST(quickdraw_line_operations) {
     ASSERT_EQ(qd_get_pixel(100, 100), QD_COLOR_BLACK);
 }
 
+TEST(quickdraw_text_rendering) {
+    setup_quickdraw_system();
+    setup_font_stub();
+
+    ASSERT_EQ(qd_get_font_width(), 8);
+    ASSERT_EQ(qd_get_font_height(), 16);
+    ASSERT_EQ(qd_measure_text("A"), 8);
+    ASSERT_EQ(qd_measure_text("AB"), 16);
+    ASSERT_EQ(qd_measure_text("A\nB"), 8);
+
+    qd_clear_screen(QD_COLOR_BLACK);
+    qd_draw_char(10, 12, 'A', QD_COLOR_RED, QD_COLOR_BLUE, true);
+
+    ASSERT_EQ(qd_get_pixel(10, 12), QD_COLOR_BLUE);
+    ASSERT_EQ(qd_get_pixel(11, 12), QD_COLOR_RED);
+    ASSERT_EQ(qd_get_pixel(17, 12), QD_COLOR_BLUE);
+    ASSERT_EQ(qd_get_pixel(10, 20), QD_COLOR_RED);
+    ASSERT_EQ(qd_get_pixel(13, 20), QD_COLOR_BLUE);
+
+    qd_draw_text(40, 40, "A\nB", QD_COLOR_WHITE, QD_COLOR_BLACK, true);
+
+    ASSERT_EQ(qd_get_pixel(40, 40), QD_COLOR_BLACK);
+    ASSERT_EQ(qd_get_pixel(41, 40), QD_COLOR_WHITE);
+    ASSERT_EQ(qd_get_pixel(41, 56), QD_COLOR_WHITE);
+    ASSERT_EQ(qd_get_pixel(47, 56), QD_COLOR_BLACK);
+}
+
 void run_quickdraw_tests(void) {
     RUN_TEST(quickdraw_initialization_basic);
     RUN_TEST(quickdraw_pixel_operations);
@@ -196,4 +235,5 @@ void run_quickdraw_tests(void) {
     RUN_TEST(quickdraw_vram_operations);
     RUN_TEST(quickdraw_performance_basic);
     RUN_TEST(quickdraw_line_operations);
+    RUN_TEST(quickdraw_text_rendering);
 }

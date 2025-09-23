@@ -1,5 +1,7 @@
 #include "quickdraw.h"
 
+#include "ss_config.h"
+
 #include <stddef.h>
 #include <string.h>
 
@@ -7,12 +9,18 @@ typedef struct {
     uint8_t* vram_base;
     bool initialized;
     QD_Rect clip;
+    const uint8_t* font_base;
+    uint16_t font_width;
+    uint16_t font_height;
 } QD_State;
 
 static QD_State s_qd_state = {
     .vram_base = NULL,
     .initialized = false,
     .clip = {0, 0, QD_SCREEN_WIDTH, QD_SCREEN_HEIGHT},
+    .font_base = NULL,
+    .font_width = SS_CONFIG_FONT_WIDTH,
+    .font_height = SS_CONFIG_FONT_HEIGHT,
 };
 
 static inline bool qd_in_bounds(int16_t x, int16_t y) {
@@ -30,6 +38,9 @@ void qd_init(void) {
     s_qd_state.clip.y = 0;
     s_qd_state.clip.width = QD_SCREEN_WIDTH;
     s_qd_state.clip.height = QD_SCREEN_HEIGHT;
+    s_qd_state.font_base = (const uint8_t*)SS_CONFIG_FONT_BASE_ADDRESS;
+    s_qd_state.font_width = SS_CONFIG_FONT_WIDTH;
+    s_qd_state.font_height = SS_CONFIG_FONT_HEIGHT;
     s_qd_state.initialized = true;
 }
 
@@ -293,5 +304,124 @@ void qd_draw_line(int16_t x1, int16_t y1, int16_t x2, int16_t y2, uint8_t color)
             err = (int16_t)(err + dx);
             cy = (int16_t)(cy + sy);
         }
+    }
+}
+
+void qd_set_font_bitmap(const uint8_t* font_bitmap, uint16_t glyph_width, uint16_t glyph_height) {
+    if (font_bitmap && glyph_width > 0 && glyph_height > 0) {
+        s_qd_state.font_base = font_bitmap;
+        s_qd_state.font_width = glyph_width;
+        s_qd_state.font_height = glyph_height;
+    } else {
+        s_qd_state.font_base = (const uint8_t*)SS_CONFIG_FONT_BASE_ADDRESS;
+        s_qd_state.font_width = SS_CONFIG_FONT_WIDTH;
+        s_qd_state.font_height = SS_CONFIG_FONT_HEIGHT;
+    }
+}
+
+uint16_t qd_get_font_width(void) {
+    return s_qd_state.font_width;
+}
+
+uint16_t qd_get_font_height(void) {
+    return s_qd_state.font_height;
+}
+
+uint16_t qd_measure_text(const char* text) {
+    if (!text || s_qd_state.font_width == 0) {
+        return 0;
+    }
+
+    uint16_t max_width = 0;
+    uint16_t line_width = 0;
+    for (const char* p = text; *p; ++p) {
+        if (*p == '\n') {
+            if (line_width > max_width) {
+                max_width = line_width;
+            }
+            line_width = 0;
+        } else {
+            line_width = (uint16_t)(line_width + s_qd_state.font_width);
+        }
+    }
+    if (line_width > max_width) {
+        max_width = line_width;
+    }
+    return max_width;
+}
+
+void qd_draw_char(int16_t x, int16_t y, char c, uint8_t fg_color, uint8_t bg_color, bool opaque_bg) {
+    if (!qd_state_ready()) {
+        return;
+    }
+
+    if (!s_qd_state.font_base || s_qd_state.font_width == 0 || s_qd_state.font_height == 0) {
+        return;
+    }
+
+    int16_t glyph_left = x;
+    int16_t glyph_top = y;
+    int16_t glyph_right = (int16_t)(glyph_left + (int16_t)s_qd_state.font_width);
+    int16_t glyph_bottom = (int16_t)(glyph_top + (int16_t)s_qd_state.font_height);
+
+    const QD_Rect* clip = &s_qd_state.clip;
+    int16_t clip_left = clip->x;
+    int16_t clip_top = clip->y;
+    int16_t clip_right = (int16_t)(clip->x + (int16_t)clip->width);
+    int16_t clip_bottom = (int16_t)(clip->y + (int16_t)clip->height);
+
+    if (glyph_right <= clip_left || glyph_left >= clip_right ||
+        glyph_bottom <= clip_top || glyph_top >= clip_bottom) {
+        return;
+    }
+
+    int16_t draw_left = (glyph_left > clip_left) ? glyph_left : clip_left;
+    int16_t draw_right = (glyph_right < clip_right) ? glyph_right : clip_right;
+    int16_t draw_top = (glyph_top > clip_top) ? glyph_top : clip_top;
+    int16_t draw_bottom = (glyph_bottom < clip_bottom) ? glyph_bottom : clip_bottom;
+
+    const uint8_t* glyph = s_qd_state.font_base + ((uint16_t)(uint8_t)c * s_qd_state.font_height);
+
+    for (int16_t py = draw_top; py < draw_bottom; ++py) {
+        uint16_t row_index = (uint16_t)(py - glyph_top);
+        uint8_t bits = glyph[row_index];
+        int16_t start_col = (int16_t)(draw_left - glyph_left);
+        int16_t end_col = (int16_t)(draw_right - glyph_left);
+
+        for (int16_t col = start_col; col < end_col; ++col) {
+            bool set = false;
+            if (col >= 0 && col < (int16_t)s_qd_state.font_width) {
+                int16_t shift = (int16_t)(s_qd_state.font_width - 1 - col);
+                if (shift >= 0 && shift < 8) {
+                    set = ((bits >> shift) & 0x01) != 0;
+                }
+            }
+
+            int16_t px = (int16_t)(glyph_left + col);
+            if (set) {
+                qd_set_pixel(px, py, fg_color);
+            } else if (opaque_bg) {
+                qd_set_pixel(px, py, bg_color);
+            }
+        }
+    }
+}
+
+void qd_draw_text(int16_t x, int16_t y, const char* text, uint8_t fg_color, uint8_t bg_color, bool opaque_bg) {
+    if (!text) {
+        return;
+    }
+
+    int16_t cursor_x = x;
+    int16_t cursor_y = y;
+    for (const char* p = text; *p; ++p) {
+        if (*p == '\n') {
+            cursor_x = x;
+            cursor_y = (int16_t)(cursor_y + (int16_t)s_qd_state.font_height);
+            continue;
+        }
+
+        qd_draw_char(cursor_x, cursor_y, *p, fg_color, bg_color, opaque_bg);
+        cursor_x = (int16_t)(cursor_x + (int16_t)s_qd_state.font_width);
     }
 }
