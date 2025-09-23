@@ -34,7 +34,10 @@ void* vram_start = (void*)0x00c00000;
 #endif
 
 // Global variables for testing
+uint32_t ss_timera_counter = 0;
 uint32_t ss_timerd_counter = 0;
+uint32_t ss_context_switch_counter = 0;
+uint32_t ss_save_data_base = 0;
 // Note: global_counter is defined in task_manager.c
 extern uint32_t global_counter;
 

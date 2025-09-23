@@ -46,6 +46,7 @@ KERNEL_SRCS = $(SSOS_ROOT)/ssos/os/kernel/memory.c \
                 $(SSOS_ROOT)/ssos/os/kernel/ss_perf.c \
                 $(SSOS_ROOT)/ssos/os/window/layer.c \
                 $(SSOS_ROOT)/ssos/os/window/quickdraw.c \
+                $(SSOS_ROOT)/ssos/os/window/quickdraw_shell.c \
                 $(SSOS_ROOT)/ssos/os/util/printf.c
 
 # Assembly sources (excluded for testing - conflicts with mocks)
@@ -71,8 +72,15 @@ native:
 	gcc -I$(SSOS_ROOT)/ssos/os/kernel -I$(SSOS_ROOT)/ssos/os/window -I$(SSOS_ROOT)/ssos/os/main -I$(SSOS_ROOT)/ssos/os/util -I$(SSOS_ROOT)/ssos/tests/framework \
 	    -O2 -g -DLOCAL_MODE -DTESTING -DNATIVE_TEST \
 	    $(SSOS_ROOT)/ssos/tests/framework/test_runner.c \
+	    $(SSOS_ROOT)/ssos/tests/framework/test_mocks.c \
 	    $(SSOS_ROOT)/ssos/tests/unit/test_quickdraw.c \
+	    $(SSOS_ROOT)/ssos/os/kernel/memory.c \
+	    $(SSOS_ROOT)/ssos/os/kernel/task_manager.c \
+	    $(SSOS_ROOT)/ssos/os/kernel/ss_errors.c \
+	    $(SSOS_ROOT)/ssos/os/kernel/ss_perf.c \
 	    $(SSOS_ROOT)/ssos/os/window/quickdraw.c \
+	    $(SSOS_ROOT)/ssos/os/window/quickdraw_shell.c \
+	    $(SSOS_ROOT)/ssos/os/util/printf.c \
 	    -o test_runner_native -lm
 	@echo "Running native tests..."
 	./test_runner_native
