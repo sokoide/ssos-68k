@@ -15,6 +15,8 @@ SRCS=	main.c \
 		../os/main/ssosmain.c \
 		../os/main/ssoswindows.c \
 		../os/window/layer.c \
+		../os/window/quickdraw.c \
+		../os/window/quickdraw_shell.c \
 		../os/window/quickdraw_demo.c \
 		../os/util/printf.c
 ASRCS= \
