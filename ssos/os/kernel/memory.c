@@ -42,6 +42,22 @@ uint32_t ss_ssos_memory_size;
 SsMemMgr ss_mem_mgr;
 uint8_t* ss_task_stack_base;
 
+// LOCAL_MODE用のテスト変数
+// LOCAL_MODE時はテスト用の固定値を使用
+// LOCAL_MODE以外時はmain.cで設定された値を使用
+extern void* local_ssos_memory_base;
+extern uint32_t local_ssos_memory_size;
+extern uint32_t local_text_size;
+extern uint32_t local_data_size;
+extern uint32_t local_bss_size;
+
+// LOCAL_MODE時のデフォルト値（extern宣言なので実際の定義はtest_mocks.cで行われる）
+#ifdef LOCAL_MODE
+// これらの変数はLOCAL_MODE時はtest_mocks.cで定義される
+#else
+// LOCAL_MODE以外時はmain.cで定義される
+#endif
+
 void ss_init_memory_info() {
     ss_get_ssos_memory(&ss_ssos_memory_base, &ss_ssos_memory_size);
 }

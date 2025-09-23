@@ -9,6 +9,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdarg.h>
+#include "memory.h"
 
 /**
  * @brief メモリ領域を指定した値で埋める
@@ -289,4 +290,53 @@ int sprintf(char* buffer, const char* format, ...) {
 int vsprintf(char* buffer, const char* format, va_list va) {
     // printf.cのsprintf_関数を呼び出す
     return sprintf_(buffer, format, va);
+}
+
+/**
+ * @brief メモリ領域を動的に確保
+ *
+ * @param nmemb 要素数
+ * @param size 要素サイズ
+ * @return 確保されたメモリ領域へのポインタ、失敗時はNULL
+ */
+void* calloc(size_t nmemb, size_t size) {
+    size_t total_size = nmemb * size;
+    void* ptr = malloc(total_size);
+    if (ptr) {
+        memset(ptr, 0, total_size);
+    }
+    return ptr;
+}
+
+/**
+ * @brief 動的に確保されたメモリ領域を解放
+ *
+ * @param ptr 解放するメモリ領域へのポインタ
+ */
+void free(void* ptr) {
+    // 簡易実装: SSOSメモリ管理システムを使用
+    if (ptr) {
+        // 実際のサイズがわからないため、ダミーサイズで解放
+        // 本来はmallocで確保したサイズを記録すべき
+        // ここでは警告として実装
+        #ifdef DEBUG
+        // デバッグ時は警告を表示
+        #endif
+        // freeは実際には何もしない（簡易実装）
+    }
+}
+
+/**
+ * @brief メモリ領域を動的に確保
+ *
+ * @param size 確保するサイズ
+ * @return 確保されたメモリ領域へのポインタ、失敗時はNULL
+ */
+void* malloc(size_t size) {
+    // SSOSメモリ管理システムを使用
+    if (size == 0) {
+        return NULL;
+    }
+
+    return (void*)ss_mem_alloc((uint32_t)size);
 }

@@ -22,6 +22,20 @@ static volatile uint16_t* s_vram_base = (uint16_t*)0x00c00000;
 static uint16_t s_local_vram[(QD_SCREEN_WIDTH * QD_SCREEN_HEIGHT) / 2] __attribute__((aligned(4)));
 #endif
 
+// 互換性モードフラグ（レイヤーシステムとの互換性用）
+static bool s_compatibility_mode = false;
+
+// ソフトウェアレイヤー管理システム
+static QD_Layer s_qd_layers[MAX_LAYERS];
+static QD_Layer* s_z_layers[MAX_LAYERS];
+static QD_LayerMgr s_qd_layer_mgr = {
+    .layers = {0},
+    .z_layers = {NULL},
+    .top_layer_idx = 0,
+    .initialized = false
+};
+QD_LayerMgr* qd_layer_mgr = &s_qd_layer_mgr;
+
 // 16色パレット（GRBフォーマット、X68000互換）
 static uint16_t s_palette[16] = {
     0x0000, // 0: Black
@@ -71,6 +85,11 @@ void qd_init(void) {
 
     // デフォルトパレットの初期化
     qd_init_default_palette();
+
+    // 互換性モードではレイヤーシステムも初期化
+    if (s_compatibility_mode) {
+        qd_layer_init();
+    }
 }
 
 /**
@@ -955,4 +974,533 @@ void qd_draw_vline(int16_t x, int16_t y, uint16_t length, uint8_t color) {
     for (uint16_t i = 0; i < length; i++) {
         qd_set_pixel_fast(x, y + i, color);
     }
+}
+
+// ============================================================================
+// レイヤー互換機能の実装（フェーズ4: 既存レイヤーシステムとの統合）
+// ============================================================================
+
+/**
+ * @brief 互換性モードを有効/無効にする
+ *
+ * @param enable trueで有効、falseで無効
+ */
+void qd_enable_compatibility_mode(bool enable) {
+    s_compatibility_mode = enable;
+    if (enable && qd_is_initialized() && !qd_layer_mgr->initialized) {
+        qd_layer_init();
+    }
+}
+
+/**
+ * @brief 互換性モードの状態を取得
+ *
+ * @return 互換性モードが有効ならtrue
+ */
+bool qd_is_compatibility_mode(void) {
+    return s_compatibility_mode;
+}
+
+/**
+ * @brief ソフトウェアレイヤーシステムを初期化
+ */
+void qd_layer_init(void) {
+    if (qd_layer_mgr->initialized) {
+        return; // 既に初期化済み
+    }
+
+    // すべてのレイヤーを未使用状態に初期化
+    for (int i = 0; i < MAX_LAYERS; i++) {
+        qd_layer_mgr->layers[i].buffer = NULL;
+        qd_layer_mgr->layers[i].attr = 0;
+        qd_layer_mgr->layers[i].visible = false;
+        qd_layer_mgr->layers[i].dirty = false;
+        qd_layer_mgr->z_layers[i] = NULL;
+    }
+
+    qd_layer_mgr->top_layer_idx = 0;
+    qd_layer_mgr->initialized = true;
+}
+
+/**
+ * @brief 新しいレイヤーを作成
+ *
+ * @return 作成されたレイヤーへのポインタ、失敗時はNULL
+ */
+QD_Layer* qd_layer_create(void) {
+    if (!qd_layer_mgr->initialized) {
+        qd_layer_init();
+    }
+
+    // 未使用のレイヤーを探す
+    for (int i = 0; i < MAX_LAYERS; i++) {
+        if ((qd_layer_mgr->layers[i].attr & QD_LAYER_ATTR_USED) == 0) {
+            QD_Layer* layer = &qd_layer_mgr->layers[i];
+            layer->attr = QD_LAYER_ATTR_USED;
+            layer->visible = true;
+            layer->dirty = true;
+            layer->z = qd_layer_mgr->top_layer_idx;
+            layer->x = 0;
+            layer->y = 0;
+            layer->width = 0;
+            layer->height = 0;
+            layer->buffer = NULL;
+
+            // Zオーダーリストに追加
+            qd_layer_mgr->z_layers[qd_layer_mgr->top_layer_idx] = layer;
+            qd_layer_mgr->top_layer_idx++;
+
+            return layer;
+        }
+    }
+
+    return NULL; // 使用可能なレイヤーがない
+}
+
+/**
+ * @brief レイヤーを破壊
+ *
+ * @param layer 破壊するレイヤー
+ */
+void qd_layer_destroy(QD_Layer* layer) {
+    if (!layer || (layer->attr & QD_LAYER_ATTR_USED) == 0) {
+        return;
+    }
+
+    // メモリ解放
+    if (layer->buffer) {
+        free(layer->buffer);
+        layer->buffer = NULL;
+    }
+
+    // レイヤーを未使用状態に
+    layer->attr = 0;
+    layer->visible = false;
+    layer->dirty = false;
+
+    // Zオーダーリストから除去
+    for (int i = 0; i < qd_layer_mgr->top_layer_idx; i++) {
+        if (qd_layer_mgr->z_layers[i] == layer) {
+            // 後続のレイヤーをシフト
+            for (int j = i; j < qd_layer_mgr->top_layer_idx - 1; j++) {
+                qd_layer_mgr->z_layers[j] = qd_layer_mgr->z_layers[j + 1];
+                qd_layer_mgr->z_layers[j]->z--;
+            }
+            qd_layer_mgr->top_layer_idx--;
+            break;
+        }
+    }
+}
+
+/**
+ * @brief レイヤーの位置を設定
+ *
+ * @param layer 対象レイヤー
+ * @param x X座標
+ * @param y Y座標
+ */
+void qd_layer_set_position(QD_Layer* layer, int16_t x, int16_t y) {
+    if (!layer) return;
+
+    layer->x = x;
+    layer->y = y;
+    qd_layer_invalidate(layer);
+}
+
+/**
+ * @brief レイヤーのサイズを設定
+ *
+ * @param layer 対象レイヤー
+ * @param width 幅
+ * @param height 高さ
+ */
+void qd_layer_set_size(QD_Layer* layer, uint16_t width, uint16_t height) {
+    if (!layer) return;
+
+    // サイズが変更された場合はバッファを再確保
+    if (layer->width != width || layer->height != height) {
+        // 既存バッファを解放
+        if (layer->buffer) {
+            free(layer->buffer);
+        }
+
+        // 新しいバッファを確保（16色モード: 2ピクセル/バイト）
+        uint32_t buffer_size = (width * height) / 2;
+        layer->buffer = (uint8_t*)malloc(buffer_size);
+        if (layer->buffer) {
+            // バッファをクリア
+            memset(layer->buffer, 0, buffer_size);
+        }
+    }
+
+    layer->width = width;
+    layer->height = height;
+    qd_layer_invalidate(layer);
+}
+
+/**
+ * @brief レイヤーのZオーダーを設定
+ *
+ * @param layer 対象レイヤー
+ * @param z Zオーダー値
+ */
+void qd_layer_set_z_order(QD_Layer* layer, int16_t z) {
+    if (!layer || z < 0 || z >= MAX_LAYERS) {
+        return;
+    }
+
+    // 現在の位置を除去
+    for (int i = 0; i < qd_layer_mgr->top_layer_idx; i++) {
+        if (qd_layer_mgr->z_layers[i] == layer) {
+            // 後続のレイヤーをシフト
+            for (int j = i; j < qd_layer_mgr->top_layer_idx - 1; j++) {
+                qd_layer_mgr->z_layers[j] = qd_layer_mgr->z_layers[j + 1];
+            }
+            qd_layer_mgr->top_layer_idx--;
+            break;
+        }
+    }
+
+    // 新しい位置に挿入
+    if (z >= qd_layer_mgr->top_layer_idx) {
+        // 最後に追加
+        qd_layer_mgr->z_layers[qd_layer_mgr->top_layer_idx] = layer;
+        qd_layer_mgr->top_layer_idx++;
+    } else {
+        // 中間に挿入
+        for (int i = qd_layer_mgr->top_layer_idx; i > z; i--) {
+            qd_layer_mgr->z_layers[i] = qd_layer_mgr->z_layers[i - 1];
+        }
+        qd_layer_mgr->z_layers[z] = layer;
+        qd_layer_mgr->top_layer_idx++;
+    }
+
+    layer->z = z;
+}
+
+/**
+ * @brief レイヤーを表示状態に設定
+ *
+ * @param layer 対象レイヤー
+ */
+void qd_layer_show(QD_Layer* layer) {
+    if (layer) {
+        layer->visible = true;
+        layer->attr |= QD_LAYER_ATTR_VISIBLE;
+        qd_layer_invalidate(layer);
+    }
+}
+
+/**
+ * @brief レイヤーを非表示状態に設定
+ *
+ * @param layer 対象レイヤー
+ */
+void qd_layer_hide(QD_Layer* layer) {
+    if (layer) {
+        layer->visible = false;
+        layer->attr &= ~QD_LAYER_ATTR_VISIBLE;
+    }
+}
+
+/**
+ * @brief レイヤーの表示状態を設定
+ *
+ * @param layer 対象レイヤー
+ * @param visible 表示状態
+ */
+void qd_layer_set_visible(QD_Layer* layer, bool visible) {
+    if (visible) {
+        qd_layer_show(layer);
+    } else {
+        qd_layer_hide(layer);
+    }
+}
+
+/**
+ * @brief レイヤーを無効化（再描画が必要にマーク）
+ *
+ * @param layer 対象レイヤー
+ */
+void qd_layer_invalidate(QD_Layer* layer) {
+    if (layer) {
+        layer->dirty = true;
+        layer->dirty_rect.x = 0;
+        layer->dirty_rect.y = 0;
+        layer->dirty_rect.width = layer->width;
+        layer->dirty_rect.height = layer->height;
+    }
+}
+
+/**
+ * @brief レイヤーの矩形領域を無効化
+ *
+ * @param layer 対象レイヤー
+ * @param x X座標
+ * @param y Y座標
+ * @param width 幅
+ * @param height 高さ
+ */
+void qd_layer_invalidate_rect(QD_Layer* layer, int16_t x, int16_t y, uint16_t width, uint16_t height) {
+    if (!layer || !layer->visible) return;
+
+    // 範囲をレイヤー内に収める
+    if (x < 0) x = 0;
+    if (y < 0) y = 0;
+    if (x + width > layer->width) width = layer->width - x;
+    if (y + height > layer->height) height = layer->height - y;
+
+    if (width <= 0 || height <= 0) return;
+
+    // ダーティ領域を統合
+    if (layer->dirty) {
+        int16_t x1 = layer->dirty_rect.x;
+        int16_t y1 = layer->dirty_rect.y;
+        int16_t x2 = x1 + layer->dirty_rect.width;
+        int16_t y2 = y1 + layer->dirty_rect.height;
+
+        int16_t new_x1 = (x < x1) ? x : x1;
+        int16_t new_y1 = (y < y1) ? y : y1;
+        int16_t new_x2 = ((x + width) > x2) ? (x + width) : x2;
+        int16_t new_y2 = ((y + height) > y2) ? (y + height) : y2;
+
+        layer->dirty_rect.x = new_x1;
+        layer->dirty_rect.y = new_y1;
+        layer->dirty_rect.width = new_x2 - new_x1;
+        layer->dirty_rect.height = new_y2 - new_y1;
+    } else {
+        layer->dirty_rect.x = x;
+        layer->dirty_rect.y = y;
+        layer->dirty_rect.width = width;
+        layer->dirty_rect.height = height;
+        layer->dirty = true;
+    }
+}
+
+/**
+ * @brief レイヤーのバッファからピクセルを取得
+ *
+ * @param layer 対象レイヤー
+ * @param x X座標（レイヤー内相対）
+ * @param y Y座標（レイヤー内相対）
+ * @return ピクセル値
+ */
+uint8_t* qd_layer_get_buffer(QD_Layer* layer, int16_t x, int16_t y) {
+    if (!layer || !layer->buffer || x < 0 || y < 0 || x >= layer->width || y >= layer->height) {
+        return NULL;
+    }
+
+    uint32_t offset = (y * layer->width + x) / 2;
+    return &layer->buffer[offset];
+}
+
+/**
+ * @brief レイヤーのバッファをクリア
+ *
+ * @param layer 対象レイヤー
+ * @param color クリア色
+ */
+void qd_layer_clear_buffer(QD_Layer* layer, uint8_t color) {
+    if (!layer || !layer->buffer) return;
+
+    uint16_t fill_word = (color << 4) | color;
+    uint32_t buffer_size = (layer->width * layer->height) / 2;
+
+    for (uint32_t i = 0; i < buffer_size; i++) {
+        layer->buffer[i] = fill_word;
+    }
+}
+
+/**
+ * @brief 外部バッファからレイヤーにデータをコピー
+ *
+ * @param layer 対象レイヤー
+ * @param src ソースバッファ
+ * @param src_width ソース幅
+ * @param src_height ソース高さ
+ */
+void qd_layer_copy_to_buffer(QD_Layer* layer, const uint8_t* src, uint16_t src_width, uint16_t src_height) {
+    if (!layer || !layer->buffer || !src) return;
+
+    uint16_t copy_width = (src_width < layer->width) ? src_width : layer->width;
+    uint16_t copy_height = (src_height < layer->height) ? src_height : layer->height;
+
+    for (uint16_t y = 0; y < copy_height; y++) {
+        for (uint16_t x = 0; x < copy_width; x++) {
+            uint32_t src_offset = (y * src_width + x) / 2;
+            uint32_t dst_offset = (y * layer->width + x) / 2;
+
+            uint8_t src_word = src[src_offset];
+            uint8_t dst_word = layer->buffer[dst_offset];
+
+            // ピクセル位置に応じてコピー
+            if ((x & 1) == 0) {
+                // 偶数ピクセル: 下位4ビット
+                dst_word = (dst_word & 0xF0) | (src_word & 0x0F);
+            } else {
+                // 奇数ピクセル: 上位4ビット
+                dst_word = (dst_word & 0x0F) | ((src_word & 0x0F) << 4);
+            }
+
+            layer->buffer[dst_offset] = dst_word;
+        }
+    }
+
+    qd_layer_invalidate_rect(layer, 0, 0, copy_width, copy_height);
+}
+
+/**
+ * @brief レイヤーを画面に転送
+ *
+ * @param layer 転送するレイヤー
+ */
+void qd_layer_blit_to_screen(QD_Layer* layer) {
+    if (!layer || !layer->visible || !layer->buffer || layer->width == 0 || layer->height == 0) {
+        return;
+    }
+
+    // 画面座標に変換
+    int16_t screen_x = layer->x;
+    int16_t screen_y = layer->y;
+
+    // 画面外チェック
+    if (screen_x >= QD_SCREEN_WIDTH || screen_y >= QD_SCREEN_HEIGHT) {
+        return;
+    }
+
+    // クリッピング
+    int16_t start_x = (screen_x < 0) ? -screen_x : 0;
+    int16_t start_y = (screen_y < 0) ? -screen_y : 0;
+    int16_t end_x = (screen_x + layer->width > QD_SCREEN_WIDTH) ? QD_SCREEN_WIDTH - screen_x : layer->width;
+    int16_t end_y = (screen_y + layer->height > QD_SCREEN_HEIGHT) ? QD_SCREEN_HEIGHT - screen_y : layer->height;
+
+    if (start_x >= end_x || start_y >= end_y) {
+        return;
+    }
+
+    // レイヤーから画面へ転送
+    for (int16_t y = start_y; y < end_y; y++) {
+        for (int16_t x = start_x; x < end_x; x++) {
+            // レイヤーバッファからピクセル取得
+            uint32_t layer_offset = (y * layer->width + x) / 2;
+            uint8_t layer_word = layer->buffer[layer_offset];
+
+            uint8_t color;
+            if (x & 1) {
+                // 奇数ピクセル: 上位4ビット
+                color = (layer_word >> 4) & 0x0F;
+            } else {
+                // 偶数ピクセル: 下位4ビット
+                color = layer_word & 0x0F;
+            }
+
+            // 画面に描画（透明色チェックは後で実装）
+            qd_set_pixel_fast(screen_x + x, screen_y + y, color);
+        }
+    }
+}
+
+/**
+ * @brief すべてのレイヤーを画面に転送
+ */
+void qd_layer_blit_all_to_screen(void) {
+    if (!qd_layer_mgr->initialized) return;
+
+    // Zオーダーに従って描画
+    for (int i = 0; i < qd_layer_mgr->top_layer_idx; i++) {
+        QD_Layer* layer = qd_layer_mgr->z_layers[i];
+        if (layer && layer->visible) {
+            qd_layer_blit_to_screen(layer);
+        }
+    }
+}
+
+/**
+ * @brief ダーティ領域のみを画面に転送
+ */
+void qd_layer_blit_dirty_to_screen(void) {
+    if (!qd_layer_mgr->initialized) return;
+
+    // Zオーダーに従って描画
+    for (int i = 0; i < qd_layer_mgr->top_layer_idx; i++) {
+        QD_Layer* layer = qd_layer_mgr->z_layers[i];
+        if (layer && layer->visible && layer->dirty) {
+            qd_layer_blit_to_screen(layer);
+            layer->dirty = false;
+        }
+    }
+}
+
+// ============================================================================
+// 既存Layer APIとの完全互換関数（ラッパー関数）
+// ============================================================================
+
+/**
+ * @brief 既存API互換: レイヤーを取得（QD_Layer*を返す）
+ *
+ * @return 作成されたレイヤーへのポインタ
+ */
+QD_Layer* qd_layer_get(void) {
+    return qd_layer_create();
+}
+
+/**
+ * @brief 既存API互換: レイヤーを設定
+ *
+ * @param layer 対象レイヤー
+ * @param buffer バッファ（使用しない）
+ * @param x X座標
+ * @param y Y座標
+ * @param width 幅
+ * @param height 高さ
+ */
+void qd_layer_set(QD_Layer* layer, uint8_t* buffer, uint16_t x, uint16_t y, uint16_t width, uint16_t height) {
+    if (!layer) return;
+
+    qd_layer_set_position(layer, x, y);
+    qd_layer_set_size(layer, width, height);
+
+    // バッファが提供された場合はコピー
+    if (buffer) {
+        qd_layer_copy_to_buffer(layer, buffer, width, height);
+    }
+}
+
+/**
+ * @brief 既存API互換: レイヤーのZオーダーを設定
+ *
+ * @param layer 対象レイヤー
+ * @param z Zオーダー
+ */
+void qd_layer_set_z(QD_Layer* layer, uint16_t z) {
+    if (layer) {
+        qd_layer_set_z_order(layer, z);
+    }
+}
+
+/**
+ * @brief 既存API互換: 全レイヤーを描画
+ */
+void qd_all_layer_draw(void) {
+    qd_layer_blit_all_to_screen();
+}
+
+/**
+ * @brief 既存API互換: 矩形領域のレイヤーを描画
+ *
+ * @param x0 開始X座標
+ * @param y0 開始Y座標
+ * @param x1 終了X座標
+ * @param y1 終了Y座標
+ */
+void qd_all_layer_draw_rect(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1) {
+    // 簡易実装: 全レイヤーを描画
+    qd_layer_blit_all_to_screen();
+}
+
+/**
+ * @brief 既存API互換: ダーティ領域のみを描画
+ */
+void qd_layer_draw_dirty_only(void) {
+    qd_layer_blit_dirty_to_screen();
 }

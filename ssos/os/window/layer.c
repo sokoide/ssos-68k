@@ -1,3 +1,17 @@
+// LOCAL_MODE constants for testing
+#ifdef LOCAL_MODE
+// Use different variable names to avoid conflicts with kernel.h extern declarations
+#ifndef TEST_WIDTH
+const int TEST_WIDTH = 768;
+#endif
+#ifndef TEST_HEIGHT
+const int TEST_HEIGHT = 512;
+#endif
+#ifndef TEST_VRAMWIDTH
+const int TEST_VRAMWIDTH = 768;
+#endif
+#endif
+
 #include "layer.h"
 #include "dma.h"
 #include "kernel.h"
@@ -14,10 +28,22 @@ void ss_layer_init() {
     for (int i = 0; i < MAX_LAYERS; i++) {
         ss_layer_mgr->layers[i].attr = 0;
     }
-    ss_layer_mgr->map = (uint8_t*)ss_mem_alloc4k(WIDTH / 8 * HEIGHT / 8);
+    ss_layer_mgr->map = (uint8_t*)ss_mem_alloc4k(
+#ifdef LOCAL_MODE
+        TEST_WIDTH / 8 * TEST_HEIGHT / 8
+#else
+        WIDTH / 8 * HEIGHT / 8
+#endif
+    );
     // reset to 0 every 4 bytes
     uint32_t* p = (uint32_t*)ss_layer_mgr->map;
-    for (int i = 0; i < WIDTH / 8 * HEIGHT / 8 / sizeof(uint32_t); i++) {
+    for (int i = 0; i < (
+#ifdef LOCAL_MODE
+        TEST_WIDTH / 8 * TEST_HEIGHT / 8
+#else
+        WIDTH / 8 * HEIGHT / 8
+#endif
+    ) / sizeof(uint32_t); i++) {
         *p++ = 0;
     }
 }
@@ -60,7 +86,12 @@ void ss_layer_set(Layer* layer, uint8_t* vram, uint16_t x, uint16_t y,
     uint8_t lid = layer - ss_layer_mgr->layers;
 
     // Use bit shifts for faster division by 8
-    uint16_t map_width = WIDTH >> 3;  // WIDTH / 8
+    uint16_t map_width =
+#ifdef LOCAL_MODE
+        TEST_WIDTH >> 3;  // TEST_WIDTH / 8
+#else
+        WIDTH >> 3;  // WIDTH / 8
+#endif
     uint16_t layer_y_div8 = layer->y >> 3;
     uint16_t layer_x_div8 = layer->x >> 3;
     uint16_t layer_h_div8 = layer->h >> 3;
@@ -105,7 +136,15 @@ void ss_layer_set_z(Layer* layer, uint16_t z) {
     // ss_layer_draw();
 }
 
-void ss_all_layer_draw() { ss_all_layer_draw_rect(0, 0, WIDTH, HEIGHT); }
+void ss_all_layer_draw() {
+    ss_all_layer_draw_rect(0, 0,
+#ifdef LOCAL_MODE
+        TEST_WIDTH, TEST_HEIGHT
+#else
+        WIDTH, HEIGHT
+#endif
+    );
+}
 
 // Draw the rectangle area (x0, y0) - (x1, y1)
 // in vram coordinates
@@ -147,10 +186,21 @@ void ss_layer_draw_rect_layer(Layer* l) {
         dy1 = l->h;
     for (int16_t dy = dy0; dy < dy1; dy++) {
         int16_t vy = l->y + dy;
-        if (vy < 0 || vy >= HEIGHT)
+        if (vy < 0 || vy >=
+#ifdef LOCAL_MODE
+            TEST_HEIGHT
+#else
+            HEIGHT
+#endif
+        )
             continue;
         // Optimized DMA transfer using bit shifts
-        uint16_t map_width = WIDTH >> 3;  // WIDTH / 8
+        uint16_t map_width =
+    #ifdef LOCAL_MODE
+            TEST_WIDTH >> 3;  // TEST_WIDTH / 8
+    #else
+            WIDTH >> 3;  // WIDTH / 8
+    #endif
         uint16_t vy_div8 = vy >> 3;
         uint16_t l_x_div8 = l->x >> 3;
 
@@ -333,10 +383,21 @@ void ss_layer_draw_rect_layer_bounds(Layer* l, uint16_t dx0, uint16_t dy0, uint1
 
     for (int16_t dy = dy0; dy < dy1; dy++) {
         int16_t vy = l->y + dy;
-        if (vy < 0 || vy >= HEIGHT)
+        if (vy < 0 || vy >=
+#ifdef LOCAL_MODE
+            TEST_HEIGHT
+#else
+            HEIGHT
+#endif
+        )
             continue;
         // Optimized DMA transfer using bit shifts
-        uint16_t map_width = WIDTH >> 3;  // WIDTH / 8
+        uint16_t map_width =
+#ifdef LOCAL_MODE
+            TEST_WIDTH >> 3;  // TEST_WIDTH / 8
+#else
+            WIDTH >> 3;  // WIDTH / 8
+#endif
         uint16_t vy_div8 = vy >> 3;
         uint16_t l_x_div8 = l->x >> 3;
 
@@ -414,7 +475,12 @@ void ss_layer_update_map(Layer* layer) {
         lid = layer - ss_layer_mgr->layers;
     }
 
-    uint16_t map_width = WIDTH >> 3;  // WIDTH / 8
+    uint16_t map_width =
+#ifdef LOCAL_MODE
+        TEST_WIDTH >> 3;  // TEST_WIDTH / 8
+#else
+        WIDTH >> 3;  // WIDTH / 8
+#endif
     uint16_t layer_y_end = (layer->y + layer->h) >> 3;
     uint16_t layer_x_end = (layer->x + layer->w) >> 3;
 

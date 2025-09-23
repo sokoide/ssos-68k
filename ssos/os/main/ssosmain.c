@@ -7,7 +7,6 @@
 #include "task_manager.h"
 #include "vram.h"
 #include "ss_perf.h"
-#include "quickdraw.h"  // QuickDrawシステム追加
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
