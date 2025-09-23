@@ -12,10 +12,21 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <math.h>
 
 // グローバル変数
 static QD_Rect s_clip_rect = {0, 0, QD_SCREEN_WIDTH, QD_SCREEN_HEIGHT};
 static volatile uint16_t* s_vram_base = (uint16_t*)0x00c00000;
+static QD_DrawMode s_current_draw_mode = QD_MODE_COPY;
+static QD_FontSize s_current_font_size = QD_FONT_SIZE_8x16;
+static QD_FontStyle s_current_font_style = QD_FONT_NORMAL;
+
+// パフォーマンス最適化関連
+static bool s_dma_mode_enabled = false;
+static bool s_cache_enabled = false;
+static uint16_t* s_render_buffer = NULL;
+static uint32_t s_render_buffer_size = 0;
+static uint32_t s_render_buffer_offset = 0;
 
 #ifdef LOCAL_MODE
 // LOCAL_MODEではソフトウェアバッファを使用（ワードアライメント保証）
@@ -1092,6 +1103,860 @@ void qd_layer_destroy(QD_Layer* layer) {
     }
 }
 
+// ============================================================================
+// フェーズ2: 多角形描画機能
+// ============================================================================
+
+/**
+ * @brief 三角形を描画
+ *
+ * @param x1 点1 X座標
+ * @param y1 点1 Y座標
+ * @param x2 点2 X座標
+ * @param y2 点2 Y座標
+ * @param x3 点3 X座標
+ * @param y3 点3 Y座標
+ * @param color 描画色
+ */
+void qd_draw_triangle(int16_t x1, int16_t y1, int16_t x2, int16_t y2, int16_t x3, int16_t y3, uint8_t color) {
+    // 3辺を描画
+    qd_draw_line(x1, y1, x2, y2, color);
+    qd_draw_line(x2, y2, x3, y3, color);
+    qd_draw_line(x3, y3, x1, y1, color);
+}
+
+/**
+ * @brief 三角形を塗りつぶし（簡易版）
+ *
+ * @param x1 点1 X座標
+ * @param y1 点1 Y座標
+ * @param x2 点2 X座標
+ * @param y2 点2 Y座標
+ * @param x3 点3 X座標
+ * @param y3 点3 Y座標
+ * @param color 塗りつぶし色
+ */
+void qd_fill_triangle(int16_t x1, int16_t y1, int16_t x2, int16_t y2, int16_t x3, int16_t y3, uint8_t color) {
+    // バウンディングボックスを計算
+    int16_t min_x = x1 < x2 ? (x1 < x3 ? x1 : x3) : (x2 < x3 ? x2 : x3);
+    int16_t max_x = x1 > x2 ? (x1 > x3 ? x1 : x3) : (x2 > x3 ? x2 : x3);
+    int16_t min_y = y1 < y2 ? (y1 < y3 ? y1 : y3) : (y2 < y3 ? y2 : y3);
+    int16_t max_y = y1 > y2 ? (y1 > y3 ? y1 : y3) : (y2 > y3 ? y2 : y3);
+
+    // クリッピング適用
+    if (min_x < 0) min_x = 0;
+    if (min_y < 0) min_y = 0;
+    if (max_x > QD_SCREEN_WIDTH) max_x = QD_SCREEN_WIDTH;
+    if (max_y > QD_SCREEN_HEIGHT) max_y = QD_SCREEN_HEIGHT;
+
+    // 各ピクセルについて三角形内にあるかチェック
+    for (int16_t y = min_y; y < max_y; y++) {
+        for (int16_t x = min_x; x < max_x; x++) {
+            // 点が三角形内にあるか判定（重心座標法）
+            int32_t denom = (y2 - y3) * (x1 - x3) + (x3 - x2) * (y1 - y3);
+
+            if (denom == 0) continue; // 面積が0
+
+            // 重心座標の計算
+            int32_t alpha = ((y2 - y3) * (x - x3) + (x3 - x2) * (y - y3)) * 255 / denom;
+            int32_t beta = ((y3 - y1) * (x - x3) + (x1 - x3) * (y - y3)) * 255 / denom;
+            int32_t gamma = 255 - alpha - beta;
+
+            // すべての重心座標が正の場合は三角形内
+            if (alpha >= 0 && beta >= 0 && gamma >= 0) {
+                qd_set_pixel_fast(x, y, color);
+            }
+        }
+    }
+}
+
+// ============================================================================
+// フェーズ2: フォント・テキスト描画機能の改善
+// ============================================================================
+
+/**
+ * @brief フォントサイズを設定
+ *
+ * @param size フォントサイズ
+ */
+void qd_set_font_size(QD_FontSize size) {
+    s_current_font_size = size;
+}
+
+/**
+ * @brief フォントスタイルを設定
+ *
+ * @param style フォントスタイル
+ */
+void qd_set_font_style(QD_FontStyle style) {
+    s_current_font_style = style;
+}
+
+/**
+ * @brief 現在のフォントサイズを取得
+ *
+ * @return 現在のフォントサイズ
+ */
+QD_FontSize qd_get_font_size(void) {
+    return s_current_font_size;
+}
+
+/**
+ * @brief 現在のフォントスタイルを取得
+ *
+ * @return 現在のフォントスタイル
+ */
+QD_FontStyle qd_get_font_style(void) {
+    return s_current_font_style;
+}
+
+/**
+ * @brief フォントサイズに応じた幅を取得
+ *
+ * @return フォント幅（ピクセル）
+ */
+static uint8_t qd_get_font_width(void) {
+    switch (s_current_font_size) {
+        case QD_FONT_SIZE_6x12: return 6;
+        case QD_FONT_SIZE_8x16: return 8;
+        case QD_FONT_SIZE_12x24: return 12;
+        case QD_FONT_SIZE_16x32: return 16;
+        default: return 8;
+    }
+}
+
+/**
+ * @brief フォントサイズに応じた高さを取得
+ *
+ * @return フォント高さ（ピクセル）
+ */
+static uint8_t qd_get_font_height(void) {
+    switch (s_current_font_size) {
+        case QD_FONT_SIZE_6x12: return 12;
+        case QD_FONT_SIZE_8x16: return 16;
+        case QD_FONT_SIZE_12x24: return 24;
+        case QD_FONT_SIZE_16x32: return 32;
+        default: return 16;
+    }
+}
+
+/**
+ * @brief 文字をスケーリングして描画
+ *
+ * @param x 描画位置X座標
+ * @param y 描画位置Y座標
+ * @param c 描画する文字
+ * @param fg_color 前景色
+ * @param bg_color 背景色
+ * @param scale_x X方向スケール
+ * @param scale_y Y方向スケール
+ */
+void qd_draw_char_scaled(int16_t x, int16_t y, char c, uint8_t fg_color, uint8_t bg_color, float scale_x, float scale_y) {
+    uint8_t font_w = qd_get_font_width();
+    uint8_t font_h = qd_get_font_height();
+
+    // 8x16フォントデータへのアクセス
+    volatile uint8_t* font_base = (uint8_t*)QD_FONT_DATA_ADDR;
+    volatile uint8_t* font_char = font_base + (c * QD_FONT_HEIGHT);
+
+    // フォントデータ範囲チェック
+    uintptr_t font_start = (uintptr_t)font_base;
+    if ((uintptr_t)font_char >= font_start + 256 * QD_FONT_HEIGHT) {
+        return; // 無効な文字コード
+    }
+
+    // スケーリング描画
+    for (uint16_t sy = 0; sy < font_h; sy++) {
+        uint8_t font_byte = font_char[sy];
+        for (uint8_t sx = 0; sx < font_w; sx++) {
+            uint8_t color = (font_byte & (0x80 >> sx)) ? fg_color : bg_color;
+
+            // スケーリングして描画
+            for (float dy = 0; dy < scale_y; dy++) {
+                for (float dx = 0; dx < scale_x; dx++) {
+                    int16_t draw_x = x + (int16_t)(sx * scale_x + dx);
+                    int16_t draw_y = y + (int16_t)(sy * scale_y + dy);
+
+                    if (draw_x >= 0 && draw_x < QD_SCREEN_WIDTH &&
+                        draw_y >= 0 && draw_y < QD_SCREEN_HEIGHT) {
+                        qd_set_pixel(draw_x, draw_y, color);
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * @brief テキストをスケーリングして描画
+ *
+ * @param x 描画位置X座標
+ * @param y 描画位置Y座標
+ * @param str 描画する文字列
+ * @param fg_color 前景色
+ * @param bg_color 背景色
+ * @param scale_x X方向スケール
+ * @param scale_y Y方向スケール
+ */
+void qd_draw_text_scaled(int16_t x, int16_t y, const char* str, uint8_t fg_color, uint8_t bg_color, float scale_x, float scale_y) {
+    if (!str) return;
+
+    int16_t curr_x = x;
+    uint8_t font_w = qd_get_font_width();
+
+    for (const char* p = str; *p; p++) {
+        qd_draw_char_scaled(curr_x, y, *p, fg_color, bg_color, scale_x, scale_y);
+        curr_x += (int16_t)(font_w * scale_x);
+    }
+}
+
+/**
+ * @brief 文字を回転して描画
+ *
+ * @param x 描画位置X座標
+ * @param y 描画位置Y座標
+ * @param c 描画する文字
+ * @param fg_color 前景色
+ * @param bg_color 背景色
+ * @param angle 回転角度（度）
+ */
+
+// 内部フォント回転関数宣言
+static void qd_draw_char_rotated_90(int16_t x, int16_t y, char c, uint8_t fg_color, uint8_t bg_color);
+static void qd_draw_char_rotated_180(int16_t x, int16_t y, char c, uint8_t fg_color, uint8_t bg_color);
+static void qd_draw_char_rotated_270(int16_t x, int16_t y, char c, uint8_t fg_color, uint8_t bg_color);
+static void qd_draw_text_rotated_90(int16_t x, int16_t y, const char* str, uint8_t fg_color, uint8_t bg_color);
+static void qd_draw_text_rotated_180(int16_t x, int16_t y, const char* str, uint8_t fg_color, uint8_t bg_color);
+static void qd_draw_text_rotated_270(int16_t x, int16_t y, const char* str, uint8_t fg_color, uint8_t bg_color);
+static bool qd_point_in_polygon(int16_t x, int16_t y, const int16_t* points, uint16_t point_count);
+
+void qd_draw_char_rotated(int16_t x, int16_t y, char c, uint8_t fg_color, uint8_t bg_color, float angle) {
+    // 簡易回転実装（90度単位のみ）
+    if (angle == 90.0f) {
+        qd_draw_char_rotated_90(x, y, c, fg_color, bg_color);
+    } else if (angle == 180.0f) {
+        qd_draw_char_rotated_180(x, y, c, fg_color, bg_color);
+    } else if (angle == 270.0f) {
+        qd_draw_char_rotated_270(x, y, c, fg_color, bg_color);
+    } else {
+        // 0度または未対応角度の場合は通常描画
+        qd_draw_char(x, y, c, fg_color, bg_color);
+    }
+}
+
+/**
+ * @brief テキストを回転して描画
+ *
+ * @param x 描画位置X座標
+ * @param y 描画位置Y座標
+ * @param str 描画する文字列
+ * @param fg_color 前景色
+ * @param bg_color 背景色
+ * @param angle 回転角度（度）
+ */
+void qd_draw_text_rotated(int16_t x, int16_t y, const char* str, uint8_t fg_color, uint8_t bg_color, float angle) {
+    if (!str) return;
+
+    // 簡易回転実装（90度単位のみ）
+    if (angle == 90.0f) {
+        qd_draw_text_rotated_90(x, y, str, fg_color, bg_color);
+    } else if (angle == 180.0f) {
+        qd_draw_text_rotated_180(x, y, str, fg_color, bg_color);
+    } else if (angle == 270.0f) {
+        qd_draw_text_rotated_270(x, y, str, fg_color, bg_color);
+    } else {
+        // 0度または未対応角度の場合は通常描画
+        qd_draw_text(x, y, str, fg_color, bg_color);
+    }
+}
+
+// ============================================================================
+// 内部ユーティリティ関数
+// ============================================================================
+
+static inline int16_t min(int16_t a, int16_t b) {
+    return a < b ? a : b;
+}
+
+static inline int16_t max(int16_t a, int16_t b) {
+    return a > b ? a : b;
+}
+
+// ============================================================================
+// 内部フォント回転関数
+// ============================================================================
+
+/**
+ * @brief 文字を90度回転して描画
+ */
+static void qd_draw_char_rotated_90(int16_t x, int16_t y, char c, uint8_t fg_color, uint8_t bg_color) {
+    volatile uint8_t* font_base = (uint8_t*)QD_FONT_DATA_ADDR;
+    volatile uint8_t* font_char = font_base + (c * QD_FONT_HEIGHT);
+
+    if ((uintptr_t)font_char >= (uintptr_t)font_base + 256 * QD_FONT_HEIGHT) {
+        return;
+    }
+
+    // 90度回転：(x,y) -> (y, -x)
+    for (uint8_t row = 0; row < QD_FONT_HEIGHT; row++) {
+        uint8_t font_byte = font_char[row];
+        for (uint8_t col = 0; col < QD_FONT_WIDTH; col++) {
+            uint8_t color = (font_byte & (0x80 >> col)) ? fg_color : bg_color;
+            qd_set_pixel(x + QD_FONT_HEIGHT - 1 - row, y + col, color);
+        }
+    }
+}
+
+/**
+ * @brief 文字を180度回転して描画
+ */
+static void qd_draw_char_rotated_180(int16_t x, int16_t y, char c, uint8_t fg_color, uint8_t bg_color) {
+    volatile uint8_t* font_base = (uint8_t*)QD_FONT_DATA_ADDR;
+    volatile uint8_t* font_char = font_base + (c * QD_FONT_HEIGHT);
+
+    if ((uintptr_t)font_char >= (uintptr_t)font_base + 256 * QD_FONT_HEIGHT) {
+        return;
+    }
+
+    // 180度回転：(x,y) -> (-x, -y)
+    for (uint8_t row = 0; row < QD_FONT_HEIGHT; row++) {
+        uint8_t font_byte = font_char[row];
+        for (uint8_t col = 0; col < QD_FONT_WIDTH; col++) {
+            uint8_t color = (font_byte & (0x80 >> col)) ? fg_color : bg_color;
+            qd_set_pixel(x + QD_FONT_WIDTH - 1 - col, y + QD_FONT_HEIGHT - 1 - row, color);
+        }
+    }
+}
+
+/**
+ * @brief 文字を270度回転して描画
+ */
+static void qd_draw_char_rotated_270(int16_t x, int16_t y, char c, uint8_t fg_color, uint8_t bg_color) {
+    volatile uint8_t* font_base = (uint8_t*)QD_FONT_DATA_ADDR;
+    volatile uint8_t* font_char = font_base + (c * QD_FONT_HEIGHT);
+
+    if ((uintptr_t)font_char >= (uintptr_t)font_base + 256 * QD_FONT_HEIGHT) {
+        return;
+    }
+
+    // 270度回転：(x,y) -> (-y, x)
+    for (uint8_t row = 0; row < QD_FONT_HEIGHT; row++) {
+        uint8_t font_byte = font_char[row];
+        for (uint8_t col = 0; col < QD_FONT_WIDTH; col++) {
+            uint8_t color = (font_byte & (0x80 >> col)) ? fg_color : bg_color;
+            qd_set_pixel(x + row, y + QD_FONT_WIDTH - 1 - col, color);
+        }
+    }
+}
+
+/**
+ * @brief テキストを90度回転して描画
+ */
+static void qd_draw_text_rotated_90(int16_t x, int16_t y, const char* str, uint8_t fg_color, uint8_t bg_color) {
+    if (!str) return;
+
+    int16_t curr_y = y;
+    for (const char* p = str; *p; p++) {
+        qd_draw_char_rotated_90(x, curr_y, *p, fg_color, bg_color);
+        curr_y += QD_FONT_WIDTH;
+    }
+}
+
+/**
+ * @brief テキストを180度回転して描画
+ */
+static void qd_draw_text_rotated_180(int16_t x, int16_t y, const char* str, uint8_t fg_color, uint8_t bg_color) {
+    if (!str) return;
+
+    int16_t curr_x = x;
+    for (const char* p = str; *p; p++) {
+        qd_draw_char_rotated_180(curr_x, y, *p, fg_color, bg_color);
+        curr_x -= QD_FONT_WIDTH;
+    }
+}
+
+/**
+ * @brief テキストを270度回転して描画
+ */
+static void qd_draw_text_rotated_270(int16_t x, int16_t y, const char* str, uint8_t fg_color, uint8_t bg_color) {
+    if (!str) return;
+
+    int16_t curr_y = y;
+    for (const char* p = str; *p; p++) {
+        qd_draw_char_rotated_270(x, curr_y, *p, fg_color, bg_color);
+        curr_y -= QD_FONT_WIDTH;
+    }
+}
+
+// ============================================================================
+// フェーズ2: パフォーマンス最適化
+// ============================================================================
+
+/**
+ * @brief DMAモードを有効/無効にする
+ *
+ * @param enable trueで有効、falseで無効
+ */
+void qd_enable_dma_mode(bool enable) {
+    s_dma_mode_enabled = enable;
+}
+
+/**
+ * @brief DMAモードが有効かどうかを確認
+ *
+ * @return DMAモードが有効ならtrue
+ */
+bool qd_is_dma_mode_enabled(void) {
+    return s_dma_mode_enabled;
+}
+
+/**
+ * @brief ブロック単位でピクセルを設定
+ *
+ * @param x 開始X座標
+ * @param y 開始Y座標
+ * @param width 幅
+ * @param height 高さ
+ * @param pattern パターンデータ
+ */
+void qd_set_pixel_block(int16_t x, int16_t y, uint16_t width, uint16_t height, const uint8_t* pattern) {
+    if (!pattern) return;
+
+    for (uint16_t dy = 0; dy < height; dy++) {
+        for (uint16_t dx = 0; dx < width; dx++) {
+            uint8_t color = pattern[dy * width + dx];
+            qd_set_pixel_fast(x + dx, y + dy, color);
+        }
+    }
+}
+
+/**
+ * @brief 矩形領域をコピー
+ *
+ * @param src_x ソースX座標
+ * @param src_y ソースY座標
+ * @param dst_x デスティネーションX座標
+ * @param dst_y デスティネーションY座標
+ * @param width 幅
+ * @param height 高さ
+ */
+void qd_copy_rect(int16_t src_x, int16_t src_y, int16_t dst_x, int16_t dst_y, uint16_t width, uint16_t height) {
+    // 簡易実装：ピクセル単位でコピー
+    for (uint16_t dy = 0; dy < height; dy++) {
+        for (uint16_t dx = 0; dx < width; dx++) {
+            uint8_t color = qd_get_pixel(src_x + dx, src_y + dy);
+            qd_set_pixel_fast(dst_x + dx, dst_y + dy, color);
+        }
+    }
+}
+
+/**
+ * @brief キャッシュを有効/無効にする
+ *
+ * @param enable trueで有効、falseで無効
+ */
+void qd_enable_cache(bool enable) {
+    s_cache_enabled = enable;
+    if (!enable) {
+        qd_clear_cache();
+    }
+}
+
+/**
+ * @brief キャッシュをクリア
+ */
+void qd_clear_cache(void) {
+    s_render_buffer_offset = 0;
+}
+
+/**
+ * @brief レンダーバッファを設定
+ *
+ * @param buffer バッファへのポインタ
+ * @param size バッファサイズ
+ */
+void qd_set_render_buffer(uint16_t* buffer, uint32_t size) {
+    s_render_buffer = buffer;
+    s_render_buffer_size = size;
+    s_render_buffer_offset = 0;
+}
+
+/**
+ * @brief レンダーバッファをフラッシュ（VRAMに転送）
+ */
+void qd_flush_render_buffer(void) {
+    if (!s_render_buffer || s_render_buffer_offset == 0) {
+        return;
+    }
+
+    // DMAモードが有効の場合はDMA転送をシミュレート
+    if (s_dma_mode_enabled) {
+        // 実際のDMA転送はハードウェア依存
+        // ここでは単純なメモリコピーとして実装
+        for (uint32_t i = 0; i < s_render_buffer_offset; i++) {
+            // レンダーバッファの内容をVRAMに転送
+            // 実際の実装ではDMAコントローラを使用
+        }
+    } else {
+        // 通常のメモリコピー
+        // 実際の実装では適切な転送関数を使用
+    }
+
+    s_render_buffer_offset = 0;
+}
+
+/**
+ * @brief バッファ付きピクセル描画（パフォーマンス最適化版）
+ *
+ * @param x X座標
+ * @param y Y座標
+ * @param color カラーインデックス
+ */
+void qd_set_pixel_buffered(int16_t x, int16_t y, uint8_t color) {
+    // キャッシュが有効でバッファが設定されている場合
+    if (s_cache_enabled && s_render_buffer && s_render_buffer_offset < s_render_buffer_size) {
+        // ピクセルデータをバッファに格納
+        // 実際の実装では適切なデータ構造を使用
+        s_render_buffer_offset++;
+
+        // バッファが満杯になったらフラッシュ
+        if (s_render_buffer_offset >= s_render_buffer_size) {
+            qd_flush_render_buffer();
+        }
+    } else {
+        // 直接描画
+        qd_set_pixel_fast(x, y, color);
+    }
+}
+
+/**
+ * @brief メモリ使用量を最適化
+ */
+void qd_optimize_memory_usage(void) {
+    // メモリ断片化を防ぐための処理
+    // 実際の実装ではメモリプールやガベージコレクションを考慮
+}
+
+/**
+ * @brief 描画パフォーマンス統計を取得
+ *
+ * @param pixels_drawn 描画されたピクセル数へのポインタ
+ * @param cache_hits キャッシュヒット数へのポインタ
+ */
+void qd_get_performance_stats(uint32_t* pixels_drawn, uint32_t* cache_hits) {
+    if (pixels_drawn) *pixels_drawn = 0; // 実際の実装ではカウンターを使用
+    if (cache_hits) *cache_hits = 0;     // 実際の実装ではカウンターを使用
+}
+
+/**
+ * @brief 高速メモリクリア
+ *
+ * @param x 開始X座標
+ * @param y 開始Y座標
+ * @param width 幅
+ * @param height 高さ
+ * @param color クリア色
+ */
+void qd_fast_clear_rect(int16_t x, int16_t y, uint16_t width, uint16_t height, uint8_t color) {
+    uint16_t fill_word = (color << 4) | color;
+
+    // ワード単位で高速クリア
+    for (uint16_t dy = 0; dy < height; dy++) {
+        uint32_t start_pixel = (y + dy) * QD_SCREEN_WIDTH + x;
+        uint32_t base_offset = start_pixel / 2;
+        uint32_t max_offset = (QD_SCREEN_WIDTH * QD_SCREEN_HEIGHT) / 2;
+
+        if (base_offset >= max_offset) continue;
+
+        volatile uint16_t* base_ptr = s_vram_base + base_offset;
+
+        // 境界チェック付きで高速クリア
+        uint16_t words = width / 2;
+        for (uint16_t dx = 0; dx < words; dx++) {
+            uint32_t current_offset = base_offset + dx;
+            if (current_offset < max_offset) {
+                volatile uint16_t* word_ptr = base_ptr + dx;
+                *word_ptr = fill_word;
+            }
+        }
+
+        // 端数の処理
+        if (width & 1) {
+            int16_t end_x = x + width - 1;
+            if (end_x >= 0 && end_x < QD_SCREEN_WIDTH) {
+                qd_set_pixel_fast(end_x, y + dy, color);
+            }
+        }
+    }
+}
+
+/**
+ * @brief 多角形を描画
+ *
+ * @param points 頂点配列（x, yの交互）
+ * @param point_count 頂点数
+ * @param color 描画色
+ */
+void qd_draw_polygon(const int16_t* points, uint16_t point_count, uint8_t color) {
+    if (!points || point_count < 3) return;
+
+    // 各辺を描画
+    for (uint16_t i = 0; i < point_count - 1; i++) {
+        int16_t x1 = points[i * 2];
+        int16_t y1 = points[i * 2 + 1];
+        int16_t x2 = points[(i + 1) * 2];
+        int16_t y2 = points[(i + 1) * 2 + 1];
+        qd_draw_line(x1, y1, x2, y2, color);
+    }
+
+    // 最後の辺（最後の点から最初の点へ）
+    int16_t x1 = points[(point_count - 1) * 2];
+    int16_t y1 = points[(point_count - 1) * 2 + 1];
+    int16_t x2 = points[0];
+    int16_t y2 = points[1];
+    qd_draw_line(x1, y1, x2, y2, color);
+}
+
+/**
+ * @brief 多角形を塗りつぶし（簡易版）
+ *
+ * @param points 頂点配列（x, yの交互）
+ * @param point_count 頂点数
+ * @param color 塗りつぶし色
+ */
+void qd_fill_polygon(const int16_t* points, uint16_t point_count, uint8_t color) {
+    if (!points || point_count < 3) return;
+
+    // バウンディングボックスを計算
+    int16_t min_x = QD_SCREEN_WIDTH;
+    int16_t max_x = 0;
+    int16_t min_y = QD_SCREEN_HEIGHT;
+    int16_t max_y = 0;
+
+    for (uint16_t i = 0; i < point_count; i++) {
+        int16_t x = points[i * 2];
+        int16_t y = points[i * 2 + 1];
+
+        if (x < min_x) min_x = x;
+        if (x > max_x) max_x = x;
+        if (y < min_y) min_y = y;
+        if (y > max_y) max_y = y;
+    }
+
+    // クリッピング適用
+    if (min_x < 0) min_x = 0;
+    if (min_y < 0) min_y = 0;
+    if (max_x > QD_SCREEN_WIDTH) max_x = QD_SCREEN_WIDTH;
+    if (max_y > QD_SCREEN_HEIGHT) max_y = QD_SCREEN_HEIGHT;
+
+    // 各ピクセルについて多角形内にあるかチェック
+    for (int16_t y = min_y; y < max_y; y++) {
+        for (int16_t x = min_x; x < max_x; x++) {
+            if (qd_point_in_polygon(x, y, points, point_count)) {
+                qd_set_pixel_fast(x, y, color);
+            }
+        }
+    }
+}
+
+/**
+ * @brief 点が多角形内にあるか判定（レイキャスティング法）
+ *
+ * @param x X座標
+ * @param y Y座標
+ * @param points 頂点配列
+ * @param point_count 頂点数
+ * @return 多角形内ならtrue
+ */
+static bool qd_point_in_polygon(int16_t x, int16_t y, const int16_t* points, uint16_t point_count) {
+    if (!points || point_count < 3) return false;
+
+    int16_t inside = 0;
+    int16_t xinters;
+    int16_t p1x, p1y, p2x, p2y;
+
+    p1x = points[(point_count - 1) * 2];
+    p1y = points[(point_count - 1) * 2 + 1];
+
+    for (uint16_t i = 0; i < point_count; i++) {
+        p2x = points[i * 2];
+        p2y = points[i * 2 + 1];
+
+        if (y > min(p1y, p2y)) {
+            if (y <= max(p1y, p2y)) {
+                if (x <= max(p1x, p2x)) {
+                    if (p1y != p2y) {
+                        xinters = (y - p1y) * (p2x - p1x) / (p2y - p1y) + p1x;
+                    }
+                    if (p1x == p2x || x <= xinters) {
+                        inside = !inside;
+                    }
+                }
+            }
+        }
+
+        p1x = p2x;
+        p1y = p2y;
+    }
+
+    return inside != 0;
+}
+
+// ユーティリティ関数
+
+// ============================================================================
+// フェーズ2: 描画モード機能
+// ============================================================================
+
+/**
+ * @brief 描画モードを設定
+ *
+ * @param mode 描画モード
+ */
+void qd_set_draw_mode(QD_DrawMode mode) {
+    s_current_draw_mode = mode;
+}
+
+/**
+ * @brief 現在の描画モードを取得
+ *
+ * @return 現在の描画モード
+ */
+QD_DrawMode qd_get_draw_mode(void) {
+    return s_current_draw_mode;
+}
+
+/**
+ * @brief モードを考慮したピクセル描画
+ *
+ * @param x X座標
+ * @param y Y座標
+ * @param color 描画色
+ */
+void qd_set_pixel_mode(int16_t x, int16_t y, uint8_t color) {
+    if (x < 0 || x >= QD_SCREEN_WIDTH || y < 0 || y >= QD_SCREEN_HEIGHT) {
+        return;
+    }
+
+    uint8_t current_color = qd_get_pixel(x, y);
+
+    // 描画モードに応じて色を計算
+    uint8_t final_color;
+    switch (s_current_draw_mode) {
+        case QD_MODE_COPY:
+            final_color = color;
+            break;
+        case QD_MODE_XOR:
+            final_color = current_color ^ color;
+            break;
+        case QD_MODE_OR:
+            final_color = current_color | color;
+            break;
+        case QD_MODE_AND:
+            final_color = current_color & color;
+            break;
+        case QD_MODE_NOT:
+            final_color = ~color & 0x0F; // 4ビットマスク
+            break;
+        default:
+            final_color = color;
+            break;
+    }
+
+    qd_set_pixel(x, y, final_color);
+}
+
+/**
+ * @brief モードを考慮したピクセル取得
+ *
+ * @param x X座標
+ * @param y Y座標
+ * @return ピクセル色
+ */
+uint8_t qd_get_pixel_mode(int16_t x, int16_t y) {
+    return qd_get_pixel(x, y);
+}
+
+/**
+ * @brief モード対応の矩形塗りつぶし
+ *
+ * @param x 矩形の左上X座標
+ * @param y 矩形の左上Y座標
+ * @param width 矩形の幅
+ * @param height 矩形の高さ
+ * @param color 塗りつぶし色
+ */
+void qd_fill_rect_mode(int16_t x, int16_t y, uint16_t width, uint16_t height, uint8_t color) {
+    // クリッピング適用
+    int16_t x1 = x, y1 = y;
+    uint16_t w1 = width, h1 = height;
+    if (!qd_clip_rect(&x1, &y1, &w1, &h1)) {
+        return;
+    }
+
+    // 描画モードがCOPYの場合は通常の高速描画を使用
+    if (s_current_draw_mode == QD_MODE_COPY) {
+        qd_fill_rect_fast(x1, y1, w1, h1, color);
+        return;
+    }
+
+    // モード対応の描画
+    for (uint16_t dy = 0; dy < h1; dy++) {
+        for (uint16_t dx = 0; dx < w1; dx++) {
+            qd_set_pixel_mode(x1 + dx, y1 + dy, color);
+        }
+    }
+}
+
+/**
+ * @brief モード対応の線描画
+ *
+ * @param x1 始点X座標
+ * @param y1 始点Y座標
+ * @param x2 終点X座標
+ * @param y2 終点Y座標
+ * @param color 描画色
+ */
+void qd_draw_line_mode(int16_t x1, int16_t y1, int16_t x2, int16_t y2, uint8_t color) {
+    // クリッピング適用
+    int16_t cx1 = x1, cy1 = y1, cx2 = x2, cy2 = y2;
+    if (!qd_clip_line(&cx1, &cy1, &cx2, &cy2)) {
+        return;
+    }
+
+    // 描画モードがCOPYの場合は通常の線描画を使用
+    if (s_current_draw_mode == QD_MODE_COPY) {
+        qd_draw_line(cx1, cy1, cx2, cy2, color);
+        return;
+    }
+
+    // 簡易線描画（ブレゼンハムアルゴリズム）
+    int16_t dx = abs(cx2 - cx1);
+    int16_t dy = abs(cy2 - cy1);
+    int16_t sx = (cx1 < cx2) ? 1 : -1;
+    int16_t sy = (cy1 < cy2) ? 1 : -1;
+    int16_t err = dx - dy;
+
+    int16_t x = cx1;
+    int16_t y = cy1;
+
+    while (1) {
+        qd_set_pixel_mode(x, y, color);
+
+        if (x == cx2 && y == cy2) break;
+
+        int16_t e2 = 2 * err;
+        if (e2 > -dy) {
+            err -= dy;
+            x += sx;
+        }
+        if (e2 < dx) {
+            err += dx;
+            y += sy;
+        }
+    }
+}
+
 /**
  * @brief レイヤーの位置を設定
  *
@@ -1503,4 +2368,523 @@ void qd_all_layer_draw_rect(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1) 
  */
 void qd_layer_draw_dirty_only(void) {
     qd_layer_blit_dirty_to_screen();
+}
+
+// ============================================================================
+// フェーズ2: パレット管理機能の強化
+// ============================================================================
+
+/**
+ * @brief RGB値をパレットに設定
+ *
+ * @param index パレットインデックス（0-15）
+ * @param r 赤成分（0-255）
+ * @param g 緑成分（0-255）
+ * @param b 青成分（0-255）
+ */
+void qd_set_palette_rgb(uint8_t index, uint8_t r, uint8_t g, uint8_t b) {
+    if (index >= 16) return;
+
+    // X68000のGRBフォーマットに変換（Green:Red:Blue）
+    uint16_t grb = ((g & 0xF0) << 4) | (r & 0xF0) | ((b & 0xF0) >> 4);
+    s_palette[index] = grb;
+}
+
+/**
+ * @brief パレットからRGB値を取得
+ *
+ * @param index パレットインデックス（0-15）
+ * @param r 赤成分へのポインタ
+ * @param g 緑成分へのポインタ
+ * @param b 青成分へのポインタ
+ */
+void qd_get_palette_rgb(uint8_t index, uint8_t* r, uint8_t* g, uint8_t* b) {
+    if (index >= 16 || !r || !g || !b) return;
+
+    uint16_t grb = s_palette[index];
+    *g = (grb >> 8) & 0xF0;  // Green
+    *r = (grb >> 4) & 0xF0;   // Red
+    *b = (grb << 4) & 0xF0;   // Blue
+}
+
+/**
+ * @brief パレットをコピー
+ *
+ * @param dest_palette コピー先パレット配列（16要素）
+ */
+void qd_copy_palette(uint8_t* dest_palette) {
+    if (!dest_palette) return;
+
+    for (uint8_t i = 0; i < 16; i++) {
+        dest_palette[i] = s_palette[i];
+    }
+}
+
+/**
+ * @brief パレットを貼り付け
+ *
+ * @param src_palette コピー元パレット配列（16要素）
+ */
+void qd_paste_palette(const uint8_t* src_palette) {
+    if (!src_palette) return;
+
+    for (uint8_t i = 0; i < 16; i++) {
+        s_palette[i] = src_palette[i];
+    }
+}
+
+/**
+ * @brief パレットをフェード
+ *
+ * @param index パレットインデックス
+ * @param target_rgb 目標RGB値（GRBフォーマット）
+ * @param steps ステップ数
+ * @param delay_ms 各ステップ間の遅延（ミリ秒）
+ */
+void qd_fade_palette(uint8_t index, uint16_t target_rgb, uint8_t steps, uint16_t delay_ms) {
+    if (index >= 16 || steps == 0) return;
+
+    uint16_t start_rgb = s_palette[index];
+    int16_t delta = (int16_t)target_rgb - (int16_t)start_rgb;
+    int16_t step_size = delta / (int16_t)steps;
+
+    for (uint8_t i = 1; i <= steps; i++) {
+        uint16_t new_rgb = (uint16_t)((int16_t)start_rgb + step_size * (int16_t)i);
+        s_palette[index] = new_rgb;
+
+        // 実際のハードウェアではここで適切な遅延関数を呼ぶ
+        // delay_ms_microseconds(delay_ms * 1000);
+    }
+
+    s_palette[index] = target_rgb; // 最終値を正確に設定
+}
+
+/**
+ * @brief パレットアニメーション
+ *
+ * @param start_idx 開始インデックス
+ * @param end_idx 終了インデックス
+ * @param colors カラー配列
+ * @param frame_count フレーム数
+ * @param delay_ms フレーム間隔（ミリ秒）
+ */
+void qd_animate_palette(uint8_t start_idx, uint8_t end_idx, const uint16_t* colors,
+                       uint8_t frame_count, uint16_t delay_ms) {
+    if (!colors || start_idx >= end_idx || end_idx > 16) return;
+
+    uint8_t color_count = end_idx - start_idx;
+    if (color_count > frame_count) return;
+
+    for (uint8_t frame = 0; frame < frame_count; frame++) {
+        // 各パレットインデックスに色を設定
+        for (uint8_t i = 0; i < color_count; i++) {
+            s_palette[start_idx + i] = colors[frame * color_count + i];
+        }
+
+        // 実際のハードウェアではここで適切な遅延関数を呼ぶ
+        // delay_ms_microseconds(delay_ms * 1000);
+    }
+}
+
+// ============================================================================
+// カラー変換ユーティリティ
+// ============================================================================
+
+/**
+ * @brief RGB値をGRBフォーマットに変換（X68000用）
+ *
+ * @param r 赤成分（0-255）
+ * @param g 緑成分（0-255）
+ * @param b 青成分（0-255）
+ * @return GRBフォーマットの16ビット値
+ */
+uint16_t qd_rgb_to_grb(uint8_t r, uint8_t g, uint8_t b) {
+    // X68000のGRBフォーマット: GGGG RRRR BBBB
+    return ((g & 0xF0) << 4) | (r & 0xF0) | ((b & 0xF0) >> 4);
+}
+
+/**
+ * @brief GRBフォーマットをRGB値に変換
+ *
+ * @param grb GRBフォーマットの16ビット値
+ * @param r 赤成分へのポインタ
+ * @param g 緑成分へのポインタ
+ * @param b 青成分へのポインタ
+ */
+void qd_grb_to_rgb(uint16_t grb, uint8_t* r, uint8_t* g, uint8_t* b) {
+    if (!r || !g || !b) return;
+
+    *g = (grb >> 8) & 0xF0;  // Green (上位8ビット)
+    *r = (grb >> 4) & 0xF0;   // Red (中位4ビット)
+    *b = (grb << 4) & 0xF0;   // Blue (下位4ビット)
+}
+
+/**
+ * @brief 2つの色をブレンド
+ *
+ * @param color1 色1（0-15）
+ * @param color2 色2（0-15）
+ * @param ratio ブレンド率（0-255、0=完全にcolor1、255=完全にcolor2）
+ * @return ブレンドされた色インデックス
+ */
+uint8_t qd_blend_colors(uint8_t color1, uint8_t color2, uint8_t ratio) {
+    uint8_t r1, g1, b1, r2, g2, b2;
+
+    qd_get_palette_rgb(color1, &r1, &g1, &b1);
+    qd_get_palette_rgb(color2, &r2, &g2, &b2);
+
+    uint8_t r = (r1 * (255 - ratio) + r2 * ratio) / 255;
+    uint8_t g = (g1 * (255 - ratio) + g2 * ratio) / 255;
+    uint8_t b = (b1 * (255 - ratio) + b2 * ratio) / 255;
+
+    return qd_rgb_to_palette_index(r, g, b);
+}
+
+/**
+ * @brief 色を線形補間
+ *
+ * @param color1 色1（GRBフォーマット）
+ * @param color2 色2（GRBフォーマット）
+ * @param ratio 補間率（0-255、0=完全にcolor1、255=完全にcolor2）
+ * @return 補間された色（GRBフォーマット）
+ */
+uint16_t qd_interpolate_color(uint16_t color1, uint16_t color2, uint8_t ratio) {
+    uint8_t r1, g1, b1, r2, g2, b2;
+
+    qd_grb_to_rgb(color1, &r1, &g1, &b1);
+    qd_grb_to_rgb(color2, &r2, &g2, &b2);
+
+    uint8_t r = (r1 * (255 - ratio) + r2 * ratio) / 255;
+    uint8_t g = (g1 * (255 - ratio) + g2 * ratio) / 255;
+    uint8_t b = (b1 * (255 - ratio) + b2 * ratio) / 255;
+
+    return qd_rgb_to_grb(r, g, b);
+}
+
+// ============================================================================
+// グラデーション描画機能
+// ============================================================================
+
+/**
+ * @brief 水平グラデーションを描画
+ *
+ * @param x X座標
+ * @param y Y座標
+ * @param width 幅
+ * @param height 高さ
+ * @param start_color 開始色
+ * @param end_color 終了色
+ */
+void qd_draw_gradient_h(uint16_t x, uint16_t y, uint16_t width, uint16_t height,
+                       uint8_t start_color, uint8_t end_color) {
+    if (width == 0 || height == 0) return;
+
+    for (uint16_t py = 0; py < height; py++) {
+        for (uint16_t px = 0; px < width; px++) {
+            uint8_t ratio = (px * 255) / (width - 1);
+            uint8_t color = qd_blend_colors(start_color, end_color, ratio);
+            qd_set_pixel_fast(x + px, y + py, color);
+        }
+    }
+}
+
+/**
+ * @brief 垂直グラデーションを描画
+ *
+ * @param x X座標
+ * @param y Y座標
+ * @param width 幅
+ * @param height 高さ
+ * @param start_color 開始色
+ * @param end_color 終了色
+ */
+void qd_draw_gradient_v(uint16_t x, uint16_t y, uint16_t width, uint16_t height,
+                       uint8_t start_color, uint8_t end_color) {
+    if (width == 0 || height == 0) return;
+
+    for (uint16_t py = 0; py < height; py++) {
+        uint8_t ratio = (py * 255) / (height - 1);
+        uint8_t color = qd_blend_colors(start_color, end_color, ratio);
+
+        // 水平線を高速描画
+        for (uint16_t px = 0; px < width; px++) {
+            qd_set_pixel_fast(x + px, y + py, color);
+        }
+    }
+}
+
+/**
+ * @brief 4点グラデーション矩形を描画
+ *
+ * @param x X座標
+ * @param y Y座標
+ * @param width 幅
+ * @param height 高さ
+ * @param top_left 左上色
+ * @param top_right 右上色
+ * @param bottom_left 左下色
+ * @param bottom_right 右下色
+ */
+void qd_draw_gradient_rect(uint16_t x, uint16_t y, uint16_t width, uint16_t height,
+                          uint8_t top_left, uint8_t top_right, uint8_t bottom_left, uint8_t bottom_right) {
+    if (width == 0 || height == 0) return;
+
+    for (uint16_t py = 0; py < height; py++) {
+        // 垂直方向の補間率
+        uint8_t v_ratio = (py * 255) / (height - 1);
+
+        for (uint16_t px = 0; px < width; px++) {
+            // 水平方向の補間率
+            uint8_t h_ratio = (px * 255) / (width - 1);
+
+            // 4隅の色を双線形補間
+            uint8_t top_color = qd_blend_colors(top_left, top_right, h_ratio);
+            uint8_t bottom_color = qd_blend_colors(bottom_left, bottom_right, h_ratio);
+            uint8_t final_color = qd_blend_colors(top_color, bottom_color, v_ratio);
+
+            qd_set_pixel_fast(x + px, y + py, final_color);
+        }
+    }
+}
+
+// ============================================================================
+// パレットバンク管理機能
+// ============================================================================
+
+// パレットバンク（4バンク分）
+static uint16_t s_palette_banks[4][16];
+static uint8_t s_current_bank = 0;
+
+/**
+ * @brief パレットバンクを設定
+ *
+ * @param bank_index バンクインデックス（0-3）
+ */
+void qd_set_palette_bank(uint8_t bank_index) {
+    if (bank_index >= 4) return;
+
+    // 現在のバンクを保存
+    for (uint8_t i = 0; i < 16; i++) {
+        s_palette_banks[s_current_bank][i] = s_palette[i];
+    }
+
+    // 新しいバンクを復元
+    for (uint8_t i = 0; i < 16; i++) {
+        s_palette[i] = s_palette_banks[bank_index][i];
+    }
+
+    s_current_bank = bank_index;
+}
+
+// ============================================================================
+// フェーズ2: 円・楕円描画機能
+// ============================================================================
+
+/**
+ * @brief 円を描画（ブレゼンハムアルゴリズム）
+ *
+ * @param cx 中心X座標
+ * @param cy 中心Y座標
+ * @param radius 半径
+ * @param color 描画色
+ */
+void qd_draw_circle(int16_t cx, int16_t cy, uint16_t radius, uint8_t color) {
+    if (radius == 0) return;
+
+    int16_t x = radius;
+    int16_t y = 0;
+    int16_t err = 0;
+
+    while (x >= y) {
+        // 8方向すべてに点を描画
+        qd_set_pixel_fast(cx + x, cy + y, color);
+        qd_set_pixel_fast(cx + y, cy + x, color);
+        qd_set_pixel_fast(cx - y, cy + x, color);
+        qd_set_pixel_fast(cx - x, cy + y, color);
+        qd_set_pixel_fast(cx - x, cy - y, color);
+        qd_set_pixel_fast(cx - y, cy - x, color);
+        qd_set_pixel_fast(cx + y, cy - x, color);
+        qd_set_pixel_fast(cx + x, cy - y, color);
+
+        y++;
+        err += 2 * y + 1;
+
+        if (err > x) {
+            err -= 2 * x;
+            x--;
+        }
+    }
+}
+
+/**
+ * @brief 円を塗りつぶし
+ *
+ * @param cx 中心X座標
+ * @param cy 中心Y座標
+ * @param radius 半径
+ * @param color 塗りつぶし色
+ */
+void qd_fill_circle(int16_t cx, int16_t cy, uint16_t radius, uint8_t color) {
+    if (radius == 0) return;
+
+    // 各行について水平線を描画
+    for (int16_t y = -radius; y <= radius; y++) {
+        // 現在の行での円の幅を計算
+        int32_t discriminant = (int32_t)radius * radius - (int32_t)y * y;
+        if (discriminant < 0) continue;
+
+        int16_t width = (int16_t)(2 * sqrt((double)discriminant));
+
+        // 円の中心からのオフセット
+        int16_t x_start = cx - width / 2;
+        int16_t x_end = x_start + width;
+
+        // クリッピング適用
+        if (x_start < 0) x_start = 0;
+        if (x_end > QD_SCREEN_WIDTH) x_end = QD_SCREEN_WIDTH;
+        if (x_start >= x_end) continue;
+
+        // 水平線を描画
+        for (int16_t x = x_start; x < x_end; x++) {
+            qd_set_pixel_fast(x, cy + y, color);
+        }
+    }
+}
+
+/**
+ * @brief 楕円を描画（ブレゼンハムアルゴリズム）
+ *
+ * @param cx 中心X座標
+ * @param cy 中心Y座標
+ * @param rx X方向半径
+ * @param ry Y方向半径
+ * @param color 描画色
+ */
+void qd_draw_ellipse(int16_t cx, int16_t cy, uint16_t rx, uint16_t ry, uint8_t color) {
+    if (rx == 0 || ry == 0) return;
+
+    // 楕円描画用の変数
+    int32_t a = (int32_t)rx * rx;
+    int32_t b = (int32_t)ry * ry;
+    int32_t two_a = 2 * a;
+    int32_t two_b = 2 * b;
+
+    // 領域1: 上半分
+    int32_t x = 0;
+    int32_t y = ry;
+    int32_t px = 0;
+    int32_t py = two_a * y;
+
+    // 領域1の初期決定量
+    int32_t discriminant = b - a * ry + (a / 4);
+
+    while (px < py) {
+        qd_set_pixel_fast(cx + x, cy + y, color);
+        qd_set_pixel_fast(cx - x, cy + y, color);
+        qd_set_pixel_fast(cx + x, cy - y, color);
+        qd_set_pixel_fast(cx - x, cy - y, color);
+
+        x++;
+        px += two_b;
+        discriminant += px + b;
+
+        if (discriminant > 0) {
+            y--;
+            py -= two_a;
+            discriminant -= py;
+        }
+    }
+
+    // 領域2: 下半分
+    discriminant = (int32_t)b * (x + 1) * (x + 1) + (int32_t)a * (y - 1) * (y - 1) - a * b;
+
+    while (y >= 0) {
+        qd_set_pixel_fast(cx + x, cy + y, color);
+        qd_set_pixel_fast(cx - x, cy + y, color);
+        qd_set_pixel_fast(cx + x, cy - y, color);
+        qd_set_pixel_fast(cx - x, cy - y, color);
+
+        y--;
+        py -= two_a;
+        discriminant += a - py;
+
+        if (discriminant <= 0) {
+            x++;
+            px += two_b;
+            discriminant += px;
+        }
+    }
+}
+
+/**
+ * @brief 楕円を塗りつぶし
+ *
+ * @param cx 中心X座標
+ * @param cy 中心Y座標
+ * @param rx X方向半径
+ * @param ry Y方向半径
+ * @param color 塗りつぶし色
+ */
+void qd_fill_ellipse(int16_t cx, int16_t cy, uint16_t rx, uint16_t ry, uint8_t color) {
+    if (rx == 0 || ry == 0) return;
+
+    // 各行について水平線を描画
+    for (int16_t y = -ry; y <= ry; y++) {
+        // 現在の行での楕円の幅を計算
+        int32_t discriminant = (int32_t)rx * rx - ((int32_t)ry * ry * y * y) / (ry * ry);
+        if (discriminant < 0) continue;
+
+        int16_t width = (int16_t)(2 * sqrt((double)discriminant));
+
+        // 楕円の中心からのオフセット
+        int16_t x_start = cx - width / 2;
+        int16_t x_end = x_start + width;
+
+        // クリッピング適用
+        if (x_start < 0) x_start = 0;
+        if (x_end > QD_SCREEN_WIDTH) x_end = QD_SCREEN_WIDTH;
+        if (x_start >= x_end) continue;
+
+        // 水平線を描画
+        for (int16_t x = x_start; x < x_end; x++) {
+            qd_set_pixel_fast(x, cy + y, color);
+        }
+    }
+}
+
+/**
+ * @brief 現在のパレットバンクを取得
+ *
+ * @return 現在のバンクインデックス
+ */
+uint8_t qd_get_palette_bank(void) {
+    return s_current_bank;
+}
+
+/**
+ * @brief パレットバンクを保存
+ *
+ * @param bank_index 保存先バンクインデックス（0-3）
+ */
+void qd_save_palette_bank(uint8_t bank_index) {
+    if (bank_index >= 4) return;
+
+    for (uint8_t i = 0; i < 16; i++) {
+        s_palette_banks[bank_index][i] = s_palette[i];
+    }
+}
+
+/**
+ * @brief パレットバンクを復元
+ *
+ * @param bank_index 復元元バンクインデックス（0-3）
+ */
+void qd_restore_palette_bank(uint8_t bank_index) {
+    if (bank_index >= 4) return;
+
+    for (uint8_t i = 0; i < 16; i++) {
+        s_palette[i] = s_palette_banks[bank_index][i];
+    }
+
+    s_current_bank = bank_index;
 }

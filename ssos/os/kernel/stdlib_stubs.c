@@ -10,6 +10,7 @@
 #include <stddef.h>
 #include <stdarg.h>
 #include "memory.h"
+#include <math.h>
 
 /**
  * @brief メモリ領域を指定した値で埋める
@@ -339,4 +340,67 @@ void* malloc(size_t size) {
     }
 
     return (void*)ss_mem_alloc((uint32_t)size);
+}
+
+/**
+ * @brief 整数平方根を計算（68000最適化版）
+ *
+ * @param x 平方根を求める値
+ * @return 平方根の整数部分
+ */
+uint32_t isqrt(uint32_t x) {
+    if (x == 0) return 0;
+    if (x < 4) return 1; // x=1,2,3の場合
+
+    // 初期値（ニュートン法の初期値）
+    uint32_t result = x;
+    uint32_t bit = 1UL << 30; // 最高位ビット
+
+    // 結果が収まるビットを探索
+    while (bit > x) bit >>= 2;
+
+    // ニュートン法で平方根を計算
+    while (bit) {
+        if (result >= bit) {
+            result ^= bit; // ビット反転で減算
+            result ^= (bit >> 1); // 1ビット右シフト
+        } else {
+            result ^= (bit >> 1);
+        }
+        bit >>= 2;
+    }
+
+    return result;
+}
+
+/**
+ * @brief 浮動小数点平方根（整数平方根の簡易版）
+ *
+ * @param x 平方根を求める値
+ * @return 平方根の近似値
+ */
+double sqrt(double x) {
+    if (x < 0) return 0.0; // 負数の場合
+    if (x == 0) return 0.0;
+
+    // 整数平方根を使って近似値を計算
+    uint32_t ix = (uint32_t)x;
+    uint32_t root = isqrt(ix);
+
+    // 浮動小数点に変換して微調整
+    double result = (double)root;
+
+    // より正確な値が必要な場合は線形補間
+    if (ix > 0) {
+        uint32_t next_root = root + 1;
+        uint32_t root_sq = root * root;
+        uint32_t next_sq = next_root * next_root;
+
+        if (next_sq > root_sq) {
+            double ratio = (double)(ix - root_sq) / (double)(next_sq - root_sq);
+            result += ratio;
+        }
+    }
+
+    return result;
 }
