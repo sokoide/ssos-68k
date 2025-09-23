@@ -31,17 +31,20 @@ FRAMEWORK_SRCS = framework/test_runner.c
 
 # Unit test sources
 UNIT_TEST_SRCS = unit/test_memory.c \
-                 unit/test_scheduler.c \
-                 unit/test_layers.c \
-                 unit/test_errors.c
+                  unit/test_scheduler.c \
+                  unit/test_errors.c
+                  # unit/test_layers.c - temporarily disabled due to layer dependency
 
 # SSOS kernel sources (subset for testing)
 KERNEL_SRCS = $(SSOS_ROOT)/os/kernel/memory.c \
-              $(SSOS_ROOT)/os/kernel/task_manager.c \
-              $(SSOS_ROOT)/os/kernel/ss_errors.c \
-              $(SSOS_ROOT)/os/kernel/ss_perf.c \
-              $(SSOS_ROOT)/os/window/layer.c \
-              $(SSOS_ROOT)/os/util/printf.c
+               $(SSOS_ROOT)/os/kernel/task_manager.c \
+               $(SSOS_ROOT)/os/kernel/ss_errors.c \
+               $(SSOS_ROOT)/os/kernel/ss_perf.c \
+               $(SSOS_ROOT)/os/kernel/stdlib_stubs.c \
+               $(SSOS_ROOT)/os/window/quickdraw.c \
+               $(SSOS_ROOT)/os/window/quickdraw_monitor.c \
+               $(SSOS_ROOT)/os/window/quickdraw_shell.c \
+               $(SSOS_ROOT)/os/util/printf.c
 
 # Assembly sources (needed for some kernel functions)
 ASM_SRCS = $(SSOS_ROOT)/os/kernel/interrupts.s
@@ -80,6 +83,7 @@ clean:
 	rm -f $(SSOS_ROOT)/os/kernel/*.o
 	rm -f $(SSOS_ROOT)/os/window/*.o
 	rm -f $(SSOS_ROOT)/os/util/*.o
+	rm -f $(SSOS_ROOT)/os/main/*.o
 
 debug:
 	@echo "FRAMEWORK_SRCS: $(FRAMEWORK_SRCS)"

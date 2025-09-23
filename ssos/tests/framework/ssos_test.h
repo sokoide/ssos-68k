@@ -89,6 +89,18 @@ extern const char* current_test_name;
         } \
     } while(0)
 
+#define ASSERT_STREQ(a, b) \
+    do { \
+        if (strcmp((a), (b)) != 0) { \
+            printf("FAIL\n"); \
+            printf("  %s:%d: Expected strings to be equal:\n", __FILE__, __LINE__); \
+            printf("    Expected: \"%s\"\n", (b)); \
+            printf("    Got:      \"%s\"\n", (a)); \
+            failed_tests++; \
+            return; \
+        } \
+    } while(0)
+
 // Memory-specific assertions
 #define ASSERT_ALIGNED_4K(ptr) \
     do { \

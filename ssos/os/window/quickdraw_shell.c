@@ -82,3 +82,21 @@ void qd_shell_draw_desktop_chrome(void) {
     qd_shell_draw_taskbar();
     qd_shell_draw_title_bar();
 }
+
+void qd_shell_update_taskbar(void) {
+    if (!qd_shell_ready()) {
+        return;
+    }
+
+    qd_shell_draw_taskbar();
+}
+
+void qd_shell_update_desktop_chrome(void) {
+    if (!qd_shell_ready()) {
+        return;
+    }
+
+    qd_shell_draw_desktop_background();
+    qd_shell_draw_taskbar();
+    qd_shell_draw_title_bar();
+}

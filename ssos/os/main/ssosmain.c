@@ -40,13 +40,30 @@ static void ss_run_quickdraw_mode(void) {
     qd_set_vram_buffer((uint8_t*)vram_start);
     ss_init_palette();
 
+    // Initialize desktop chrome and monitor panel
     qd_shell_draw_desktop_chrome();
     qd_monitor_panel_init();
-    qd_monitor_panel_tick();
+
+    // Performance measurement variables
+    uint32_t prev_counter = 0;
+    bool first_frame = true;
 
     while (true) {
         ss_wait_for_vsync();
-        qd_monitor_panel_tick();
+
+        // Update taskbar equivalent (Layer 3) - every frame
+        qd_shell_update_taskbar();
+
+        // Update monitor panel (Layer 2) - every second
+        if (ss_timerd_counter > prev_counter + 1000 ||
+            ss_timerd_counter < prev_counter ||
+            first_frame) {
+            prev_counter = ss_timerd_counter;
+            qd_monitor_panel_tick();
+            first_frame = false;
+        }
+
+        // Handle escape key
         if (ss_escape_requested()) {
 #ifdef LOCAL_MODE
             break;

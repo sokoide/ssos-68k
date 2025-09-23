@@ -31,6 +31,41 @@ uint32_t local_bss_size = 64 * 1024;            // 64KB
 #ifndef vram_start
 void* vram_start = (void*)0x00c00000;
 #endif
+
+// Add missing constants for testing
+#ifndef SS_CONFIG_VRAM_WIDTH
+#define SS_CONFIG_VRAM_WIDTH 1024
+#endif
+#ifndef SS_CONFIG_VRAM_HEIGHT
+#define SS_CONFIG_VRAM_HEIGHT 1024
+#endif
+#ifndef SS_CONFIG_DISPLAY_WIDTH
+#define SS_CONFIG_DISPLAY_WIDTH 768
+#endif
+#ifndef SS_CONFIG_DISPLAY_HEIGHT
+#define SS_CONFIG_DISPLAY_HEIGHT 512
+#endif
+#ifndef SS_CONFIG_COLOR_FOREGROUND
+#define SS_CONFIG_COLOR_FOREGROUND 15
+#endif
+#ifndef SS_CONFIG_COLOR_BACKGROUND
+#define SS_CONFIG_COLOR_BACKGROUND 10
+#endif
+#ifndef SS_CONFIG_COLOR_TASKBAR
+#define SS_CONFIG_COLOR_TASKBAR 14
+#endif
+#ifndef MFP_ADDRESS
+#define MFP_ADDRESS 0xe88001
+#endif
+#ifndef VSYNC_BIT
+#define VSYNC_BIT 0x10
+#endif
+#ifndef ESC_SCANCODE
+#define ESC_SCANCODE 0x011b
+#endif
+#ifndef KEY_BUFFER_SIZE
+#define KEY_BUFFER_SIZE 32
+#endif
 #endif
 
 // Global variables for testing
