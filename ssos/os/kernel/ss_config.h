@@ -43,6 +43,9 @@
 
 // Layer Configuration
 #define SS_CONFIG_MAX_LAYERS              256
+#ifndef SS_CONFIG_ENABLE_LAYER
+#define SS_CONFIG_ENABLE_LAYER            1
+#endif
 
 // DMA Configuration
 #define SS_CONFIG_DMA_MAX_TRANSFERS       512
@@ -61,7 +64,7 @@
 // Performance Monitoring Configuration
 #define SS_CONFIG_PERF_SAMPLE_INTERVAL    1000  // Sample every 1000 timer ticks
 #define SS_CONFIG_PERF_MAX_SAMPLES        100   // Keep last 100 samples
-#define SS_CONFIG_PERF_MAX_METRICS        7     // Maximum number of performance metrics
+#define SS_CONFIG_PERF_MAX_METRICS        10    // Maximum number of performance metrics
 
 // Compatibility macros for existing code
 // Note: Due to C language constraints with struct arrays, most system limits

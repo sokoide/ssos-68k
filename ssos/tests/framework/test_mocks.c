@@ -17,21 +17,6 @@ uint32_t local_data_size = 32 * 1024;           // 32KB
 uint32_t local_bss_size = 64 * 1024;            // 64KB
 #endif
 
-// Test constants for LOCAL_MODE
-#ifdef LOCAL_MODE
-#ifndef WIDTH
-#define WIDTH 768
-#endif
-#ifndef HEIGHT
-#define HEIGHT 512
-#endif
-#ifndef VRAMWIDTH
-#define VRAMWIDTH 768
-#endif
-#ifndef vram_start
-void* vram_start = (void*)0x00c00000;
-#endif
-
 // Add missing constants for testing
 #ifndef SS_CONFIG_VRAM_WIDTH
 #define SS_CONFIG_VRAM_WIDTH 1024
@@ -66,7 +51,24 @@ void* vram_start = (void*)0x00c00000;
 #ifndef KEY_BUFFER_SIZE
 #define KEY_BUFFER_SIZE 32
 #endif
-#endif
+
+// Provide kernel constant definitions for native tests
+#undef VRAMWIDTH
+#undef VRAMHEIGHT
+#undef WIDTH
+#undef HEIGHT
+#undef vram_start
+
+const int VRAMWIDTH = 768;
+const int VRAMHEIGHT = 512;
+const int WIDTH = 768;
+const int HEIGHT = 512;
+const uint16_t color_fg = 15;
+const uint16_t color_bg = 10;
+const uint16_t color_tb = 14;
+
+static uint16_t mock_vram_storage[768 * 512 / 2];
+uint16_t* vram_start = mock_vram_storage;
 
 // Global variables for testing
 volatile uint32_t ss_timera_counter = 0;

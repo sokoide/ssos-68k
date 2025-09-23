@@ -21,6 +21,7 @@
 #define QD_MONITOR_BODY_COLOR        QD_COLOR_BRIGHT_WHITE
 #define QD_MONITOR_TEXT_COLOR        QD_COLOR_BLACK
 #define QD_MONITOR_BORDER_COLOR      QD_COLOR_BLACK
+#define QD_MONITOR_PANEL_BG_COLOR    QD_MONITOR_BODY_COLOR
 
 void qd_monitor_panel_init(void);
 bool qd_monitor_panel_tick(void);

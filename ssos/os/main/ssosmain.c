@@ -40,30 +40,37 @@ static void ss_run_quickdraw_mode(void) {
     qd_set_vram_buffer((uint8_t*)vram_start);
     ss_init_palette();
 
-    // Initialize desktop chrome and monitor panel
-    qd_shell_draw_desktop_chrome();
-    qd_monitor_panel_init();
+    ss_layer_compat_select(SS_LAYER_BACKEND_QUICKDRAW);
 
-    // Performance measurement variables
+    Layer* l1 = get_layer_1();
+    Layer* l2 = get_layer_2();
+    Layer* l3 = get_layer_3();
+    (void)l1;
+
+    update_layer_2(l2);
+    update_layer_3(l3);
+
     uint32_t prev_counter = 0;
     bool first_frame = true;
 
     while (true) {
+        SS_PERF_START_MEASUREMENT(SS_PERF_QD_FRAME_TIME);
+
         ss_wait_for_vsync();
 
-        // Update taskbar equivalent (Layer 3) - every frame
-        qd_shell_update_taskbar();
+        SS_PERF_START_MEASUREMENT(SS_PERF_QD_UPDATE);
+        update_layer_3(l3);
 
-        // Update monitor panel (Layer 2) - every second
         if (ss_timerd_counter > prev_counter + 1000 ||
             ss_timerd_counter < prev_counter ||
             first_frame) {
             prev_counter = ss_timerd_counter;
-            qd_monitor_panel_tick();
+            update_layer_2(l2);
             first_frame = false;
         }
 
-        // Handle escape key
+        SS_PERF_END_MEASUREMENT(SS_PERF_QD_UPDATE);
+
         if (ss_escape_requested()) {
 #ifdef LOCAL_MODE
             break;
@@ -71,12 +78,15 @@ static void ss_run_quickdraw_mode(void) {
             ;
 #endif
         }
+
+        SS_PERF_END_MEASUREMENT(SS_PERF_QD_FRAME_TIME);
     }
 }
 
 static void ss_run_layer_mode(void) {
     uint32_t prev_counter = 0;
 
+    ss_layer_compat_select(SS_LAYER_BACKEND_LEGACY);
     ss_layer_init();
 
     Layer* l1 = get_layer_1();

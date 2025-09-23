@@ -2,8 +2,6 @@
 
 #include "quickdraw.h"
 
-#define QD_SHELL_TASKBAR_HEIGHT 32
-
 static bool qd_shell_ready(void) {
     return qd_is_initialized();
 }

@@ -13,6 +13,7 @@ const int TEST_VRAMWIDTH = 768;
 #endif
 
 #include "layer.h"
+#include "ssoswindows.h"
 #include "dma.h"
 #include "kernel.h"
 #include "memory.h"
@@ -359,6 +360,8 @@ void ss_layer_mark_dirty(Layer* layer, uint16_t x, uint16_t y, uint16_t w, uint1
         layer->dirty_w = new_x2 - new_x1;
         layer->dirty_h = new_y2 - new_y1;
     }
+
+    ss_layer_compat_on_dirty_marked(layer);
 }
 
 // Mark entire layer as clean (no redraw needed)
@@ -367,6 +370,7 @@ void ss_layer_mark_clean(Layer* layer) {
         layer->needs_redraw = 0;
         layer->dirty_w = 0;
         layer->dirty_h = 0;
+        ss_layer_compat_on_layer_cleaned(layer);
     }
 }
 
@@ -467,6 +471,7 @@ void ss_layer_invalidate(Layer* layer) {
     layer->dirty_w = layer->w;
     layer->dirty_h = layer->h;
     layer->needs_redraw = 1;
+    ss_layer_compat_on_dirty_marked(layer);
 }
 
 void ss_layer_update_map(Layer* layer) {

@@ -1,5 +1,7 @@
 #pragma once
 
+#define QD_SHELL_TASKBAR_HEIGHT 32
+
 void qd_shell_draw_desktop_background(void);
 void qd_shell_draw_taskbar(void);
 void qd_shell_draw_title_bar(void);
