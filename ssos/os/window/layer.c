@@ -390,39 +390,62 @@ void ss_layer_draw_rect_layer_batch(Layer* l) {
 // Performance monitoring variables for adaptive DMA thresholds
 static uint32_t ss_cpu_idle_time = 0;
 static uint32_t ss_last_performance_check = 0;
-// Increased default threshold for better batch DMA performance
-static uint16_t ss_adaptive_dma_threshold = 16;  // Increased from 8 to 16 for better performance
+// Phase 3: Optimized adaptive DMA threshold
+static uint16_t ss_adaptive_dma_threshold = 12;  // Optimized value for better balance
+static uint32_t ss_total_transfers = 0;
+static uint32_t ss_small_transfers = 0;
 
-// Update CPU performance metrics with improved adaptive algorithm
+// Phase 3: Enhanced adaptive DMA threshold with transfer statistics
 void ss_update_performance_metrics() {
     uint32_t current_time = ss_timerd_counter;
 
-    // Update performance metrics every 100ms
-    if (current_time > ss_last_performance_check + 100) {
+    // Update performance metrics every 200ms (reduced frequency for stability)
+    if (current_time > ss_last_performance_check + 200) {
         // Estimate CPU idle time based on system activity
-        // This is a simplified metric - in a real system you'd track actual idle time
         static uint32_t last_activity = 0;
-        uint32_t activity_delta = current_time - last_activity;
+        static uint32_t last_total_transfers = 0;
+        static uint32_t last_small_transfers = 0;
 
-        // Improved adaptive DMA threshold algorithm
-        if (activity_delta < 50) {
-            // High activity - prefer DMA for larger blocks to free up CPU
-            ss_adaptive_dma_threshold = 24;  // Increased from 12
-        } else if (activity_delta < 100) {
-            // Medium-high activity - balanced approach
-            ss_adaptive_dma_threshold = 20;  // Increased from 8
-        } else if (activity_delta < 200) {
-            // Medium-low activity - prefer DMA for medium blocks
-            ss_adaptive_dma_threshold = 16;  // Increased from 8
-        } else if (activity_delta < 500) {
-            // Low activity - use DMA for smaller blocks for consistency
-            ss_adaptive_dma_threshold = 12;  // Increased from 4
-        } else {
-            // Very low activity - use DMA aggressively
-            ss_adaptive_dma_threshold = 8;   // Increased from 4
+        uint32_t activity_delta = current_time - last_activity;
+        uint32_t transfers_delta = ss_total_transfers - last_total_transfers;
+        uint32_t small_transfers_delta = ss_small_transfers - last_small_transfers;
+
+        // Phase 3: Statistics-based adaptive algorithm
+        float small_transfer_ratio = 0.0f;
+        if (transfers_delta > 0) {
+            small_transfer_ratio = (float)small_transfers_delta / transfers_delta;
         }
 
+        // Enhanced adaptive DMA threshold algorithm with statistics
+        if (activity_delta < 50) {
+            // High activity - prefer DMA for larger blocks to free up CPU
+            ss_adaptive_dma_threshold = 20;  // Optimized value
+        } else if (activity_delta < 100) {
+            // Medium-high activity - balanced approach with statistics
+            if (small_transfer_ratio > 0.7f) {
+                ss_adaptive_dma_threshold = 16;  // Many small transfers
+            } else {
+                ss_adaptive_dma_threshold = 18;  // Balanced
+            }
+        } else if (activity_delta < 200) {
+            // Medium-low activity - prefer DMA for medium blocks
+            ss_adaptive_dma_threshold = 14;  // Optimized value
+        } else if (activity_delta < 500) {
+            // Low activity - use DMA for smaller blocks for consistency
+            if (small_transfer_ratio > 0.5f) {
+                ss_adaptive_dma_threshold = 10;  // Many small transfers
+            } else {
+                ss_adaptive_dma_threshold = 12;  // Balanced
+            }
+        } else {
+            // Very low activity - use DMA aggressively
+            ss_adaptive_dma_threshold = 8;   // Optimized value
+        }
+
+        // Store current values for next comparison
         last_activity = current_time;
+        last_total_transfers = ss_total_transfers;
+        last_small_transfers = ss_small_transfers;
         ss_last_performance_check = current_time;
     }
 }
@@ -440,7 +463,10 @@ void ss_layer_draw_rect_layer_dma(Layer* l, uint8_t* src, uint8_t* dst,
     // - Low CPU activity: Use DMA even for smaller blocks for consistency
     // - Normal activity: Balanced approach
 
+    // Phase 3: Enhanced adaptive DMA threshold with statistics
+    ss_total_transfers++;
     if (block_count <= ss_adaptive_dma_threshold) {
+        ss_small_transfers++;
         // 従来の最適化実装に戻す（安定性確保）
         if (block_count >= 8 && ((uintptr_t)src & 3) == 0 && ((uintptr_t)dst & 3) == 0) {
             // 32-bit aligned transfer for optimal CPU performance (increased threshold from 4 to 8)
