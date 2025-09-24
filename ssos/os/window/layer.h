@@ -43,6 +43,13 @@ typedef struct {
     // Buffer pool for memory efficiency
     LayerBuffer buffer_pool[MAX_LAYERS];
     int buffer_pool_count;
+    // Phase 6: Staged initialization and low clock optimization
+    bool staged_init;           // Staged initialization flag
+    bool low_clock_mode;        // Low clock mode flag
+    bool buffers_initialized;   // Buffer initialization flag
+    uint32_t timer_counter;     // Performance timer
+    uint32_t batch_threshold;   // DMA batch threshold
+    bool initialized;           // Initialization flag
 } LayerMgr;
 
 extern LayerMgr* ss_layer_mgr;
@@ -92,6 +99,9 @@ void ss_layer_init_double_buffer(void);
 void ss_layer_draw_to_backbuffer(Layer* l);
 void ss_layer_flip_buffers(void);
 
+// Internal cache functions
+uint8_t ss_get_cached_map_value(uint16_t index);
+
 // Phase 4: Advanced performance monitoring system
 typedef struct {
     uint32_t total_layers_created;
@@ -123,3 +133,32 @@ void ss_execute_conditional_batch_transfers(void);
 void ss_execute_batch_group(BatchTransfer* group, int count);
 void ss_sort_batch_transfers_by_dst(void);
 void ss_layer_draw_rect_layer_cpu_optimized_fallback(uint8_t* src, uint8_t* dst, uint16_t count);
+
+// Phase 6: Staged initialization and low clock optimization
+void ss_layer_init_staged(void);
+void ss_layer_init_map_on_demand(void);
+void ss_layer_init_map_fast(void);
+void ss_layer_init_buffers_on_demand(void);
+LayerBuffer* ss_layer_get_buffer_staged(uint16_t width, uint16_t height);
+uint32_t detect_cpu_clock_speed(void);
+void enable_low_clock_optimizations(void);
+Layer* ss_layer_get_first_optimized(void);
+void ss_layer_prebuild_map_for_layer(Layer* l);
+void ss_layer_optimize_first_draw(Layer* l);
+void ss_preinit_dma_for_layer(Layer* l);
+void ss_layer_prefetch_for_first_draw(Layer* l);
+
+// Phase 6: Debug and monitoring functions
+void ss_layer_print_performance_info(void);
+void ss_layer_print_clock_info(void);
+void ss_layer_print_optimization_status(void);
+bool ss_layer_is_low_clock_mode(void);
+uint32_t ss_layer_get_detected_clock(void);
+
+// Phase 6: Adaptive threshold management
+void ss_layer_set_adaptive_threshold(uint16_t threshold);
+uint16_t ss_layer_get_adaptive_threshold(void);
+
+// Phase 6: Test and verification functions
+void ss_layer_test_optimizations(void);
+void ss_layer_reset_optimization_stats(void);
