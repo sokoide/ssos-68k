@@ -90,6 +90,12 @@ void ss_layer_init() {
     // Initialize memory map cache for performance optimization
     // (already implemented, no need to call again)
 
+    // Phase 5: Initialize fast memory map optimization
+    ss_layer_init_fast_map();
+
+    // Phase 5: Initialize double buffering system
+    ss_layer_init_double_buffer();
+
     // Phase 2 optimizations disabled for stability
 }
 
@@ -499,18 +505,13 @@ void ss_layer_draw_rect_layer_dma(Layer* l, uint8_t* src, uint8_t* dst,
     ss_total_transfers++;
     if (block_count <= ss_adaptive_dma_threshold) {
         ss_small_transfers++;
-        // 従来の最適化実装に戻す（安定性確保）
+        // Phase 5: スーパースカラー転送を有効化（68k最適化）
         if (block_count >= 8 && ((uintptr_t)src & 3) == 0 && ((uintptr_t)dst & 3) == 0) {
-            // 32-bit aligned transfer for optimal CPU performance (increased threshold from 4 to 8)
-            uint32_t* src32 = (uint32_t*)src;
-            uint32_t* dst32 = (uint32_t*)dst;
-            int blocks = block_count >> 2;
-            for (int i = 0; i < blocks; i++) {
-                *dst32++ = *src32++;
-            }
+            // 32-bit aligned transfer with superscalar optimization
+            ss_ultra_fast_copy_32bit((uint32_t*)dst, (uint32_t*)src, block_count >> 2);
             // Handle remaining bytes
-            uint8_t* src8 = (uint8_t*)src32;
-            uint8_t* dst8 = (uint8_t*)dst32;
+            uint8_t* src8 = src + (block_count & ~3);
+            uint8_t* dst8 = dst + (block_count & ~3);
             for (int i = 0; i < (block_count & 3); i++) {
                 *dst8++ = *src8++;
             }
@@ -843,10 +844,10 @@ void ss_layer_update_map(Layer* layer) {
     }
 }
 
-// Batch DMA optimization functions for 3x performance improvement
+// Phase 5: Batch DMA optimization functions with DMA constraints consideration
 void ss_layer_init_batch_transfers(void) {
     ss_layer_mgr->batch_count = 0;
-    ss_layer_mgr->batch_optimized = true;  // 条件付きバッチDMAを有効化（フェーズ1最適化）
+    ss_layer_mgr->batch_optimized = true;  // 条件付きバッチDMAを有効化（制約考慮済み）
 }
 
 void ss_layer_add_batch_transfer(uint8_t* src, uint8_t* dst, uint16_t count) {
