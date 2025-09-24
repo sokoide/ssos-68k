@@ -5,7 +5,7 @@
 XFR_INF xfr_inf[SS_CONFIG_DMA_MAX_TRANSFERS];
 volatile DMA_REG* dma = (volatile DMA_REG*)0xe84080; // channel #2
 
-// DMAレジスタの事前設定とLazy初期化（最適化版）
+// DMAレジスタの事前設定とLazy初期化
 static volatile DMA_REG* dma_cached = NULL;
 static uint32_t dma_init_count = 0;
 

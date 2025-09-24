@@ -77,3 +77,17 @@ uint8_t* ss_layer_alloc_buffer(uint16_t width, uint16_t height);
 void ss_layer_free_buffer(uint8_t* buffer);
 LayerBuffer* ss_layer_find_buffer(uint8_t* buffer);
 void ss_layer_optimize_buffer_usage(void);
+
+// Memory map optimization for Phase 2 performance improvement
+void ss_layer_init_fast_map(void);
+uint32_t ss_compute_layer_mask_fast(uint16_t x, uint16_t y, uint16_t w, uint16_t h);
+uint8_t ss_get_map_value_optimized(uint16_t x, uint16_t y);
+
+// Superscalar transfer optimization for Phase 2
+void ss_layer_draw_rect_layer_cpu_superscalar(uint8_t* src, uint8_t* dst, uint16_t count);
+void ss_ultra_fast_copy_32bit(uint32_t* dst, uint32_t* src, int count);
+
+// Double buffering system for Phase 2
+void ss_layer_init_double_buffer(void);
+void ss_layer_draw_to_backbuffer(Layer* l);
+void ss_layer_flip_buffers(void);

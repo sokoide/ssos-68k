@@ -26,6 +26,10 @@
 #define SS_CONFIG_DISPLAY_WIDTH           768
 #define SS_CONFIG_DISPLAY_HEIGHT          512
 
+// Layer system dimensions (for fast map optimization)
+#define SS_CONFIG_LAYER_WIDTH             SS_CONFIG_DISPLAY_WIDTH
+#define SS_CONFIG_LAYER_HEIGHT            SS_CONFIG_DISPLAY_HEIGHT
+
 // Color Configuration
 #define SS_CONFIG_COLOR_FOREGROUND        15
 #define SS_CONFIG_COLOR_BACKGROUND        10
