@@ -937,15 +937,41 @@ LayerBuffer* ss_layer_find_buffer_by_size(uint16_t width, uint16_t height) {
 }
 
 void ss_layer_optimize_buffer_usage(void) {
-    // Clean up unused buffers periodically
-    for (int i = 0; i < ss_layer_mgr->buffer_pool_count; i++) {
-        if (!ss_layer_mgr->buffer_pool[i].in_use) {
-            // Buffer is not in use, could be freed if memory is low
-            // For now, we keep it in the pool for reuse
+    // Phase 3: 小規模なバッファ効率向上
+    static uint32_t last_cleanup = 0;
+    static int buffers_freed = 0;
+
+    // Clean up unused buffers periodically (低頻度)
+    if (ss_timerd_counter - last_cleanup > 600) {  // 10秒ごと
+        int freed_count = 0;
+        for (int i = 0; i < ss_layer_mgr->buffer_pool_count; i++) {
+            if (!ss_layer_mgr->buffer_pool[i].in_use) {
+                // Phase 3: メモリ使用量最適化 - 古いバッファを優先的に解放
+                if (ss_layer_mgr->buffer_pool_count > 4) {  // 最低4つは保持
+                    ss_mem_free((uint32_t)(uintptr_t)ss_layer_mgr->buffer_pool[i].buffer, 0);
+                    ss_layer_mgr->buffer_pool[i].buffer = NULL;
+                    ss_layer_mgr->buffer_pool[i].in_use = false;
+                    freed_count++;
+                    buffers_freed++;
+                }
+            }
+        }
+        last_cleanup = ss_timerd_counter;
+
+        // 解放されたバッファをプールの最後から削除
+        if (freed_count > 0) {
+            int write_idx = 0;
+            for (int i = 0; i < ss_layer_mgr->buffer_pool_count; i++) {
+                if (ss_layer_mgr->buffer_pool[i].buffer != NULL) {
+                    if (write_idx != i) {
+                        ss_layer_mgr->buffer_pool[write_idx] = ss_layer_mgr->buffer_pool[i];
+                    }
+                    write_idx++;
+                }
+            }
+            ss_layer_mgr->buffer_pool_count = write_idx;
         }
     }
-
-    // 定期最適化は無効化（安定性確保のため）
 }
 
 // メモリマップキャッシュの初期化（重複定義削除済み）
