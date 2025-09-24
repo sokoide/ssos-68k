@@ -22,8 +22,10 @@ enum {
 };
 
 #ifndef SS_BOOT_UI_MODE
-// #define SS_BOOT_UI_MODE SS_UI_MODE_LAYER
-#define SS_BOOT_UI_MODE SS_UI_MODE_QUICKDRAW
+// Layer mode
+#define SS_BOOT_UI_MODE SS_UI_MODE_LAYER
+// QuickDraw mode
+// #define SS_BOOT_UI_MODE SS_UI_MODE_QUICKDRAW
 #endif
 
 static bool ss_escape_requested(void) {
