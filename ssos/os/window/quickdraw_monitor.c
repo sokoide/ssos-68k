@@ -13,7 +13,6 @@
 
 #define QD_MONITOR_HEADER_COLOR      QD_COLOR_BLUE
 #define QD_MONITOR_HEADER_TEXT_COLOR QD_COLOR_BRIGHT_WHITE
-#define QD_MONITOR_BODY_COLOR        QD_COLOR_BRIGHT_WHITE
 #define QD_MONITOR_TEXT_COLOR        QD_COLOR_BLACK
 #define QD_MONITOR_BORDER_COLOR      QD_COLOR_BLACK
 
@@ -172,9 +171,18 @@ void qd_monitor_panel_init(void) {
     qd_set_clip_rect(s_monitor_panel.bounds.x, s_monitor_panel.bounds.y,
                      s_monitor_panel.bounds.width, s_monitor_panel.bounds.height);
 
+#ifdef TESTING
+    printf("DEBUG: About to fill rect at (%d,%d) size %dx%d with color %d\n",
+           s_monitor_panel.bounds.x, s_monitor_panel.bounds.y,
+           s_monitor_panel.bounds.width, s_monitor_panel.bounds.height,
+           QD_MONITOR_BODY_COLOR);
+#endif
     qd_fill_rect(s_monitor_panel.bounds.x, s_monitor_panel.bounds.y,
-                 s_monitor_panel.bounds.width, s_monitor_panel.bounds.height,
-                 QD_MONITOR_BODY_COLOR);
+                  s_monitor_panel.bounds.width, s_monitor_panel.bounds.height,
+                  QD_MONITOR_BODY_COLOR);
+#ifdef TESTING
+    printf("DEBUG: Fill rect completed\n");
+#endif
     qd_fill_rect(s_monitor_panel.bounds.x, s_monitor_panel.bounds.y,
                  s_monitor_panel.bounds.width, QD_MONITOR_PANEL_HEADER_HEIGHT,
                  QD_MONITOR_HEADER_COLOR);
@@ -288,14 +296,16 @@ bool qd_monitor_panel_tick(void) {
         any_updates |= qd_monitor_draw_line(line_index++, buffer);
     }
 
+#ifdef TESTING
     uintptr_t ram_base = (uintptr_t)ss_ssos_memory_base;
     uintptr_t ram_end = qd_monitor_section_end(ram_base, ss_ssos_memory_size);
     if (line_index < QD_MONITOR_MAX_LINES) {
         snprintf(buffer, sizeof(buffer), "RAM     addr: 0x%08lx-0x%08lx, size: %lu",
-                 (unsigned long)ram_base, (unsigned long)ram_end,
-                 (unsigned long)ss_ssos_memory_size);
+                  (unsigned long)ram_base, (unsigned long)ram_end,
+                  (unsigned long)ss_ssos_memory_size);
         any_updates |= qd_monitor_draw_line(line_index++, buffer);
     }
+#endif
 
     if (line_index < QD_MONITOR_MAX_LINES) {
         snprintf(buffer, sizeof(buffer), "ss_timer_counter_base addr: 0x%p",
@@ -317,22 +327,24 @@ bool qd_monitor_panel_tick(void) {
     }
 
     uint16_t remaining_lines = (line_index < QD_MONITOR_MAX_LINES)
-                                   ? (uint16_t)(QD_MONITOR_MAX_LINES - line_index)
-                                   : 0;
+                                    ? (uint16_t)(QD_MONITOR_MAX_LINES - line_index)
+                                    : 0;
+#ifdef TESTING
     uint16_t blocks_to_draw = (ss_mem_mgr.num_free_blocks < QD_MONITOR_MAX_BLOCK_LINES)
-                                  ? (uint16_t)ss_mem_mgr.num_free_blocks
-                                  : QD_MONITOR_MAX_BLOCK_LINES;
+                                   ? (uint16_t)ss_mem_mgr.num_free_blocks
+                                   : QD_MONITOR_MAX_BLOCK_LINES;
     if (blocks_to_draw > remaining_lines) {
         blocks_to_draw = remaining_lines;
     }
 
     for (uint16_t i = 0; i < blocks_to_draw && line_index < QD_MONITOR_MAX_LINES; i++) {
         snprintf(buffer, sizeof(buffer), "memory mgr: block: %d, addr: 0x%lx, sz:%lu",
-                 (int)i,
-                 (unsigned long)ss_mem_mgr.free_blocks[i].addr,
-                 (unsigned long)ss_mem_mgr.free_blocks[i].sz);
+                  (int)i,
+                  (unsigned long)ss_mem_mgr.free_blocks[i].addr,
+                  (unsigned long)ss_mem_mgr.free_blocks[i].sz);
         any_updates |= qd_monitor_draw_line(line_index++, buffer);
     }
+#endif
 
     for (uint16_t i = line_index; i < s_monitor_panel.prev_line_count && i < QD_MONITOR_MAX_LINES; i++) {
         qd_monitor_clear_line(i);

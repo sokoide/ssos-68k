@@ -11,7 +11,7 @@
 
 extern uint32_t global_counter;
 
-static uint8_t test_vram[768 * 512] __attribute__((aligned(4))); // Match Layer system: 768x512
+static uint8_t test_vram[1024 * 1024 * 2] __attribute__((aligned(4))); // X68000 VRAM: 1024x1024x2 bytes (16-color)
 static uint8_t test_font[256 * 16];
 
 static void reset_vram_buffer(void) {
@@ -162,7 +162,7 @@ TEST(quickdraw_boundary_validation) {
 TEST(quickdraw_vram_operations) {
     setup_quickdraw_system();
 
-    uint8_t custom_vram[768 * 512] = {0}; // Match Layer system: 768x512
+    uint8_t custom_vram[1024 * 1024 * 2] = {0}; // X68000 VRAM: 1024x1024x2 bytes (16-color)
     qd_set_vram_buffer(custom_vram);
     qd_clear_screen(QD_COLOR_BLACK);
 
@@ -393,8 +393,7 @@ void run_quickdraw_tests(void) {
     RUN_TEST(quickdraw_layer_dirty_adapter_bridge);
     RUN_TEST(quickdraw_layer_monitor_updates_without_explicit_dirty);
     RUN_TEST(quickdraw_text_rendering);
-    // Skip monitor tests for now due to layer dependency issues
-    // RUN_TEST(quickdraw_monitor_initialization_draws_panel);
-    // RUN_TEST(quickdraw_monitor_tick_updates_and_caches_lines);
-    // RUN_TEST(quickdraw_monitor_handles_memory_block_changes);
+    RUN_TEST(quickdraw_monitor_initialization_draws_panel);
+    RUN_TEST(quickdraw_monitor_tick_updates_and_caches_lines);
+    RUN_TEST(quickdraw_monitor_handles_memory_block_changes);
 }

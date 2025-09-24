@@ -48,6 +48,7 @@ int main() {
     extern void run_error_tests(void);
     extern void run_performance_tests(void);
     extern void run_kernel_tests(void);
+    extern void run_quickdraw_tests(void);
 
     // Run all test suites
     printf("Running Memory Tests...\n");
@@ -61,6 +62,9 @@ int main() {
 
     printf("\nRunning Error Tests...\n");
     run_error_tests();
+
+    printf("\nRunning QuickDraw Tests...\n");
+    run_quickdraw_tests();
 
     printf("\nRunning Performance Tests...\n");
     run_performance_tests();

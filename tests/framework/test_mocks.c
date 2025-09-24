@@ -144,6 +144,26 @@ void ss_mem_init(void) {
     ss_mem_mgr.free_blocks[0].sz = 0x100000;  // 1MB for testing
 }
 
+// Mock ss_mem_free for test environment (matching the expected signature)
+int ss_mem_free(uint32_t addr, uint32_t sz) {
+    if (sz == 0) return 0;
+
+    // Update memory manager state for consistency with tests
+    if (ss_mem_mgr.num_free_blocks > 0) {
+        if (ss_mem_mgr.free_blocks[0].sz >= sz) {
+            if (ss_mem_mgr.free_blocks[0].sz == sz) {
+                // Complete consumption - remove free block
+                ss_mem_mgr.num_free_blocks = 0;
+            } else {
+                // Partial allocation - update free block
+                ss_mem_mgr.free_blocks[0].addr += sz;
+                ss_mem_mgr.free_blocks[0].sz -= sz;
+            }
+        }
+    }
+    return 0;  // Success
+}
+
 uint32_t ss_mem_total_bytes(void) {
     return 0x100000;  // 1MB total for testing
 }
@@ -495,19 +515,18 @@ uint32_t local_data_size = 0x1000;               // 4KB data section
 uint32_t local_bss_size = 0x1000;                // 4KB BSS section
 
 // VRAM base address for testing (X68000: 1024x1024 VRAM, 16-color mode, 2 bytes per pixel)
-uint8_t test_vram_buffer[SS_CONFIG_VRAM_WIDTH * SS_CONFIG_VRAM_HEIGHT * 2];
+uint8_t test_vram_buffer[1024 * 1024 * 2];
 uint8_t* vram_start = test_vram_buffer;
 
 // Keep VRAMWIDTH definition for compatibility with existing code
 const int VRAMWIDTH = SS_CONFIG_VRAM_WIDTH;
 const int VRAMHEIGHT = SS_CONFIG_VRAM_HEIGHT;
 
-// Provide kernel constant definitions for native tests
-const int VRAMWIDTH = SS_CONFIG_VRAM_WIDTH;
-const int VRAMHEIGHT = SS_CONFIG_VRAM_HEIGHT;
-const int WIDTH = SS_CONFIG_DISPLAY_WIDTH;
-const int HEIGHT = SS_CONFIG_DISPLAY_HEIGHT;
-const uint16_t color_fg = SS_CONFIG_COLOR_FOREGROUND;
+#ifdef NATIVE_TEST
+#ifdef NATIVE_TEST
+// Kernel constants are already defined above - no need to redefine
+#endif
+#endif
 
 // DMA transfer info structure (mock)
 typedef struct {
@@ -526,22 +545,22 @@ void dma_clear(void) {
     xfr_inf.size = 0;
 }
 
-void dma_init(uint32_t src, uint32_t dst, uint32_t size) {
+void dma_init(uint8_t* dst, uint16_t block_count) {
     // Mock implementation - store transfer parameters
-    xfr_inf.src = src;
-    xfr_inf.dst = dst;
-    xfr_inf.size = size;
+    // Note: block_count represents the number of transfer blocks
+    // Each block can contain multiple bytes depending on DMA configuration
+    xfr_inf.src = 0;  // Not used in this mock
+    xfr_inf.dst = (uint32_t)(uintptr_t)dst;
+    xfr_inf.size = (uint32_t)block_count;  // Store block count as size for compatibility
 }
 
 void dma_start(void) {
     // Mock implementation - for testing, just do a memory copy
-    if (xfr_inf.size > 0) {
-        // Simple memcpy for testing
+    if (xfr_inf.size > 0 && xfr_inf.src != 0 && xfr_inf.dst != 0) {
+        // Simple memcpy for testing - use standard library function for safety
         uint8_t* src_ptr = (uint8_t*)(uintptr_t)xfr_inf.src;
         uint8_t* dst_ptr = (uint8_t*)(uintptr_t)xfr_inf.dst;
-        for (uint32_t i = 0; i < xfr_inf.size; i++) {
-            dst_ptr[i] = src_ptr[i];
-        }
+        memcpy(dst_ptr, src_ptr, xfr_inf.size);
     }
 }
 
@@ -580,12 +599,70 @@ void ssosmain(void) {
     // This prevents the task manager from trying to start the real main app
 }
 
-// Provide kernel constant definitions for native tests
-const int VRAMWIDTH = SS_CONFIG_VRAM_WIDTH;
-const int VRAMHEIGHT = SS_CONFIG_VRAM_HEIGHT;
-const int WIDTH = SS_CONFIG_DISPLAY_WIDTH;
-const int HEIGHT = SS_CONFIG_DISPLAY_HEIGHT;
-const uint16_t color_fg = SS_CONFIG_COLOR_FOREGROUND;
+// Mock memory information functions
+void* ss_ssos_memory_base = (void*)0x100000;
+uint32_t ss_ssos_memory_size = 0x100000;
+
+// Mock memory section functions
+void ss_get_text(void** base, uint32_t* sz) {
+    *base = (void*)0x100000;
+    *sz = 0x10000;  // 64KB
+}
+
+void ss_get_data(void** base, uint32_t* sz) {
+    *base = (void*)0x110000;
+    *sz = 0x1000;   // 4KB
+}
+
+void ss_get_bss(void** base, uint32_t* sz) {
+    *base = (void*)0x111000;
+    *sz = 0x1000;    // 4KB
+}
+
+// Mock layer compatibility functions
+void ss_layer_compat_select(int backend) {
+    // Mock implementation - do nothing
+}
+
+int ss_layer_compat_uses_quickdraw(void) {
+    return 1;  // Always return 1 for QuickDraw mode
+}
+
+// Mock layer functions
+Layer* get_layer_1(void) {
+    static Layer layer1 = {0};
+    return &layer1;
+}
+
+Layer* get_layer_2(void) {
+    static Layer layer2 = {0};
+    return &layer2;
+}
+
+Layer* get_layer_3(void) {
+    static Layer layer3 = {0};
+    return &layer3;
+}
+
+void update_layer_2(void) {
+    // Mock implementation - do nothing
+}
+
+void update_layer_3(void) {
+    // Mock implementation - do nothing
+}
+
+// Mock global counter
+volatile uint32_t global_counter = 0;
+
+// Mock kernel test functions
+void run_kernel_tests(void) {
+    // Mock implementation - do nothing
+}
+
+void run_performance_tests(void) {
+    // Mock implementation - do nothing
+}
 
 // Layer compatibility constants
 #define SS_LAYER_BACKEND_QUICKDRAW 1

@@ -2,6 +2,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <stddef.h>  // for size_t
 
 // 768x512, 16 colour (4bpp) front buffer layout - Standard 8-bit VRAM
 // Match Layer system's VRAM usage (2 bytes per 2 pixels, 16-bit VRAM with 4 unused bits)
@@ -69,3 +70,12 @@ uint16_t qd_get_font_height(void);
 uint16_t qd_measure_text(const char* text);
 void qd_draw_char(int16_t x, int16_t y, char c, uint8_t fg_color, uint8_t bg_color, bool opaque_bg);
 void qd_draw_text(int16_t x, int16_t y, const char* text, uint8_t fg_color, uint8_t bg_color, bool opaque_bg);
+
+// DMA optimization constants (matching Layer system)
+#define QD_ADAPTIVE_DMA_THRESHOLD_MIN 4
+#define QD_ADAPTIVE_DMA_THRESHOLD_MAX 12
+#define QD_ADAPTIVE_DMA_THRESHOLD_DEFAULT 8
+
+// DMA optimization functions
+void qd_update_performance_metrics(void);
+void qd_memory_copy(void* dst, const void* src, size_t count);

@@ -18,16 +18,32 @@ LDFLAGS = -lm
 
 # Test framework sources
 FRAMEWORK_SRCS = framework/test_runner.c \
-                 framework/test_mocks.c
+                  framework/test_mocks.c
+
+# SSOS sources needed for tests (excluding problematic ones)
+SSOS_SRCS = $(SSOS_ROOT)/os/window/quickdraw.c \
+            $(SSOS_ROOT)/os/window/quickdraw_monitor.c \
+            $(SSOS_ROOT)/os/window/quickdraw_shell.c
 
 # Unit test sources
 UNIT_TEST_SRCS = unit/test_memory.c \
-                 unit/test_scheduler.c \
-                 unit/test_layers.c \
-                 unit/test_errors.c
+                  unit/test_scheduler.c \
+                  unit/test_layers.c \
+                  unit/test_errors.c \
+                  unit/test_quickdraw.c
 
 # All sources for native testing
-ALL_SRCS = $(FRAMEWORK_SRCS) $(UNIT_TEST_SRCS)
+ALL_SRCS = $(FRAMEWORK_SRCS) $(UNIT_TEST_SRCS) $(SSOS_SRCS)
+
+# Additional SSOS sources needed for monitor panel test
+MONITOR_TEST_SRCS = $(SSOS_ROOT)/os/kernel/memory.c \
+                    $(SSOS_ROOT)/os/kernel/ss_errors.c \
+                    $(SSOS_ROOT)/os/kernel/ss_perf.c \
+                    $(SSOS_ROOT)/os/util/printf.c
+
+# Test monitor specifically (standalone - minimal dependencies)
+test_monitor: test_monitor.c $(SSOS_ROOT)/os/window/quickdraw.c $(SSOS_ROOT)/os/window/quickdraw_monitor.c $(SSOS_ROOT)/os/window/quickdraw_shell.c
+	$(CC) $(CFLAGS) $^ -o test_monitor $(LDFLAGS)
 
 .PHONY: all test clean
 

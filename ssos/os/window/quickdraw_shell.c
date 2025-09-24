@@ -11,7 +11,7 @@ void qd_shell_draw_desktop_background(void) {
         return;
     }
 
-    qd_clear_screen(QD_COLOR_LTGREEN);
+    qd_clear_screen(QD_COLOR_GREEN);
 
     const int16_t highlight_y = (int16_t)(QD_SCREEN_HEIGHT - QD_SHELL_TASKBAR_HEIGHT - 1);
     qd_fill_rect(0, highlight_y, QD_SCREEN_WIDTH, 1, QD_COLOR_BRIGHT_WHITE);

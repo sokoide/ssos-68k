@@ -38,29 +38,13 @@ static bool ss_escape_requested(void) {
 
 static void ss_run_quickdraw_mode(void) {
     qd_init();
-    // Use VRAM offset for 768x512 mode - try different offsets to fix 1/4 screen issue
-    // Option 1: Start from beginning of VRAM (original)
-    // uint8_t* vram_screen = (uint8_t*)vram_start;
-
-    // Option 2: Center the display area (196,608 bytes offset)
-    // uint8_t* vram_screen = (uint8_t*)vram_start + (512 * 384);
-
-    // Option 3: Try quarter offset (might fix the 1/4 screen issue)
-    // uint8_t* vram_screen = (uint8_t*)vram_start + (256 * 384); // 98,304 bytes offset
-
-    // Use standard VRAM layout matching Layer system (no offset needed)
-    // X68000 16-color VRAM: 2 pixels per byte, but we use 1-byte per pixel for compatibility
-    uint8_t* vram_screen = (uint8_t*)vram_start + 0; // Start from beginning
-
-    qd_set_vram_buffer(vram_screen);
-    ss_init_palette();
 
     ss_layer_compat_select(SS_LAYER_BACKEND_QUICKDRAW);
+    ss_init_palette();
 
     Layer* l1 = get_layer_1();
     Layer* l2 = get_layer_2();
     Layer* l3 = get_layer_3();
-    (void)l1;
 
     update_layer_2(l2);
     update_layer_3(l3);
@@ -83,6 +67,7 @@ static void ss_run_quickdraw_mode(void) {
             update_layer_2(l2);
             first_frame = false;
         }
+
 
         SS_PERF_END_MEASUREMENT(SS_PERF_QD_UPDATE);
 
