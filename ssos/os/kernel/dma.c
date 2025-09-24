@@ -1,8 +1,51 @@
 #include "dma.h"
 #include "ss_config.h"
+#include "ss_perf.h"
 
 XFR_INF xfr_inf[SS_CONFIG_DMA_MAX_TRANSFERS];
 volatile DMA_REG* dma = (volatile DMA_REG*)0xe84080; // channel #2
+
+// DMAレジスタの事前設定とLazy初期化（最適化版）
+static volatile DMA_REG* dma_cached = NULL;
+static uint32_t dma_init_count = 0;
+
+void ss_dma_lazy_init() {
+    if (!dma_cached) {
+        dma_cached = (volatile DMA_REG*)0xe84080;
+        // 共通設定を事前設定（Layer描画用）
+        dma_cached->dcr = 0x00;  // VRAM 8-bit port
+        dma_cached->ocr = 0x09;  // memory->vram, 8 bit, array chaining
+        dma_cached->scr = 0x05;
+        dma_cached->ccr = 0x00;
+        dma_cached->cpr = 0x03;
+        dma_cached->mfc = 0x05;
+        dma_cached->dfc = 0x05;
+        dma_cached->bfc = 0x05;
+    }
+}
+
+// 最適化版DMA初期化関数
+void dma_init_optimized(uint8_t* src, uint8_t* dst, uint16_t count) {
+    SS_PERF_START_MEASUREMENT(SS_PERF_DMA_INIT);
+
+    ss_dma_lazy_init();
+    dma_clear();
+
+    // 変更されたレジスタのみ設定（高速化）
+    dma_cached->dar = dst;
+    dma_cached->bar = (uint8_t*)&xfr_inf[0];
+    dma_cached->btc = 1;
+
+    xfr_inf[0].addr = src;
+    xfr_inf[0].count = count;
+
+    dma_start();
+    dma_wait_completion();
+    dma_clear();
+
+    dma_init_count++;
+    SS_PERF_END_MEASUREMENT(SS_PERF_DMA_INIT);
+}
 
 void dma_init(uint8_t* dst, uint16_t block_count) {
     // Device: VRAM, incremented by 2 bytes (16-color mode: 2 bytes per pixel)

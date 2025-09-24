@@ -3,6 +3,11 @@
 #include <stdint.h>
 #include "ss_config.h"
 
+// X68000環境用のNULL定義
+#ifndef NULL
+#define NULL ((void*)0)
+#endif
+
 typedef struct {
     uint8_t csr;
     uint8_t cer;
@@ -54,3 +59,7 @@ void dma_init(uint8_t* dst, uint16_t block_count);
 void dma_clear();
 void dma_start();
 void dma_wait_completion();
+
+// 最適化版DMA関数（フェーズ1）
+void ss_dma_lazy_init();
+void dma_init_optimized(uint8_t* src, uint8_t* dst, uint16_t count);

@@ -23,6 +23,18 @@ const int TEST_VRAMWIDTH = 768;
 
 LayerMgr* ss_layer_mgr;
 
+// メモリマップの動的キャッシュ（最適化版）
+#define MAP_CACHE_SIZE 64
+static struct {
+    uint16_t map_index;
+    uint8_t layer_id;
+    uint32_t last_access;
+    bool valid;
+} map_cache[MAP_CACHE_SIZE];
+
+static uint32_t map_cache_hits = 0;
+static uint32_t map_cache_misses = 0;
+
 void ss_layer_init() {
     ss_layer_mgr = (LayerMgr*)ss_mem_alloc4k(sizeof(LayerMgr));
     ss_layer_mgr->topLayerIdx = 0;
@@ -53,6 +65,9 @@ void ss_layer_init() {
 
     // Initialize buffer pool for memory efficiency
     ss_layer_init_buffer_pool();
+
+    // Initialize memory map cache for performance optimization
+    ss_layer_init_map_cache();
 }
 
 Layer* ss_layer_get() {
@@ -718,7 +733,7 @@ void ss_layer_update_map(Layer* layer) {
 // Batch DMA optimization functions for 3x performance improvement
 void ss_layer_init_batch_transfers(void) {
     ss_layer_mgr->batch_count = 0;
-    ss_layer_mgr->batch_optimized = false;  // Disabled due to chaining issues with non-consecutive VRAM destinations
+    ss_layer_mgr->batch_optimized = true;  // 条件付きバッチDMAを有効化（フェーズ1最適化）
 }
 
 void ss_layer_add_batch_transfer(uint8_t* src, uint8_t* dst, uint16_t count) {
@@ -744,24 +759,87 @@ void ss_layer_execute_batch_transfers(void) {
     // Performance monitoring: Start batch DMA transfer
     SS_PERF_START_MEASUREMENT(SS_PERF_DIRTY_DRAW);
 
-    // Execute batch DMA transfer
-    dma_clear();
-    for (int i = 0; i < ss_layer_mgr->batch_count; i++) {
-        xfr_inf[i].addr = ss_layer_mgr->batch_transfers[i].src;
-        xfr_inf[i].count = ss_layer_mgr->batch_transfers[i].count;
+    // 条件付きバッチDMA転送（フェーズ1最適化）
+    if (ss_layer_mgr->batch_count == 1) {
+        // 単一転送 - 最適化版DMAを使用
+        dma_init_optimized(ss_layer_mgr->batch_transfers[0].src,
+                          ss_layer_mgr->batch_transfers[0].dst,
+                          ss_layer_mgr->batch_transfers[0].count);
+    } else {
+        // 複数転送 - 最適化版DMAで初期化後、連続セグメントをグループ化
+        ss_execute_conditional_batch_transfers();
     }
-    dma_init(ss_layer_mgr->batch_transfers[0].dst, ss_layer_mgr->batch_count);
-
-    // Execute all transfers at once
-    dma_start();
-    dma_wait_completion();
-    dma_clear();
 
     // Performance monitoring: End batch DMA transfer
     SS_PERF_END_MEASUREMENT(SS_PERF_DIRTY_DRAW);
 
     // Reset batch counter
     ss_layer_mgr->batch_count = 0;
+}
+
+// 条件付きバッチDMA転送（DMA制約対応版）
+void ss_execute_conditional_batch_transfers(void) {
+    if (ss_layer_mgr->batch_count <= 1) {
+        return;
+    }
+
+    // 転送セグメントをdstアドレス順にソート（連続セグメントの特定のため）
+    ss_sort_batch_transfers_by_dst();
+
+    // 連続するセグメントをグループ化して実行
+    int group_start = 0;
+    for (int i = 1; i <= ss_layer_mgr->batch_count; i++) {
+        bool is_continuous = false;
+        if (i < ss_layer_mgr->batch_count) {
+            // 次のセグメントとの連続性をチェック
+            uint8_t* current_dst_end = ss_layer_mgr->batch_transfers[i-1].dst +
+                                     ss_layer_mgr->batch_transfers[i-1].count * 2; // VRAM 2bytes/pixel
+            uint8_t* next_dst = ss_layer_mgr->batch_transfers[i].dst;
+            is_continuous = (current_dst_end == next_dst);
+        }
+
+        if (!is_continuous || i == ss_layer_mgr->batch_count) {
+            // グループ実行（連続セグメントまたは最後のセグメント）
+            ss_execute_batch_group(&ss_layer_mgr->batch_transfers[group_start], i - group_start);
+            group_start = i;
+        }
+    }
+}
+
+void ss_execute_batch_group(BatchTransfer* group, int count) {
+    if (count == 1) {
+        // 単一転送 - 最適化版DMAを使用
+        dma_init_optimized(group[0].src, group[0].dst, group[0].count);
+    } else {
+        // バッチ転送（連続性保証済み）
+        dma_clear();
+        for (int i = 0; i < count; i++) {
+            xfr_inf[i].addr = group[i].src;
+            xfr_inf[i].count = group[i].count;
+        }
+        dma_init(group[0].dst, count);
+
+        // Execute all transfers at once
+        dma_start();
+        dma_wait_completion();
+        dma_clear();
+    }
+}
+
+void ss_sort_batch_transfers_by_dst(void) {
+    // 単純なバブルソート（小規模データ向け）
+    for (int i = 0; i < ss_layer_mgr->batch_count - 1; i++) {
+        for (int j = 0; j < ss_layer_mgr->batch_count - i - 1; j++) {
+            uint32_t dst1 = (uint32_t)ss_layer_mgr->batch_transfers[j].dst;
+            uint32_t dst2 = (uint32_t)ss_layer_mgr->batch_transfers[j + 1].dst;
+            if (dst1 > dst2) {
+                // 入れ替え
+                BatchTransfer temp = ss_layer_mgr->batch_transfers[j];
+                ss_layer_mgr->batch_transfers[j] = ss_layer_mgr->batch_transfers[j + 1];
+                ss_layer_mgr->batch_transfers[j + 1] = temp;
+            }
+        }
+    }
 }
 
 // Buffer pool management for memory efficiency and 3x performance improvement
@@ -831,5 +909,63 @@ void ss_layer_optimize_buffer_usage(void) {
             // Buffer is not in use, could be freed if memory is low
             // For now, we keep it in the pool for reuse
         }
+    }
+}
+
+// メモリマップキャッシュの初期化
+void ss_layer_init_map_cache(void) {
+    for (int i = 0; i < MAP_CACHE_SIZE; i++) {
+        map_cache[i].valid = false;
+        map_cache[i].map_index = 0;
+        map_cache[i].layer_id = 0;
+        map_cache[i].last_access = 0;
+    }
+    map_cache_hits = 0;
+    map_cache_misses = 0;
+}
+
+// キャッシュ付きメモリマップ検索（最適化版）
+uint8_t ss_get_cached_map_value(uint16_t index) {
+    // LRUキャッシュ検索
+    for (int i = 0; i < MAP_CACHE_SIZE; i++) {
+        if (map_cache[i].valid && map_cache[i].map_index == index) {
+            map_cache[i].last_access = ss_timerd_counter;
+            map_cache_hits++;
+            return map_cache[i].layer_id;
+        }
+    }
+
+    // キャッシュミス - メモリから読み込み
+    uint8_t value = ss_layer_mgr->map[index];
+    map_cache_misses++;
+
+    // LRU置換（既存のCPU負荷ベースアルゴリズムを活用）
+    int lru_index = 0;
+    uint32_t oldest = map_cache[0].last_access;
+    for (int i = 1; i < MAP_CACHE_SIZE; i++) {
+        if (!map_cache[i].valid) {
+            lru_index = i;
+            break;
+        }
+        if (map_cache[i].last_access < oldest) {
+            oldest = map_cache[i].last_access;
+            lru_index = i;
+        }
+    }
+
+    map_cache[lru_index].map_index = index;
+    map_cache[lru_index].layer_id = value;
+    map_cache[lru_index].last_access = ss_timerd_counter;
+    map_cache[lru_index].valid = true;
+    return value;
+}
+
+// キャッシュ統計情報の取得
+void ss_get_map_cache_stats(uint32_t* hits, uint32_t* misses, float* hit_rate) {
+    if (hits) *hits = map_cache_hits;
+    if (misses) *misses = map_cache_misses;
+    if (hit_rate) {
+        uint32_t total = map_cache_hits + map_cache_misses;
+        *hit_rate = total > 0 ? (float)map_cache_hits / total : 0.0f;
     }
 }
