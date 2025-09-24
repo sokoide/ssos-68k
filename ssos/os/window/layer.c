@@ -116,13 +116,38 @@ Layer* ss_layer_get() {
 Layer* ss_layer_get_with_buffer(uint16_t width, uint16_t height) {
     Layer* l = ss_layer_get();
     if (l) {
-        // Use buffer pool for memory efficiency
+        // Phase 3: Enhanced error handling for buffer allocation
         l->vram = ss_layer_alloc_buffer(width, height);
-        l->w = width;
-        l->h = height;
-        // Mark entire layer as dirty for initial draw
-        l->dirty_w = width;
-        l->dirty_h = height;
+
+        // Handle allocation failure gracefully
+        if (!l->vram) {
+            // If buffer allocation failed, try smaller size
+            if (width > 32 || height > 32) {
+                l->vram = ss_layer_alloc_buffer(32, 32);
+                if (l->vram) {
+                    l->w = 32;
+                    l->h = 32;
+                    l->dirty_w = 32;
+                    l->dirty_h = 32;
+                } else {
+                    // If even minimum size fails, release layer and return NULL
+                    l->attr = 0;  // Mark as unused
+                    ss_layer_mgr->topLayerIdx--;
+                    return NULL;
+                }
+            } else {
+                // Minimum size allocation also failed
+                l->attr = 0;  // Mark as unused
+                ss_layer_mgr->topLayerIdx--;
+                return NULL;
+            }
+        } else {
+            // Normal case: buffer allocated successfully
+            l->w = width;
+            l->h = height;
+            l->dirty_w = width;
+            l->dirty_h = height;
+        }
     }
     return l;
 }
@@ -500,15 +525,47 @@ void ss_layer_draw_rect_layer_dma(Layer* l, uint8_t* src, uint8_t* dst,
         return;
     }
 
-    // Configure DMA transfer (従来の実装)
-    dma_init(dst, 1);
-    xfr_inf[0].addr = src;
-    xfr_inf[0].count = block_count;
+    // Phase 3: Enhanced DMA error handling
+    int retry_count = 0;
+    const int max_retries = 2;
 
-    // Execute DMA transfer
-    dma_start();
-    dma_wait_completion();
-    dma_clear();
+    while (retry_count <= max_retries) {
+        // Configure DMA transfer (従来の実装)
+        dma_init(dst, 1);
+        xfr_inf[0].addr = src;
+        xfr_inf[0].count = block_count;
+
+        // Execute DMA transfer
+        dma_start();
+        dma_wait_completion();
+
+        // Check for DMA errors
+        uint8_t dma_status = dma->csr;
+        if ((dma_status & 0x90) == 0x90) {
+            // DMA completed successfully
+            dma_clear();
+            return;
+        } else {
+            // DMA error occurred
+            dma_clear();
+            retry_count++;
+
+            if (retry_count <= max_retries) {
+                // Retry with smaller block size
+                if (block_count > 256) {
+                    block_count = 256;
+                    continue;
+                } else if (block_count > 64) {
+                    block_count = 64;
+                    continue;
+                }
+            }
+
+            // If all retries failed, fall back to CPU transfer
+            ss_layer_draw_rect_layer_cpu_optimized_fallback(src, dst, block_count);
+            return;
+        }
+    }
 }
 
 /*
@@ -897,6 +954,9 @@ void ss_layer_init_buffer_pool(void) {
 }
 
 uint8_t* ss_layer_alloc_buffer(uint16_t width, uint16_t height) {
+    // Phase 3: Enhanced error handling and fallback allocation
+    static uint32_t alloc_failures = 0;
+
     // First, try to find an existing unused buffer of the right size
     for (int i = 0; i < ss_layer_mgr->buffer_pool_count; i++) {
         if (!ss_layer_mgr->buffer_pool[i].in_use &&
@@ -907,20 +967,64 @@ uint8_t* ss_layer_alloc_buffer(uint16_t width, uint16_t height) {
         }
     }
 
-    // If no suitable buffer found, create a new one
+    // If no suitable buffer found, try to create a new one
     if (ss_layer_mgr->buffer_pool_count < MAX_LAYERS) {
         uint16_t buffer_size = width * height;
-        ss_layer_mgr->buffer_pool[ss_layer_mgr->buffer_pool_count].buffer =
-            (uint8_t*)ss_mem_alloc4k(buffer_size);
-        ss_layer_mgr->buffer_pool[ss_layer_mgr->buffer_pool_count].width = width;
-        ss_layer_mgr->buffer_pool[ss_layer_mgr->buffer_pool_count].height = height;
-        ss_layer_mgr->buffer_pool[ss_layer_mgr->buffer_pool_count].in_use = true;
+        uint8_t* new_buffer = (uint8_t*)ss_mem_alloc4k(buffer_size);
+
+        // Phase 3: Check for allocation failure and provide fallback
+        if (!new_buffer) {
+            alloc_failures++;
+            // Try to free some unused buffers first
+            for (int i = 0; i < ss_layer_mgr->buffer_pool_count && !new_buffer; i++) {
+                if (!ss_layer_mgr->buffer_pool[i].in_use) {
+                    ss_mem_free((uint32_t)(uintptr_t)ss_layer_mgr->buffer_pool[i].buffer, 0);
+                    ss_layer_mgr->buffer_pool[i].buffer = NULL;
+                    ss_layer_mgr->buffer_pool[i].in_use = false;
+
+                    // Try allocation again with freed memory
+                    new_buffer = (uint8_t*)ss_mem_alloc4k(buffer_size);
+                    break;
+                }
+            }
+
+            // If still failed, try smaller size as last resort
+            if (!new_buffer && buffer_size > 1024) {
+                buffer_size = 1024;  // Minimum size fallback
+                new_buffer = (uint8_t*)ss_mem_alloc4k(buffer_size);
+            }
+
+            // If all failed, return NULL for caller to handle
+            if (!new_buffer) {
+                return NULL;
+            }
+        }
+
+        // Success: add to pool
+        int pool_index = ss_layer_mgr->buffer_pool_count;
+        ss_layer_mgr->buffer_pool[pool_index].buffer = new_buffer;
+        ss_layer_mgr->buffer_pool[pool_index].width = (buffer_size == width * height) ? width : 32;
+        ss_layer_mgr->buffer_pool[pool_index].height = (buffer_size == width * height) ? height : 32;
+        ss_layer_mgr->buffer_pool[pool_index].in_use = true;
         ss_layer_mgr->buffer_pool_count++;
-        return ss_layer_mgr->buffer_pool[ss_layer_mgr->buffer_pool_count - 1].buffer;
+
+        return new_buffer;
     }
 
-    // Fallback: allocate directly if pool is full
-    return (uint8_t*)ss_mem_alloc4k(width * height);
+    // Pool is full: try direct allocation with error handling
+    uint16_t buffer_size = width * height;
+    uint8_t* direct_buffer = (uint8_t*)ss_mem_alloc4k(buffer_size);
+
+    if (!direct_buffer) {
+        alloc_failures++;
+        // Last resort: try smaller size
+        if (buffer_size > 1024) {
+            buffer_size = 1024;
+            direct_buffer = (uint8_t*)ss_mem_alloc4k(buffer_size);
+        }
+    }
+
+    return direct_buffer;  // May be NULL - caller must handle
 }
 
 void ss_layer_free_buffer(uint8_t* buffer) {
