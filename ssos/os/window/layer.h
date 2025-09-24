@@ -91,3 +91,35 @@ void ss_ultra_fast_copy_32bit(uint32_t* dst, uint32_t* src, int count);
 void ss_layer_init_double_buffer(void);
 void ss_layer_draw_to_backbuffer(Layer* l);
 void ss_layer_flip_buffers(void);
+
+// Phase 4: Advanced performance monitoring system
+typedef struct {
+    uint32_t total_layers_created;
+    uint32_t total_layers_destroyed;
+    uint32_t total_buffer_allocations;
+    uint32_t total_buffer_frees;
+    uint32_t total_dma_transfers;
+    uint32_t total_cpu_transfers;
+    uint32_t peak_memory_usage;
+    uint32_t current_memory_usage;
+    uint32_t average_frame_time;
+    uint32_t frame_count;
+    uint32_t last_monitor_time;
+} PerformanceStats;
+
+extern PerformanceStats ss_perf_stats;
+
+void ss_reset_performance_stats(void);
+void ss_get_performance_stats(PerformanceStats* stats);
+void ss_record_frame_time(uint32_t frame_time);
+void ss_perform_memory_defragmentation(void);
+void ss_sort_buffer_pool_by_size(void);
+void ss_update_statistics(void);
+
+// Internal functions for batch optimization
+void ss_layer_draw_rect_layer_batch_internal(Layer* l, int16_t dx0, int16_t dy0, int16_t dx1, int16_t dy1);
+void ss_layer_draw_rect_layer_bounds_batch_internal(Layer* l, uint16_t dx0, uint16_t dy0, uint16_t dx1, uint16_t dy1);
+void ss_execute_conditional_batch_transfers(void);
+void ss_execute_batch_group(BatchTransfer* group, int count);
+void ss_sort_batch_transfers_by_dst(void);
+void ss_layer_draw_rect_layer_cpu_optimized_fallback(uint8_t* src, uint8_t* dst, uint16_t count);

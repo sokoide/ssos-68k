@@ -28,6 +28,9 @@ extern const int VRAMWIDTH;
 
 LayerMgr* ss_layer_mgr;
 
+// Phase 4: パフォーマンス統計のグローバルインスタンス
+PerformanceStats ss_perf_stats = {0};
+
 // メモリマップの動的キャッシュ（最適化版）
 #define MAP_CACHE_SIZE 64
 static struct {
@@ -106,6 +109,9 @@ Layer* ss_layer_get() {
             l->dirty_y = 0;
             l->dirty_w = 0; // Will be set in ss_layer_set
             l->dirty_h = 0; // Will be set in ss_layer_set
+
+            // Phase 4: 統計カウンターの更新
+            ss_perf_stats.total_layers_created++;
 
             return l;
         }
@@ -488,7 +494,8 @@ void ss_layer_draw_rect_layer_dma(Layer* l, uint8_t* src, uint8_t* dst,
     // - Low CPU activity: Use DMA even for smaller blocks for consistency
     // - Normal activity: Balanced approach
 
-    // Phase 3: Enhanced adaptive DMA threshold with statistics
+    // Phase 4: 統計カウンターの更新
+    ss_perf_stats.total_cpu_transfers++;
     ss_total_transfers++;
     if (block_count <= ss_adaptive_dma_threshold) {
         ss_small_transfers++;
@@ -524,6 +531,9 @@ void ss_layer_draw_rect_layer_dma(Layer* l, uint8_t* src, uint8_t* dst,
         }
         return;
     }
+
+    // Phase 4: 統計カウンターの更新
+    ss_perf_stats.total_dma_transfers++;
 
     // Phase 3: Enhanced DMA error handling
     int retry_count = 0;
@@ -562,6 +572,7 @@ void ss_layer_draw_rect_layer_dma(Layer* l, uint8_t* src, uint8_t* dst,
             }
 
             // If all retries failed, fall back to CPU transfer
+            ss_perf_stats.total_cpu_transfers++;  // Phase 4: CPU転送カウンター更新
             ss_layer_draw_rect_layer_cpu_optimized_fallback(src, dst, block_count);
             return;
         }
@@ -1008,6 +1019,9 @@ uint8_t* ss_layer_alloc_buffer(uint16_t width, uint16_t height) {
         ss_layer_mgr->buffer_pool[pool_index].in_use = true;
         ss_layer_mgr->buffer_pool_count++;
 
+        // Phase 4: 統計カウンターの更新
+        ss_perf_stats.total_buffer_allocations++;
+
         return new_buffer;
     }
 
@@ -1112,7 +1126,11 @@ void ss_layer_optimize_buffer_usage(void) {
         last_defrag = ss_timerd_counter;
         defrag_count++;
     }
+
+    // Phase 4: 定期的な統計更新
+    ss_update_statistics();
 }
+
 
 // Phase 4: 高度なメモリデフラグメンテーション
 void ss_perform_memory_defragmentation(void) {
@@ -1169,6 +1187,12 @@ void ss_perform_memory_defragmentation(void) {
         // 断片化スコアのリセット
         fragmentation_score = 0;
     }
+
+    // Phase 4: パフォーマンス統計の更新
+    ss_perf_stats.current_memory_usage = used_memory;
+    if (used_memory > ss_perf_stats.peak_memory_usage) {
+        ss_perf_stats.peak_memory_usage = used_memory;
+    }
 }
 
 // Phase 4: バッファプールをサイズ順にソート
@@ -1184,6 +1208,55 @@ void ss_sort_buffer_pool_by_size(void) {
                 ss_layer_mgr->buffer_pool[j + 1] = temp;
             }
         }
+    }
+}
+
+// Phase 4: パフォーマンス統計のリセット
+void ss_reset_performance_stats(void) {
+    ss_perf_stats.total_layers_created = 0;
+    ss_perf_stats.total_layers_destroyed = 0;
+    ss_perf_stats.total_buffer_allocations = 0;
+    ss_perf_stats.total_buffer_frees = 0;
+    ss_perf_stats.total_dma_transfers = 0;
+    ss_perf_stats.total_cpu_transfers = 0;
+    ss_perf_stats.peak_memory_usage = 0;
+    ss_perf_stats.current_memory_usage = 0;
+    ss_perf_stats.average_frame_time = 0;
+    ss_perf_stats.frame_count = 0;
+    ss_perf_stats.last_monitor_time = ss_timerd_counter;
+}
+
+// Phase 4: パフォーマンス統計の取得
+void ss_get_performance_stats(PerformanceStats* stats) {
+    if (stats) {
+        *stats = ss_perf_stats;
+    }
+}
+
+// Phase 4: フレームタイムの記録
+void ss_record_frame_time(uint32_t frame_time) {
+    ss_perf_stats.frame_count++;
+    // 簡易的な移動平均（最新10フレーム）
+    if (ss_perf_stats.frame_count <= 10) {
+        ss_perf_stats.average_frame_time =
+            (ss_perf_stats.average_frame_time * (ss_perf_stats.frame_count - 1) + frame_time) /
+            ss_perf_stats.frame_count;
+    } else {
+        ss_perf_stats.average_frame_time =
+            (ss_perf_stats.average_frame_time * 9 + frame_time) / 10;
+    }
+}
+
+// Phase 4: 統計の更新
+void ss_update_statistics(void) {
+    static uint32_t last_update = 0;
+
+    // 1秒ごとに統計を更新
+    if (ss_timerd_counter - last_update > 100) {
+        // メモリ使用状況の更新（既にdefragで計算済み）
+        // DMA/CPU転送カウンターの更新（既に各関数で更新済み）
+
+        last_update = ss_timerd_counter;
     }
 }
 
