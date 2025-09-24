@@ -1067,16 +1067,18 @@ LayerBuffer* ss_layer_find_buffer_by_size(uint16_t width, uint16_t height) {
 }
 
 void ss_layer_optimize_buffer_usage(void) {
-    // Phase 3: 小規模なバッファ効率向上
+    // Phase 4: Advanced memory defragmentation and optimization
     static uint32_t last_cleanup = 0;
+    static uint32_t last_defrag = 0;
     static int buffers_freed = 0;
+    static int defrag_count = 0;
 
     // Clean up unused buffers periodically (低頻度)
     if (ss_timerd_counter - last_cleanup > 600) {  // 10秒ごと
         int freed_count = 0;
         for (int i = 0; i < ss_layer_mgr->buffer_pool_count; i++) {
             if (!ss_layer_mgr->buffer_pool[i].in_use) {
-                // Phase 3: メモリ使用量最適化 - 古いバッファを優先的に解放
+                // Phase 4: メモリ使用量最適化 - 古いバッファを優先的に解放
                 if (ss_layer_mgr->buffer_pool_count > 4) {  // 最低4つは保持
                     ss_mem_free((uint32_t)(uintptr_t)ss_layer_mgr->buffer_pool[i].buffer, 0);
                     ss_layer_mgr->buffer_pool[i].buffer = NULL;
@@ -1100,6 +1102,87 @@ void ss_layer_optimize_buffer_usage(void) {
                 }
             }
             ss_layer_mgr->buffer_pool_count = write_idx;
+        }
+    }
+
+    // Phase 4: Advanced defragmentation (30秒ごと)
+    if (ss_timerd_counter - last_defrag > 1800) {
+        // メモリ断片化防止のための高度な最適化
+        ss_perform_memory_defragmentation();
+        last_defrag = ss_timerd_counter;
+        defrag_count++;
+    }
+}
+
+// Phase 4: 高度なメモリデフラグメンテーション
+void ss_perform_memory_defragmentation(void) {
+    static uint32_t fragmentation_score = 0;
+
+    // メモリ使用状況の分析
+    int used_buffers = 0;
+    int total_buffers = ss_layer_mgr->buffer_pool_count;
+    uint32_t total_memory = 0;
+    uint32_t used_memory = 0;
+
+    for (int i = 0; i < total_buffers; i++) {
+        if (ss_layer_mgr->buffer_pool[i].buffer) {
+            used_buffers++;
+            total_memory += ss_layer_mgr->buffer_pool[i].width * ss_layer_mgr->buffer_pool[i].height;
+            if (ss_layer_mgr->buffer_pool[i].in_use) {
+                used_memory += ss_layer_mgr->buffer_pool[i].width * ss_layer_mgr->buffer_pool[i].height;
+            }
+        }
+    }
+
+    // 断片化スコアの計算（未使用バッファが多いほど断片化が高い）
+    if (total_buffers > 0) {
+        fragmentation_score = (total_buffers - used_buffers) * 100 / total_buffers;
+    }
+
+    // 断片化が30%以上の場合、デフラグメンテーションを実行
+    if (fragmentation_score >= 30 && total_buffers > 8) {
+        // バッファをサイズ順にソート（最適配置のため）
+        ss_sort_buffer_pool_by_size();
+
+        // 使用中のバッファを前方に集約
+        int write_idx = 0;
+        for (int i = 0; i < total_buffers; i++) {
+            if (ss_layer_mgr->buffer_pool[i].in_use) {
+                if (write_idx != i) {
+                    ss_layer_mgr->buffer_pool[write_idx] = ss_layer_mgr->buffer_pool[i];
+                    // メモリ内容を移動する必要はない（ポインタのみ）
+                }
+                write_idx++;
+            }
+        }
+
+        // 未使用バッファを後方に移動
+        for (int i = 0; i < total_buffers; i++) {
+            if (!ss_layer_mgr->buffer_pool[i].in_use && ss_layer_mgr->buffer_pool[i].buffer) {
+                if (write_idx != i) {
+                    ss_layer_mgr->buffer_pool[write_idx] = ss_layer_mgr->buffer_pool[i];
+                }
+                write_idx++;
+            }
+        }
+
+        // 断片化スコアのリセット
+        fragmentation_score = 0;
+    }
+}
+
+// Phase 4: バッファプールをサイズ順にソート
+void ss_sort_buffer_pool_by_size(void) {
+    for (int i = 0; i < ss_layer_mgr->buffer_pool_count - 1; i++) {
+        for (int j = 0; j < ss_layer_mgr->buffer_pool_count - i - 1; j++) {
+            uint32_t size1 = ss_layer_mgr->buffer_pool[j].width * ss_layer_mgr->buffer_pool[j].height;
+            uint32_t size2 = ss_layer_mgr->buffer_pool[j + 1].width * ss_layer_mgr->buffer_pool[j + 1].height;
+
+            if (size1 > size2) {
+                LayerBuffer temp = ss_layer_mgr->buffer_pool[j];
+                ss_layer_mgr->buffer_pool[j] = ss_layer_mgr->buffer_pool[j + 1];
+                ss_layer_mgr->buffer_pool[j + 1] = temp;
+            }
         }
     }
 }
