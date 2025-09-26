@@ -98,8 +98,8 @@ void ss_layer_draw_simple_layer(Layer* l) {
 }
 
 // SX-Windowスタイルの高速描画
-// NOTE: この簡易バックエンドは重なり領域の再描画抑制をまだ実装していないため、
-//       上位レイヤー更新時にも下位レイヤーが描画される制限がある。
+// NOTE: 8x8ブロック単位の簡易オクルージョンマップで上位レイヤーに完全に覆われた
+//       領域の再描画を抑制する（部分的に重なる場合は最小ブロック単位で描画）。
 void ss_layer_draw_simple(void) {
     if (!ss_layer_mgr) return;
 
@@ -190,8 +190,37 @@ void ss_layer_draw_rect_layer_simple(Layer* l) {
         uint8_t* src_line = src + y * l->w;
         uint8_t* dst_line = dst_base + y * vram_stride_bytes;
 
-        for (int x = 0; x < width; x++) {
-            dst_line[x * 2] = src_line[x];
+        int16_t world_y = start_y + y;
+        uint16_t map_y = (uint16_t)(world_y >> 3);
+
+        for (int16_t px = 0; px < width; ) {
+            int16_t world_x = start_x + px;
+            uint16_t map_x = (uint16_t)(world_x >> 3);
+
+            int16_t block_end = ((world_x & ~7) + 8);
+            if (block_end > start_x + width) {
+                block_end = start_x + width;
+            }
+
+            bool occluded = false;
+            if (map_y < SIMPLE_MAP_HEIGHT && map_x < SIMPLE_MAP_WIDTH) {
+                uint8_t top_z = s_simple_map[map_y][map_x];
+                if (top_z > l->z) {
+                    occluded = true;
+                }
+            }
+
+            int16_t segment_len = block_end - (start_x + px);
+
+            if (!occluded) {
+                uint8_t* src_seg = src_line + px;
+                uint8_t* dst_seg = dst_line + px * 2;
+                for (int sx = 0; sx < segment_len; sx++) {
+                    dst_seg[sx * 2] = src_seg[sx];
+                }
+            }
+
+            px += segment_len;
         }
     }
 }
