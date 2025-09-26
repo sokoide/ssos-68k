@@ -261,6 +261,8 @@ void ss_layer_draw_rect_layer_simple(Layer* l) {
     const int32_t vram_stride_bytes = VRAMWIDTH * 2;
     uint8_t* dst_base = ((uint8_t*)vram_start) + ((start_y * VRAMWIDTH) + start_x) * 2 + 1;
 
+    ss_layer_init_batch_transfers();
+
     for (int y = 0; y < height; y++) {
         uint8_t* src_line = src + y * l->w;
         uint8_t* dst_line = dst_base + y * vram_stride_bytes;
