@@ -268,7 +268,8 @@ void ss_layer_draw_rect_layer_simple(Layer* l) {
         int16_t world_y = start_y + y;
         uint16_t map_y = (uint16_t)(world_y >> 3);
 
-        for (int16_t px = 0; px < width; ) {
+        int16_t px = 0;
+        while (px < width) {
             int16_t world_x = start_x + px;
             uint16_t map_x = (uint16_t)(world_x >> 3);
 
@@ -289,17 +290,17 @@ void ss_layer_draw_rect_layer_simple(Layer* l) {
 
             int16_t segment_len = block_end - (start_x + px);
 
-            if (!occluded) {
+            if (!occluded && segment_len > 0) {
                 uint8_t* src_seg = src_line + px;
                 uint8_t* dst_seg = dst_line + px * 2;
-                for (int sx = 0; sx < segment_len; sx++) {
-                    dst_seg[sx * 2] = src_seg[sx];
-                }
+                ss_layer_add_batch_transfer(src_seg, dst_seg, (uint16_t)segment_len);
             }
 
             px += segment_len;
         }
     }
+
+    ss_layer_execute_batch_transfers();
 
     l->needs_redraw = 0;
 }
