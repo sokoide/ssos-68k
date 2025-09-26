@@ -15,6 +15,7 @@ typedef enum {
 
 #ifndef SS_LAYER_BACKEND_DEFAULT_VALUE
 #define SS_LAYER_BACKEND_DEFAULT_VALUE SS_LAYER_BACKEND_SIMPLE_VALUE
+// #define SS_LAYER_BACKEND_DEFAULT_VALUE SS_LAYER_BACKEND_LEGACY_VALUE
 #endif
 
 void ss_layer_compat_select(SsLayerBackend backend);

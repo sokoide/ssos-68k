@@ -23,10 +23,12 @@
 #include "vram.h"
 #include <stddef.h>
 #include <stdio.h>
+#include <string.h>
 
 // 超シンプルなメモリマップ（8x8ブロックに戻す）
-#define SIMPLE_MAP_WIDTH (768 / 8)  // 96
-#define SIMPLE_MAP_HEIGHT (512 / 8) // 64
+#define SIMPLE_MAP_WIDTH (768 / 8)   // 96
+#define SIMPLE_MAP_HEIGHT (512 / 8)  // 64
+#define SIMPLE_MAP_EMPTY 0xFF
 static uint8_t s_simple_map[SIMPLE_MAP_HEIGHT][SIMPLE_MAP_WIDTH];
 
 // 現在のLayerシステムと連携するためのグローバル変数
@@ -38,14 +40,15 @@ extern const int VRAMWIDTH;
 // シンプルシステム用の内部変数
 static int s_layer_count = 0;
 
+static void ss_layer_simple_clear_map(void);
+static void ss_layer_simple_rebuild_occlusion(void);
+static bool ss_layer_simple_any_dirty(void);
+void ss_layer_simple_mark_dirty(Layer* layer, bool include_lower_layers);
+
 // SX-Windowスタイルの高速初期化
 void ss_layer_init_simple(void) {
     // メモリマップをゼロクリア（8x8ブロック単位）
-    for (int y = 0; y < SIMPLE_MAP_HEIGHT; y++) {
-        for (int x = 0; x < SIMPLE_MAP_WIDTH; x++) {
-            s_simple_map[y][x] = 0;
-        }
-    }
+    ss_layer_simple_clear_map();
     s_layer_count = 0;
 
     // LayerMgrの初期化も必要（zLayers配列も初期化）
@@ -75,7 +78,7 @@ Layer* ss_layer_get_simple(void) {
         if ((ss_layer_mgr->layers[i].attr & LAYER_ATTR_USED) == 0) {
             Layer* l = &ss_layer_mgr->layers[i];
             l->attr = LAYER_ATTR_USED | LAYER_ATTR_VISIBLE;
-            l->z = i;  // z順は配列インデックス
+            l->z = (uint16_t)ss_layer_mgr->topLayerIdx;
             l->vram = NULL;
             l->needs_redraw = 1;
 
@@ -87,6 +90,68 @@ Layer* ss_layer_get_simple(void) {
         }
     }
     return NULL;
+}
+
+static void ss_layer_simple_clear_map(void) {
+    memset(s_simple_map, SIMPLE_MAP_EMPTY, sizeof(s_simple_map));
+}
+
+static bool ss_layer_simple_any_dirty(void) {
+    if (!ss_layer_mgr) return false;
+    for (int i = 0; i < ss_layer_mgr->topLayerIdx; i++) {
+        Layer* l = ss_layer_mgr->zLayers[i];
+        if (!l) continue;
+        if ((l->attr & LAYER_ATTR_VISIBLE) == 0) continue;
+        if (l->needs_redraw) return true;
+    }
+    return false;
+}
+
+static void ss_layer_simple_rebuild_occlusion(void) {
+#ifdef SS_LAYER_SIMPLE_DISABLE_OCCLUSION
+    // Nothing to do when occlusion is disabled
+    (void)s_simple_map;
+#else
+    ss_layer_simple_clear_map();
+    if (!ss_layer_mgr) return;
+
+    for (int i = ss_layer_mgr->topLayerIdx - 1; i >= 0; i--) {
+        Layer* l = ss_layer_mgr->zLayers[i];
+        if (!l) continue;
+        if ((l->attr & LAYER_ATTR_VISIBLE) == 0) continue;
+        if (!l->vram) continue;
+
+        int16_t x0 = l->x;
+        int16_t y0 = l->y;
+        int16_t x1 = l->x + l->w;
+        int16_t y1 = l->y + l->h;
+
+        if (x1 <= 0 || y1 <= 0 || x0 >= WIDTH || y0 >= HEIGHT) {
+            continue;
+        }
+
+        if (x0 < 0) x0 = 0;
+        if (y0 < 0) y0 = 0;
+        if (x1 > WIDTH) x1 = WIDTH;
+        if (y1 > HEIGHT) y1 = HEIGHT;
+
+        uint16_t start_map_x = (uint16_t)(x0 >> 3);
+        uint16_t start_map_y = (uint16_t)(y0 >> 3);
+        uint16_t end_map_x = (uint16_t)((x1 + 7) >> 3);
+        uint16_t end_map_y = (uint16_t)((y1 + 7) >> 3);
+
+        if (end_map_x > SIMPLE_MAP_WIDTH) end_map_x = SIMPLE_MAP_WIDTH;
+        if (end_map_y > SIMPLE_MAP_HEIGHT) end_map_y = SIMPLE_MAP_HEIGHT;
+
+        for (uint16_t my = start_map_y; my < end_map_y; my++) {
+            for (uint16_t mx = start_map_x; mx < end_map_x; mx++) {
+                if (s_simple_map[my][mx] == SIMPLE_MAP_EMPTY) {
+                    s_simple_map[my][mx] = (uint8_t)l->z;
+                }
+            }
+        }
+    }
+#endif
 }
 
 // 超シンプルなレイヤー描画（メモリマップチェック最小化）
@@ -102,17 +167,23 @@ void ss_layer_draw_simple_layer(Layer* l) {
 //       領域の再描画を抑制する（部分的に重なる場合は最小ブロック単位で描画）。
 void ss_layer_draw_simple(void) {
     if (!ss_layer_mgr) return;
+    if (!ss_layer_simple_any_dirty()) {
+        return;
+    }
 
-#ifdef SS_LAYER_SIMPLE_DISABLE_OCCLUSION
-    (void)s_simple_map;
+#ifndef SS_LAYER_SIMPLE_DISABLE_OCCLUSION
+    ss_layer_simple_rebuild_occlusion();
 #endif
 
     // 下位レイヤーから順に描画し、最上位レイヤーを最後に適用する
     for (int i = 0; i < ss_layer_mgr->topLayerIdx; i++) {
         Layer* l = ss_layer_mgr->zLayers[i];
-        if (l && (l->attr & LAYER_ATTR_VISIBLE) && l->vram) {
-            ss_layer_draw_simple_layer(l);
-        }
+        if (!l) continue;
+        if ((l->attr & LAYER_ATTR_VISIBLE) == 0) continue;
+        if (!l->vram) continue;
+        if (!l->needs_redraw) continue;
+
+        ss_layer_draw_simple_layer(l);
     }
 }
 
@@ -122,6 +193,8 @@ void ss_layer_set_simple(Layer* layer, uint16_t x, uint16_t y, uint16_t w, uint1
     layer->y = y;
     layer->w = w;
     layer->h = h;
+
+    ss_layer_simple_mark_dirty(layer, true);
 
     // メモリマップ更新（変更された領域のみ、8x8ブロック単位）
     uint16_t start_map_x = x >> 3;
@@ -210,7 +283,7 @@ void ss_layer_draw_rect_layer_simple(Layer* l) {
 #ifndef SS_LAYER_SIMPLE_DISABLE_OCCLUSION
             if (map_y < SIMPLE_MAP_HEIGHT && map_x < SIMPLE_MAP_WIDTH) {
                 uint8_t top_z = s_simple_map[map_y][map_x];
-                if (top_z > l->z) {
+                if (top_z != SIMPLE_MAP_EMPTY && top_z > l->z) {
                     occluded = true;
                 }
             }
@@ -229,6 +302,8 @@ void ss_layer_draw_rect_layer_simple(Layer* l) {
             px += segment_len;
         }
     }
+
+    l->needs_redraw = 0;
 }
 
 // パフォーマンス測定用
@@ -258,4 +333,28 @@ void ss_layer_report_memory_simple(void) {
     // printf("Map memory: %lu bytes\n", map_memory);
     // printf("Layer memory: %lu bytes\n", layer_memory);
     // printf("Total: %lu bytes\n", map_memory + layer_memory);
+}
+
+void ss_layer_simple_mark_dirty(Layer* layer, bool include_lower_layers) {
+    if (!layer) return;
+    layer->needs_redraw = 1;
+
+    if (!include_lower_layers) {
+        return;
+    }
+
+    if (!ss_layer_mgr) return;
+
+    bool mark_remaining = true;
+    for (int i = 0; i < ss_layer_mgr->topLayerIdx; i++) {
+        Layer* current = ss_layer_mgr->zLayers[i];
+        if (!current) continue;
+        if (current == layer) {
+            mark_remaining = false;
+            continue;
+        }
+        if (mark_remaining) {
+            current->needs_redraw = 1;
+        }
+    }
 }

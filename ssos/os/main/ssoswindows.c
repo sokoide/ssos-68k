@@ -669,6 +669,7 @@ void update_layer_2(Layer* l) {
 #endif
 
     if (ss_layer_compat_uses_simple()) {
+        ss_layer_simple_mark_dirty(l, false);
         // 全レイヤーを再描画して、上位レイヤーの内容を維持
         ss_layer_draw_simple();
     }
@@ -778,6 +779,7 @@ void update_layer_3(Layer* l) {
 #endif
 
     if (ss_layer_compat_uses_simple()) {
+        ss_layer_simple_mark_dirty(l, false);
         ss_layer_draw_simple();
     }
 }

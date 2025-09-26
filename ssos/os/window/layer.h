@@ -173,3 +173,4 @@ void ss_layer_blit_fast(Layer* l, uint16_t dx, uint16_t dy, uint16_t dw, uint16_
 void ss_layer_draw_rect_layer_simple(Layer* l);
 void ss_layer_benchmark_simple(void);
 void ss_layer_report_memory_simple(void);
+void ss_layer_simple_mark_dirty(Layer* layer, bool include_lower_layers);
