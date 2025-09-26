@@ -189,31 +189,29 @@ void ss_layer_draw_simple(void) {
 
 // レイヤー設定（メモリマップ更新を最小化）
 void ss_layer_set_simple(Layer* layer, uint16_t x, uint16_t y, uint16_t w, uint16_t h) {
-    layer->x = x;
-    layer->y = y;
-    layer->w = w;
-    layer->h = h;
+    uint16_t aligned_x = (uint16_t)(x & ~0x7);
+    uint16_t aligned_y = (uint16_t)(y & ~0x7);
+
+    uint32_t requested_end_x = x + w;
+    uint32_t requested_end_y = y + h;
+    if (requested_end_x > (uint32_t)WIDTH) requested_end_x = WIDTH;
+    if (requested_end_y > (uint32_t)HEIGHT) requested_end_y = HEIGHT;
+
+    uint16_t aligned_end_x = (uint16_t)(((requested_end_x + 7u) & ~7u));
+    uint16_t aligned_end_y = (uint16_t)(((requested_end_y + 7u) & ~7u));
+
+    if (aligned_end_x > (uint16_t)WIDTH) aligned_end_x = (uint16_t)WIDTH;
+    if (aligned_end_y > (uint16_t)HEIGHT) aligned_end_y = (uint16_t)HEIGHT;
+
+    uint16_t aligned_w = aligned_end_x > aligned_x ? (aligned_end_x - aligned_x) : 8;
+    uint16_t aligned_h = aligned_end_y > aligned_y ? (aligned_end_y - aligned_y) : 8;
+
+    layer->x = aligned_x;
+    layer->y = aligned_y;
+    layer->w = aligned_w;
+    layer->h = aligned_h;
 
     ss_layer_simple_mark_dirty(layer, true);
-
-    // メモリマップ更新（変更された領域のみ、8x8ブロック単位）
-    uint16_t start_map_x = x >> 3;
-    uint16_t start_map_y = y >> 3;
-    uint16_t end_map_x = (x + w + 7) >> 3;
-    uint16_t end_map_y = (y + h + 7) >> 3;
-
-    // 範囲チェック
-    if (start_map_x >= SIMPLE_MAP_WIDTH) start_map_x = SIMPLE_MAP_WIDTH - 1;
-    if (start_map_y >= SIMPLE_MAP_HEIGHT) start_map_y = SIMPLE_MAP_HEIGHT - 1;
-    if (end_map_x > SIMPLE_MAP_WIDTH) end_map_x = SIMPLE_MAP_WIDTH;
-    if (end_map_y > SIMPLE_MAP_HEIGHT) end_map_y = SIMPLE_MAP_HEIGHT;
-
-    // メモリマップ更新（z順に基づく）
-    for (uint16_t my = start_map_y; my < end_map_y; my++) {
-        for (uint16_t mx = start_map_x; mx < end_map_x; mx++) {
-            s_simple_map[my][mx] = layer->z;
-        }
-    }
 }
 
 // 高速VRAM転送（SX-Windowスタイル）
