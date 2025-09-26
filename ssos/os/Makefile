@@ -5,23 +5,24 @@ endif
 
 TARGET=SSOS.X
 SRCS= \
-	kernel/premain.c \
-	kernel/dma.c \
-	kernel/kernel.c \
-	kernel/memory.c \
-	kernel/task_manager.c \
-	kernel/vram.c \
-	kernel/ss_perf.c \
-	kernel/ss_errors.c \
-	kernel/stdlib_stubs.c \
-main/ssosmain.c \
-main/ssoswindows.c \
-window/layer.c \
-window/quickdraw.c \
-window/quickdraw_shell.c \
-window/quickdraw_monitor.c \
-window/quickdraw_demo.c \
-util/printf.c
+ 	kernel/premain.c \
+ 	kernel/dma.c \
+ 	kernel/kernel.c \
+ 	kernel/memory.c \
+ 	kernel/task_manager.c \
+ 	kernel/vram.c \
+ 	kernel/ss_perf.c \
+ 	kernel/ss_errors.c \
+ 	kernel/stdlib_stubs.c \
+ main/ssosmain.c \
+ main/ssoswindows.c \
+ window/layer.c \
+ window/layer_simple.c \
+ window/quickdraw.c \
+ window/quickdraw_shell.c \
+ window/quickdraw_monitor.c \
+ window/quickdraw_demo.c \
+ util/printf.c
 ASRCS= \
 	kernel/entry.s \
 	kernel/interrupts.s

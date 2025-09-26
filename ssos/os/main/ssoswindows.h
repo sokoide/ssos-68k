@@ -6,6 +6,7 @@
 typedef enum {
     SS_LAYER_BACKEND_LEGACY = 0,
     SS_LAYER_BACKEND_QUICKDRAW = 1,
+    SS_LAYER_BACKEND_SIMPLE = 2
 } SsLayerBackend;
 
 void ss_layer_compat_select(SsLayerBackend backend);

@@ -162,3 +162,14 @@ uint16_t ss_layer_get_adaptive_threshold(void);
 // Phase 6: Test and verification functions
 void ss_layer_test_optimizations(void);
 void ss_layer_reset_optimization_stats(void);
+
+// SX-Window互換のシンプルLayerシステム
+void ss_layer_init_simple(void);
+Layer* ss_layer_get_simple(void);
+void ss_layer_draw_simple(void);
+void ss_layer_draw_simple_layer(Layer* l);
+void ss_layer_set_simple(Layer* layer, uint16_t x, uint16_t y, uint16_t w, uint16_t h);
+void ss_layer_blit_fast(Layer* l, uint16_t dx, uint16_t dy, uint16_t dw, uint16_t dh);
+void ss_layer_draw_rect_layer_simple(Layer* l);
+void ss_layer_benchmark_simple(void);
+void ss_layer_report_memory_simple(void);

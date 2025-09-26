@@ -665,8 +665,8 @@ void run_performance_tests(void) {
 }
 
 // Layer compatibility constants
-#define SS_LAYER_BACKEND_QUICKDRAW 1
 #define SS_LAYER_BACKEND_LEGACY 0
+#define SS_LAYER_BACKEND_QUICKDRAW 1
 #define SS_LAYER_COMPAT_DESKTOP 0
 #define SS_LAYER_COMPAT_MONITOR 1
 #define SS_LAYER_COMPAT_TASKBAR 2

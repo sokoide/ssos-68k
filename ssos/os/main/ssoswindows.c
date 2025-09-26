@@ -54,12 +54,7 @@ static bool qd_shell_update_taskbar_wrapper(void) {
     return true;
 }
 
-static SsLayerBackend g_active_backend =
-#if SS_CONFIG_ENABLE_LAYER
-    SS_LAYER_BACKEND_LEGACY;
-#else
-    SS_LAYER_BACKEND_QUICKDRAW;
-#endif
+static SsLayerBackend g_active_backend = SS_LAYER_BACKEND_SIMPLE;
 
 static SsLayerCompatSurface g_quickdraw_surfaces[SS_LAYER_COMPAT_COUNT] = {
     [SS_LAYER_COMPAT_DESKTOP] = {
@@ -267,6 +262,10 @@ void ss_layer_compat_select(SsLayerBackend backend) {
         return;
     }
 #endif
+    if (backend == SS_LAYER_BACKEND_SIMPLE) {
+        g_active_backend = SS_LAYER_BACKEND_SIMPLE;
+        return;
+    }
     g_active_backend = SS_LAYER_BACKEND_QUICKDRAW;
     ss_layer_compat_reset_quickdraw_surfaces();
 }
@@ -277,6 +276,10 @@ SsLayerBackend ss_layer_compat_active_backend(void) {
 
 bool ss_layer_compat_uses_quickdraw(void) {
     return g_active_backend == SS_LAYER_BACKEND_QUICKDRAW;
+}
+
+bool ss_layer_compat_uses_simple(void) {
+    return g_active_backend == SS_LAYER_BACKEND_SIMPLE;
 }
 
 static Layer* ss_layer_compat_quickdraw_get(uint8_t index) {
@@ -378,6 +381,20 @@ Layer* get_layer_1() {
     if (ss_layer_compat_uses_quickdraw()) {
         return ss_layer_compat_quickdraw_get(SS_LAYER_COMPAT_DESKTOP);
     }
+    if (ss_layer_compat_uses_simple()) {
+        Layer* l = ss_layer_get_simple();
+        if (l) {
+            uint8_t* lbuf = (uint8_t*)ss_mem_alloc4k(WIDTH * HEIGHT);
+            l->vram = lbuf;
+            l->w = WIDTH;
+            l->h = HEIGHT;
+            ss_layer_set_simple(l, 0, 0, WIDTH, HEIGHT);
+            ss_fill_rect_v(lbuf, WIDTH, HEIGHT, color_bg, 0, 0, WIDTH, HEIGHT - 33);
+            draw_taskbar(lbuf);
+            draw_title(lbuf);
+        }
+        return l;
+    }
 #if SS_CONFIG_ENABLE_LAYER
     Layer* l = ss_layer_get();
     uint8_t* lbuf = (uint8_t*)ss_mem_alloc4k(WIDTH * HEIGHT);
@@ -395,6 +412,26 @@ Layer* get_layer_1() {
 Layer* get_layer_2() {
     if (ss_layer_compat_uses_quickdraw()) {
         return ss_layer_compat_quickdraw_get(SS_LAYER_COMPAT_MONITOR);
+    }
+    if (ss_layer_compat_uses_simple()) {
+        Layer* l = ss_layer_get_simple();
+        if (l) {
+            uint16_t fg = 0;
+            uint16_t bg = 15;
+            const int lw = 512;
+            const int lh = 288;
+
+            uint8_t* lbuf = (uint8_t*)ss_mem_alloc4k(lw * lh);
+            l->vram = lbuf;
+            l->w = lw;
+            l->h = lh;
+            ss_layer_set_simple(l, 16, 80, lw, lh);
+            ss_fill_rect_v(lbuf, lw, lh, 2, 0, 0, lw - 1, 24);
+            ss_fill_rect_v(lbuf, lw, lh, 15, 0, 25, lw - 1, lh - 1);
+            ss_draw_rect_v(lbuf, lw, lh, 0, 0, 0, lw - 1, lh - 1);
+            ss_print_v(lbuf, lw, lh, 15, 2, 8, 4, "Every Second: Timer");
+        }
+        return l;
     }
 #if SS_CONFIG_ENABLE_LAYER
     uint16_t fg = 0;
@@ -420,6 +457,26 @@ Layer* get_layer_2() {
 Layer* get_layer_3() {
     if (ss_layer_compat_uses_quickdraw()) {
         return ss_layer_compat_quickdraw_get(SS_LAYER_COMPAT_TASKBAR);
+    }
+    if (ss_layer_compat_uses_simple()) {
+        Layer* l = ss_layer_get_simple();
+        if (l) {
+            uint16_t fg = 0;
+            uint16_t bg = 15;
+            const int lw = 544;
+            const int lh = 96;
+
+            uint8_t* lbuf = (uint8_t*)ss_mem_alloc4k(lw * lh);
+            l->vram = lbuf;
+            l->w = lw;
+            l->h = lh;
+            ss_layer_set_simple(l, 192, 24, lw, lh);
+            ss_fill_rect_v(lbuf, lw, lh, 3, 0, 0, lw - 1, 24);
+            ss_fill_rect_v(lbuf, lw, lh, 15, 0, 25, lw - 1, lh - 1);
+            ss_draw_rect_v(lbuf, lw, lh, 5, 0, 0, lw - 1, lh - 1);
+            ss_print_v(lbuf, lw, lh, 15, 3, 8, 4, "Real Time: Mouse / Keyboard");
+        }
+        return l;
     }
 #if SS_CONFIG_ENABLE_LAYER
     uint16_t fg = 0;
@@ -610,6 +667,11 @@ void update_layer_2(Layer* l) {
 #else
     (void)l;
 #endif
+
+    if (ss_layer_compat_uses_simple()) {
+        // 全レイヤーを再描画して、上位レイヤーの内容を維持
+        ss_layer_draw_simple();
+    }
 }
 
 void update_layer_3(Layer* l) {
@@ -714,6 +776,10 @@ void update_layer_3(Layer* l) {
 #else
     (void)l;
 #endif
+
+    if (ss_layer_compat_uses_simple()) {
+        ss_layer_draw_simple();
+    }
 }
 
 #if SS_CONFIG_ENABLE_LAYER
@@ -756,4 +822,7 @@ static void draw_taskbar(uint8_t* buf) {
     // start
     ss_print_v(buf, WIDTH, HEIGHT, 1, color_tb, 16, HEIGHT - 24, "Start");
 }
+#else
+static void draw_title(uint8_t* buf) { (void)buf; }
+static void draw_taskbar(uint8_t* buf) { (void)buf; }
 #endif

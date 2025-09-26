@@ -88,19 +88,21 @@ static void ss_run_quickdraw_mode(void) {
 static void ss_run_layer_mode(void) {
     uint32_t prev_counter = 0;
 
-    ss_layer_compat_select(SS_LAYER_BACKEND_LEGACY);
-    ss_layer_init();
+    // SX-Window高速描画システムを使用
+    ss_layer_compat_select(SS_LAYER_BACKEND_SIMPLE);
+    ss_layer_init_simple();
 
     Layer* l1 = get_layer_1();
     Layer* l2 = get_layer_2();
     Layer* l3 = get_layer_3();
     (void)l1;
 
-    ss_all_layer_draw();
+    // SX-Window方式では全レイヤーを描画
+    ss_layer_draw_simple();
     update_layer_2(l2);
     update_layer_3(l3);
 
-    ss_layer_draw_dirty_only();
+    ss_layer_draw_simple();
 
     while (true) {
         SS_PERF_START_MEASUREMENT(SS_PERF_FRAME_TIME);
@@ -145,7 +147,7 @@ static void ss_run_layer_mode(void) {
         SS_PERF_END_MEASUREMENT(SS_PERF_LAYER_UPDATE);
 
         SS_PERF_START_MEASUREMENT(SS_PERF_DRAW_TIME);
-        ss_layer_draw_dirty_only();
+        ss_layer_draw_simple();
         SS_PERF_END_MEASUREMENT(SS_PERF_DRAW_TIME);
 
         SS_PERF_END_MEASUREMENT(SS_PERF_FRAME_TIME);
