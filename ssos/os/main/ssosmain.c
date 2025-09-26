@@ -86,9 +86,9 @@ static void ss_run_quickdraw_mode(void) {
 }
 
 static void ss_run_layer_mode(void) {
+#if SS_LAYER_BACKEND_DEFAULT_VALUE == SS_LAYER_BACKEND_SIMPLE_VALUE
     uint32_t prev_counter = 0;
 
-    // SX-Window高速描画システムを使用
     ss_layer_compat_select(SS_LAYER_BACKEND_SIMPLE);
     ss_layer_init_simple();
 
@@ -97,11 +97,9 @@ static void ss_run_layer_mode(void) {
     Layer* l3 = get_layer_3();
     (void)l1;
 
-    // SX-Window方式では全レイヤーを描画
     ss_layer_draw_simple();
     update_layer_2(l2);
     update_layer_3(l3);
-
     ss_layer_draw_simple();
 
     while (true) {
@@ -152,6 +150,78 @@ static void ss_run_layer_mode(void) {
 
         SS_PERF_END_MEASUREMENT(SS_PERF_FRAME_TIME);
     }
+
+#elif SS_LAYER_BACKEND_DEFAULT_VALUE == SS_LAYER_BACKEND_LEGACY_VALUE
+    uint32_t prev_counter = 0;
+
+    ss_layer_compat_select(SS_LAYER_BACKEND_LEGACY);
+    ss_layer_init();
+
+    Layer* l1 = get_layer_1();
+    Layer* l2 = get_layer_2();
+    Layer* l3 = get_layer_3();
+    (void)l1;
+
+    ss_all_layer_draw();
+    update_layer_2(l2);
+    update_layer_3(l3);
+    ss_layer_draw_dirty_only();
+
+    while (true) {
+        SS_PERF_START_MEASUREMENT(SS_PERF_FRAME_TIME);
+
+        while (!((*mfp) & 0x10)) {
+            if (ss_escape_requested()) {
+#ifdef LOCAL_MODE
+                return;
+#else
+                ;
+#endif
+            }
+        }
+
+        while ((*mfp) & 0x10) {
+            if (ss_escape_requested()) {
+#ifdef LOCAL_MODE
+                return;
+#else
+                ;
+#endif
+            }
+        }
+
+        if (ss_escape_requested()) {
+#ifdef LOCAL_MODE
+            break;
+#else
+            ;
+#endif
+        }
+
+        SS_PERF_START_MEASUREMENT(SS_PERF_LAYER_UPDATE);
+        update_layer_3(l3);
+
+        if (ss_timerd_counter > prev_counter + 1000 ||
+            ss_timerd_counter < prev_counter) {
+            prev_counter = ss_timerd_counter;
+            update_layer_2(l2);
+        }
+
+        SS_PERF_END_MEASUREMENT(SS_PERF_LAYER_UPDATE);
+
+        SS_PERF_START_MEASUREMENT(SS_PERF_DRAW_TIME);
+        ss_layer_draw_dirty_only();
+        SS_PERF_END_MEASUREMENT(SS_PERF_DRAW_TIME);
+
+        SS_PERF_END_MEASUREMENT(SS_PERF_FRAME_TIME);
+    }
+
+#elif SS_LAYER_BACKEND_DEFAULT_VALUE == SS_LAYER_BACKEND_QUICKDRAW_VALUE
+    ss_layer_compat_select(SS_LAYER_BACKEND_QUICKDRAW);
+    ss_run_quickdraw_mode();
+#else
+#error "Unsupported SS_LAYER_BACKEND_DEFAULT_VALUE"
+#endif
 }
 
 static void ss_shutdown_display(void) {

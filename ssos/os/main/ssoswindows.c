@@ -54,7 +54,7 @@ static bool qd_shell_update_taskbar_wrapper(void) {
     return true;
 }
 
-static SsLayerBackend g_active_backend = SS_LAYER_BACKEND_SIMPLE;
+static SsLayerBackend g_active_backend = (SsLayerBackend)SS_LAYER_BACKEND_DEFAULT_VALUE;
 
 static SsLayerCompatSurface g_quickdraw_surfaces[SS_LAYER_COMPAT_COUNT] = {
     [SS_LAYER_COMPAT_DESKTOP] = {

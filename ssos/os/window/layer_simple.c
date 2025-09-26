@@ -103,6 +103,10 @@ void ss_layer_draw_simple_layer(Layer* l) {
 void ss_layer_draw_simple(void) {
     if (!ss_layer_mgr) return;
 
+#ifdef SS_LAYER_SIMPLE_DISABLE_OCCLUSION
+    (void)s_simple_map;
+#endif
+
     // 下位レイヤーから順に描画し、最上位レイヤーを最後に適用する
     for (int i = 0; i < ss_layer_mgr->topLayerIdx; i++) {
         Layer* l = ss_layer_mgr->zLayers[i];
@@ -203,12 +207,14 @@ void ss_layer_draw_rect_layer_simple(Layer* l) {
             }
 
             bool occluded = false;
+#ifndef SS_LAYER_SIMPLE_DISABLE_OCCLUSION
             if (map_y < SIMPLE_MAP_HEIGHT && map_x < SIMPLE_MAP_WIDTH) {
                 uint8_t top_z = s_simple_map[map_y][map_x];
                 if (top_z > l->z) {
                     occluded = true;
                 }
             }
+#endif
 
             int16_t segment_len = block_end - (start_x + px);
 
