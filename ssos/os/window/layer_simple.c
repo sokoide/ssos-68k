@@ -258,14 +258,10 @@ void ss_layer_draw_rect_layer_simple(Layer* l) {
     const int16_t height = end_y - start_y;
 
     // X68000 16色モード: 1ピクセルあたり2バイト（偶数バイトがプレーンデータ、奇数バイトにインデックス）
-    const int32_t vram_stride_bytes = VRAMWIDTH * 2;
-    uint8_t* dst_base = ((uint8_t*)vram_start) + ((start_y * VRAMWIDTH) + start_x) * 2 + 1;
-
     ss_layer_init_batch_transfers();
 
     for (int y = 0; y < height; y++) {
         uint8_t* src_line = src + y * l->w;
-        uint8_t* dst_line = dst_base + y * vram_stride_bytes;
 
         int16_t world_y = start_y + y;
         uint16_t map_y = (uint16_t)(world_y >> 3);
@@ -294,7 +290,7 @@ void ss_layer_draw_rect_layer_simple(Layer* l) {
 
             if (!occluded && segment_len > 0) {
                 uint8_t* src_seg = src_line + px;
-                uint8_t* dst_seg = dst_line + px * 2;
+                uint8_t* dst_seg = ((uint8_t*)&vram_start[world_y * VRAMWIDTH + (start_x + px)]) + 1;
                 ss_layer_add_batch_transfer(src_seg, dst_seg, (uint16_t)segment_len);
             }
 
