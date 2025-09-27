@@ -174,3 +174,5 @@ void ss_layer_draw_rect_layer_simple(Layer* l);
 void ss_layer_benchmark_simple(void);
 void ss_layer_report_memory_simple(void);
 void ss_layer_simple_mark_dirty(Layer* layer, bool include_lower_layers);
+void ss_layer_simple_mark_rect(Layer* layer, uint16_t x, uint16_t y,
+                               uint16_t w, uint16_t h);

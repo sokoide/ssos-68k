@@ -30,6 +30,7 @@
 #define SIMPLE_MAP_HEIGHT (512 / 8)  // 64
 #define SIMPLE_MAP_EMPTY 0xFF
 static uint8_t s_simple_map[SIMPLE_MAP_HEIGHT][SIMPLE_MAP_WIDTH];
+static uint8_t s_simple_map_dirty[SIMPLE_MAP_HEIGHT][SIMPLE_MAP_WIDTH];
 
 // 現在のLayerシステムと連携するためのグローバル変数
 extern LayerMgr* ss_layer_mgr;
@@ -43,6 +44,13 @@ static int s_layer_count = 0;
 static void ss_layer_simple_clear_map(void);
 static void ss_layer_simple_rebuild_occlusion(void);
 static bool ss_layer_simple_any_dirty(void);
+static void ss_layer_simple_mark_rect_internal(Layer* layer,
+                                               uint16_t aligned_x0,
+                                               uint16_t aligned_y0,
+                                               uint16_t aligned_x1,
+                                               uint16_t aligned_y1);
+void ss_layer_simple_mark_rect(Layer* layer, uint16_t x, uint16_t y,
+                               uint16_t w, uint16_t h);
 void ss_layer_simple_mark_dirty(Layer* layer, bool include_lower_layers);
 
 // SX-Windowスタイルの高速初期化
@@ -81,6 +89,10 @@ Layer* ss_layer_get_simple(void) {
             l->z = (uint16_t)ss_layer_mgr->topLayerIdx;
             l->vram = NULL;
             l->needs_redraw = 1;
+            l->dirty_x = 0;
+            l->dirty_y = 0;
+            l->dirty_w = 0;
+            l->dirty_h = 0;
 
             // zLayers配列に登録
             ss_layer_mgr->zLayers[ss_layer_mgr->topLayerIdx] = l;
@@ -93,7 +105,12 @@ Layer* ss_layer_get_simple(void) {
 }
 
 static void ss_layer_simple_clear_map(void) {
-    memset(s_simple_map, SIMPLE_MAP_EMPTY, sizeof(s_simple_map));
+    for (int y = 0; y < SIMPLE_MAP_HEIGHT; y++) {
+        for (int x = 0; x < SIMPLE_MAP_WIDTH; x++) {
+            s_simple_map[y][x] = SIMPLE_MAP_EMPTY;
+            s_simple_map_dirty[y][x] = 1;
+        }
+    }
 }
 
 static bool ss_layer_simple_any_dirty(void) {
@@ -105,6 +122,28 @@ static bool ss_layer_simple_any_dirty(void) {
         if (l->needs_redraw) return true;
     }
     return false;
+}
+
+static void ss_layer_simple_mark_tiles_dirty_world(uint16_t x0, uint16_t y0,
+                                                   uint16_t x1, uint16_t y1) {
+    if (x0 >= WIDTH) x0 = WIDTH;
+    if (y0 >= HEIGHT) y0 = HEIGHT;
+    if (x1 > WIDTH) x1 = WIDTH;
+    if (y1 > HEIGHT) y1 = HEIGHT;
+    if (x0 >= x1 || y0 >= y1) {
+        return;
+    }
+
+    uint16_t tile_x0 = (uint16_t)(x0 >> 3);
+    uint16_t tile_y0 = (uint16_t)(y0 >> 3);
+    uint16_t tile_x1 = (uint16_t)((x1 + 7) >> 3);
+    uint16_t tile_y1 = (uint16_t)((y1 + 7) >> 3);
+
+    for (uint16_t ty = tile_y0; ty < tile_y1; ty++) {
+        for (uint16_t tx = tile_x0; tx < tile_x1; tx++) {
+            s_simple_map_dirty[ty][tx] = 1;
+        }
+    }
 }
 
 static void ss_layer_simple_rebuild_occlusion(void) {
@@ -189,6 +228,8 @@ void ss_layer_draw_simple(void) {
 
 // レイヤー設定（メモリマップ更新を最小化）
 void ss_layer_set_simple(Layer* layer, uint16_t x, uint16_t y, uint16_t w, uint16_t h) {
+    if (!layer) return;
+
     uint16_t aligned_x = (uint16_t)(x & ~0x7);
     uint16_t aligned_y = (uint16_t)(y & ~0x7);
 
@@ -212,6 +253,7 @@ void ss_layer_set_simple(Layer* layer, uint16_t x, uint16_t y, uint16_t w, uint1
     layer->h = aligned_h;
 
     ss_layer_simple_mark_dirty(layer, true);
+    ss_layer_simple_clear_map();
 }
 
 // 高速VRAM転送（SX-Windowスタイル）
@@ -332,9 +374,77 @@ void ss_layer_report_memory_simple(void) {
     // printf("Total: %lu bytes\n", map_memory + layer_memory);
 }
 
+static void ss_layer_simple_mark_rect_internal(Layer* layer,
+                                               uint16_t aligned_x0,
+                                               uint16_t aligned_y0,
+                                               uint16_t aligned_x1,
+                                               uint16_t aligned_y1) {
+    uint16_t rect_w = (aligned_x1 > aligned_x0) ? (aligned_x1 - aligned_x0) : 0;
+    uint16_t rect_h = (aligned_y1 > aligned_y0) ? (aligned_y1 - aligned_y0) : 0;
+    if (rect_w == 0 || rect_h == 0) {
+        return;
+    }
+
+    if (!layer->needs_redraw || layer->dirty_w == 0 || layer->dirty_h == 0) {
+        layer->dirty_x = aligned_x0;
+        layer->dirty_y = aligned_y0;
+        layer->dirty_w = rect_w;
+        layer->dirty_h = rect_h;
+    } else {
+        uint16_t prev_x0 = layer->dirty_x;
+        uint16_t prev_y0 = layer->dirty_y;
+        uint16_t prev_x1 = prev_x0 + layer->dirty_w;
+        uint16_t prev_y1 = prev_y0 + layer->dirty_h;
+
+        uint16_t new_x0 = prev_x0 < aligned_x0 ? prev_x0 : aligned_x0;
+        uint16_t new_y0 = prev_y0 < aligned_y0 ? prev_y0 : aligned_y0;
+        uint16_t new_x1 = prev_x1 > aligned_x1 ? prev_x1 : aligned_x1;
+        uint16_t new_y1 = prev_y1 > aligned_y1 ? prev_y1 : aligned_y1;
+
+        layer->dirty_x = new_x0;
+        layer->dirty_y = new_y0;
+        layer->dirty_w = new_x1 - new_x0;
+        layer->dirty_h = new_y1 - new_y0;
+    }
+
+    layer->needs_redraw = 1;
+
+    uint16_t world_x0 = layer->x + layer->dirty_x;
+    uint16_t world_y0 = layer->y + layer->dirty_y;
+    uint16_t world_x1 = layer->x + layer->dirty_x + layer->dirty_w;
+    uint16_t world_y1 = layer->y + layer->dirty_y + layer->dirty_h;
+    ss_layer_simple_mark_tiles_dirty_world(world_x0, world_y0, world_x1, world_y1);
+}
+
+void ss_layer_simple_mark_rect(Layer* layer, uint16_t x, uint16_t y,
+                               uint16_t w, uint16_t h) {
+    if (!layer || w == 0 || h == 0) {
+        return;
+    }
+
+    if (x >= layer->w || y >= layer->h) {
+        return;
+    }
+
+    if (x + w > layer->w) w = layer->w - x;
+    if (y + h > layer->h) h = layer->h - y;
+    if (w == 0 || h == 0) return;
+
+    uint16_t aligned_x0 = x & ~7u;
+    uint16_t aligned_y0 = y & ~7u;
+    uint16_t aligned_x1 = (uint16_t)(((x + w + 7u) & ~7u));
+    uint16_t aligned_y1 = (uint16_t)(((y + h + 7u) & ~7u));
+    if (aligned_x1 > layer->w) aligned_x1 = layer->w;
+    if (aligned_y1 > layer->h) aligned_y1 = layer->h;
+
+    ss_layer_simple_mark_rect_internal(layer, aligned_x0, aligned_y0,
+                                       aligned_x1, aligned_y1);
+}
+
 void ss_layer_simple_mark_dirty(Layer* layer, bool include_lower_layers) {
     if (!layer) return;
-    layer->needs_redraw = 1;
+
+    ss_layer_simple_mark_rect(layer, 0, 0, layer->w, layer->h);
 
     if (!include_lower_layers) {
         return;
@@ -342,16 +452,12 @@ void ss_layer_simple_mark_dirty(Layer* layer, bool include_lower_layers) {
 
     if (!ss_layer_mgr) return;
 
-    bool mark_remaining = true;
     for (int i = 0; i < ss_layer_mgr->topLayerIdx; i++) {
         Layer* current = ss_layer_mgr->zLayers[i];
         if (!current) continue;
         if (current == layer) {
-            mark_remaining = false;
-            continue;
+            break;
         }
-        if (mark_remaining) {
-            current->needs_redraw = 1;
-        }
+        ss_layer_simple_mark_rect(current, 0, 0, current->w, current->h);
     }
 }

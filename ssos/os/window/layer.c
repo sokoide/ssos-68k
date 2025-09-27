@@ -1235,6 +1235,12 @@ void ss_layer_move(Layer* layer, uint16_t x, uint16_t y) {
 void ss_layer_mark_dirty(Layer* layer, uint16_t x, uint16_t y, uint16_t w, uint16_t h) {
     if (!layer || w == 0 || h == 0) return;
 
+    if (ss_layer_compat_active_backend() == SS_LAYER_BACKEND_SIMPLE) {
+        ss_layer_simple_mark_rect(layer, x, y, w, h);
+        ss_layer_compat_on_dirty_marked(layer);
+        return;
+    }
+
     // Clamp to layer bounds
     if (x >= layer->w || y >= layer->h) return;
     if (x + w > layer->w) w = layer->w - x;
