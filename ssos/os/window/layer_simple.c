@@ -223,9 +223,10 @@ void ss_layer_draw_simple(void) {
         // X68000 16色モード: 高速直接書き込み
         for (int y = 0; y < l->h; y++) {
             uint8_t* src_line = l->vram + y * l->w;
-            uint8_t* dst_line = ((uint8_t*)&vram_start[(l->y + y) * VRAMWIDTH + l->x]) + 1;
+            uint8_t* dst_pixel = ((uint8_t*)&vram_start[(l->y + y) * VRAMWIDTH + l->x]) + 1;
             for (int x = 0; x < l->w; x++) {
-                dst_line[x] = src_line[x];
+                *dst_pixel = src_line[x];
+                dst_pixel += 2;
             }
         }
 
@@ -300,14 +301,13 @@ void ss_layer_blit_fast(Layer* l, uint16_t dx, uint16_t dy, uint16_t dw, uint16_
 
     // 連続領域をまとめて転送
     uint8_t* src = l->vram;
-    uint8_t* dst = (uint8_t*)&vram_start[dy * VRAMWIDTH + dx];
-
     // 単純なmemcpyで高速転送
     for (int y = 0; y < dh; y++) {
         uint8_t* src_line = src + y * l->w;
-        uint8_t* dst_line = dst + y * VRAMWIDTH;
+        uint8_t* dst_pixel = ((uint8_t*)&vram_start[(dy + y) * VRAMWIDTH + dx]) + 1;
         for (int x = 0; x < dw; x++) {
-            dst_line[x] = src_line[x];
+            *dst_pixel = src_line[x];
+            dst_pixel += 2;
         }
     }
 }
@@ -337,13 +337,10 @@ void ss_layer_draw_rect_layer_simple(Layer* l) {
 
     for (int y = 0; y < height; y++) {
         uint8_t* src_line = src + y * l->w;
-        uint8_t* dst_line = ((uint8_t*)&vram_start[(start_y + y) * VRAMWIDTH + start_x]) + 1;
+        uint8_t* dst_row = ((uint8_t*)&vram_start[(start_y + y) * VRAMWIDTH + start_x]) + 1;
 
-        // DMA転送で1行分まとめて転送（1byte飛ばし対応）
-        for (int x = 0; x < width; x++) {
-            uint8_t* src_seg = src_line + x;
-            uint8_t* dst_seg = dst_line + x;
-            ss_layer_add_batch_transfer(src_seg, dst_seg, 1);
+        if (width > 0) {
+            ss_layer_add_batch_transfer(src_line, dst_row, (uint16_t)width);
         }
     }
 
