@@ -1543,24 +1543,40 @@ void ss_execute_conditional_batch_transfers(void) {
         return;
     }
 
-    // 転送セグメントをdstアドレス順にソート（連続セグメントの特定のため）
+    // パフォーマンス最適化: バッチサイズが小さい場合はソートをスキップ
+    if (ss_layer_mgr->batch_count <= 4) {
+        // 小規模バッチはソートなしで直接実行
+        ss_execute_batch_group(ss_layer_mgr->batch_transfers, ss_layer_mgr->batch_count);
+        return;
+    }
+
+    // 大規模バッチのみソートとグループ化を実行
     ss_sort_batch_transfers_by_dst();
 
-    // 連続するセグメントをグループ化して実行
+    // 連続するセグメントをグループ化して実行（最適化版）
     int group_start = 0;
     for (int i = 1; i <= ss_layer_mgr->batch_count; i++) {
         bool is_continuous = false;
         if (i < ss_layer_mgr->batch_count) {
             // 次のセグメントとの連続性をチェック
             uint8_t* current_dst_end = ss_layer_mgr->batch_transfers[i-1].dst +
-                                     ss_layer_mgr->batch_transfers[i-1].count * 2; // VRAM 2bytes/pixel
+                                     ss_layer_mgr->batch_transfers[i-1].count;
             uint8_t* next_dst = ss_layer_mgr->batch_transfers[i].dst;
             is_continuous = (current_dst_end == next_dst);
         }
 
         if (!is_continuous || i == ss_layer_mgr->batch_count) {
             // グループ実行（連続セグメントまたは最後のセグメント）
-            ss_execute_batch_group(&ss_layer_mgr->batch_transfers[group_start], i - group_start);
+            int group_size = i - group_start;
+            if (group_size == 1) {
+                // 単一転送は最適化版DMAを使用
+                dma_init_optimized(ss_layer_mgr->batch_transfers[group_start].src,
+                                  ss_layer_mgr->batch_transfers[group_start].dst,
+                                  ss_layer_mgr->batch_transfers[group_start].count);
+            } else {
+                // グループ実行
+                ss_execute_batch_group(&ss_layer_mgr->batch_transfers[group_start], group_size);
+            }
             group_start = i;
         }
     }

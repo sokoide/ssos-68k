@@ -204,17 +204,15 @@ void ss_layer_draw_simple_layer(Layer* l) {
 // SX-Windowスタイルの高速描画
 // NOTE: 8x8ブロック単位の簡易オクルージョンマップで上位レイヤーに完全に覆われた
 //       領域の再描画を抑制する（部分的に重なる場合は最小ブロック単位で描画）。
+#include <stdbool.h>
+
 void ss_layer_draw_simple(void) {
     if (!ss_layer_mgr) return;
     if (!ss_layer_simple_any_dirty()) {
         return;
     }
 
-#ifndef SS_LAYER_SIMPLE_DISABLE_OCCLUSION
-    ss_layer_simple_rebuild_occlusion();
-#endif
-
-    // 下位レイヤーから順に描画し、最上位レイヤーを最後に適用する
+    // LEGACYモードと同一の高速直接描画
     for (int i = 0; i < ss_layer_mgr->topLayerIdx; i++) {
         Layer* l = ss_layer_mgr->zLayers[i];
         if (!l) continue;
@@ -222,7 +220,16 @@ void ss_layer_draw_simple(void) {
         if (!l->vram) continue;
         if (!l->needs_redraw) continue;
 
-        ss_layer_draw_simple_layer(l);
+        // X68000 16色モード: 高速直接書き込み
+        for (int y = 0; y < l->h; y++) {
+            uint8_t* src_line = l->vram + y * l->w;
+            uint8_t* dst_line = ((uint8_t*)&vram_start[(l->y + y) * VRAMWIDTH + l->x]) + 1;
+            for (int x = 0; x < l->w; x++) {
+                dst_line[x] = src_line[x];
+            }
+        }
+
+        l->needs_redraw = 0;
     }
 }
 
@@ -230,31 +237,57 @@ void ss_layer_draw_simple(void) {
 void ss_layer_set_simple(Layer* layer, uint16_t x, uint16_t y, uint16_t w, uint16_t h) {
     if (!layer) return;
 
-    uint16_t aligned_x = (uint16_t)(x & ~0x7);
-    uint16_t aligned_y = (uint16_t)(y & ~0x7);
+    // パフォーマンス最適化: 完全重複や大領域の場合は8x8アライメントを使用
+    bool use_tile_alignment = false;
+    if (w >= 64 && h >= 64) {
+        // 大きなレイヤーは8x8アライメントで効率化
+        use_tile_alignment = true;
+    } else if (w <= 16 && h <= 16) {
+        // 小さなレイヤーはピクセル精度を維持
+        use_tile_alignment = false;
+    } else {
+        // 中間サイズはヒューリスティックで判定
+        uint32_t area = w * h;
+        uint32_t screen_area = WIDTH * HEIGHT;
+        use_tile_alignment = (area > screen_area / 8); // 画面の1/8以上の領域
+    }
 
-    uint32_t requested_end_x = x + w;
-    uint32_t requested_end_y = y + h;
-    if (requested_end_x > (uint32_t)WIDTH) requested_end_x = WIDTH;
-    if (requested_end_y > (uint32_t)HEIGHT) requested_end_y = HEIGHT;
+    if (use_tile_alignment) {
+        // 8x8タイルアライメントを使用
+        uint16_t aligned_x = (uint16_t)(x & ~0x7);
+        uint16_t aligned_y = (uint16_t)(y & ~0x7);
 
-    uint16_t aligned_end_x = (uint16_t)(((requested_end_x + 7u) & ~7u));
-    uint16_t aligned_end_y = (uint16_t)(((requested_end_y + 7u) & ~7u));
+        uint32_t requested_end_x = x + w;
+        uint32_t requested_end_y = y + h;
+        if (requested_end_x > (uint32_t)WIDTH) requested_end_x = WIDTH;
+        if (requested_end_y > (uint32_t)HEIGHT) requested_end_y = HEIGHT;
 
-    if (aligned_end_x > (uint16_t)WIDTH) aligned_end_x = (uint16_t)WIDTH;
-    if (aligned_end_y > (uint16_t)HEIGHT) aligned_end_y = (uint16_t)HEIGHT;
+        uint16_t aligned_end_x = (uint16_t)(((requested_end_x + 7u) & ~7u));
+        uint16_t aligned_end_y = (uint16_t)(((requested_end_y + 7u) & ~7u));
 
-    uint16_t aligned_w = aligned_end_x > aligned_x ? (aligned_end_x - aligned_x) : 8;
-    uint16_t aligned_h = aligned_end_y > aligned_y ? (aligned_end_y - aligned_y) : 8;
+        if (aligned_end_x > (uint16_t)WIDTH) aligned_end_x = (uint16_t)WIDTH;
+        if (aligned_end_y > (uint16_t)HEIGHT) aligned_end_y = (uint16_t)HEIGHT;
 
-    layer->x = aligned_x;
-    layer->y = aligned_y;
-    layer->w = aligned_w;
-    layer->h = aligned_h;
+        uint16_t aligned_w = aligned_end_x > aligned_x ? (aligned_end_x - aligned_x) : 8;
+        uint16_t aligned_h = aligned_end_y > aligned_y ? (aligned_end_y - aligned_y) : 8;
+
+        layer->x = aligned_x;
+        layer->y = aligned_y;
+        layer->w = aligned_w;
+        layer->h = aligned_h;
+    } else {
+        // ピクセル精度を使用
+        layer->x = x;
+        layer->y = y;
+        layer->w = w;
+        layer->h = h;
+    }
 
     ss_layer_simple_mark_dirty(layer, true);
     ss_layer_simple_clear_map();
 }
+
+// g_map_needs_rebuild = true; // 変更検知を無効化してパフォーマンス向上
 
 // 高速VRAM転送（SX-Windowスタイル）
 void ss_layer_blit_fast(Layer* l, uint16_t dx, uint16_t dy, uint16_t dw, uint16_t dh) {
@@ -299,50 +332,22 @@ void ss_layer_draw_rect_layer_simple(Layer* l) {
     const int16_t width = end_x - start_x;
     const int16_t height = end_y - start_y;
 
-    // X68000 16色モード: 1ピクセルあたり2バイト（偶数バイトがプレーンデータ、奇数バイトにインデックス）
+    // X68000 16色モード: DMA転送でsrc 1byteずつ、dst 1byte飛ばし
     ss_layer_init_batch_transfers();
 
     for (int y = 0; y < height; y++) {
         uint8_t* src_line = src + y * l->w;
+        uint8_t* dst_line = ((uint8_t*)&vram_start[(start_y + y) * VRAMWIDTH + start_x]) + 1;
 
-        int16_t world_y = start_y + y;
-        uint16_t map_y = (uint16_t)(world_y >> 3);
-
-        int16_t px = 0;
-        while (px < width) {
-            int16_t world_x = start_x + px;
-            uint16_t map_x = (uint16_t)(world_x >> 3);
-
-            int16_t block_end = ((world_x & ~7) + 8);
-            if (block_end > start_x + width) {
-                block_end = start_x + width;
-            }
-
-            bool occluded = false;
-#ifndef SS_LAYER_SIMPLE_DISABLE_OCCLUSION
-            if (map_y < SIMPLE_MAP_HEIGHT && map_x < SIMPLE_MAP_WIDTH) {
-                uint8_t top_z = s_simple_map[map_y][map_x];
-                if (top_z != SIMPLE_MAP_EMPTY && top_z > l->z) {
-                    occluded = true;
-                }
-            }
-#endif
-
-            int16_t segment_len = block_end - (start_x + px);
-
-            if (!occluded && segment_len > 0) {
-                uint8_t* src_seg = src_line + px;
-                uint8_t* dst_seg = ((uint8_t*)&vram_start[world_y * VRAMWIDTH + (start_x + px)]) + 1;
-                ss_layer_add_batch_transfer(src_seg, dst_seg, (uint16_t)segment_len);
-            }
-
-            px += segment_len;
+        // DMA転送で1行分まとめて転送（1byte飛ばし対応）
+        for (int x = 0; x < width; x++) {
+            uint8_t* src_seg = src_line + x;
+            uint8_t* dst_seg = dst_line + x;
+            ss_layer_add_batch_transfer(src_seg, dst_seg, 1);
         }
     }
 
     ss_layer_execute_batch_transfers();
-
-    l->needs_redraw = 0;
 }
 
 // パフォーマンス測定用
