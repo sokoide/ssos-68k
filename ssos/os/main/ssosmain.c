@@ -1,236 +1,56 @@
 #include "ssosmain.h"
 #include "kernel.h"
-#include "layer.h"
 #include "memory.h"
-#include "task_manager.h"
-#include "printf.h"
-#include "quickdraw.h"
-#include "quickdraw_monitor.h"
-#include "quickdraw_shell.h"
-#include "ssoswindows.h"
 #include "vram.h"
 #include "ss_perf.h"
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 #include <x68k/iocs.h>
 
-enum {
-    SS_UI_MODE_LAYER = 0,
-    SS_UI_MODE_QUICKDRAW = 1,
-};
+// 簡易的なstrtokの実装
+static char* strtok_ptr = NULL;
 
-#ifndef SS_BOOT_UI_MODE
-// Layer mode
-#define SS_BOOT_UI_MODE SS_UI_MODE_LAYER
-// QuickDraw mode
-// #define SS_BOOT_UI_MODE SS_UI_MODE_QUICKDRAW
-#endif
-
-static bool ss_escape_requested(void) {
-    int result = ss_handle_keys();
-#ifdef LOCAL_MODE
-    return result == -1;
-#else
-    (void)result;
-    return false;
-#endif
-}
-
-static void ss_run_quickdraw_mode(void) {
-    qd_init();
-
-    ss_layer_compat_select(SS_LAYER_BACKEND_QUICKDRAW);
-    ss_init_palette();
-
-    Layer* l1 = get_layer_1();
-    Layer* l2 = get_layer_2();
-    Layer* l3 = get_layer_3();
-
-    update_layer_2(l2);
-    update_layer_3(l3);
-
-    uint32_t prev_counter = 0;
-    bool first_frame = true;
-
-    while (true) {
-        SS_PERF_START_MEASUREMENT(SS_PERF_QD_FRAME_TIME);
-
-        ss_wait_for_vsync();
-
-        SS_PERF_START_MEASUREMENT(SS_PERF_QD_UPDATE);
-        update_layer_3(l3);
-
-        if (ss_timerd_counter > prev_counter + 1000 ||
-            ss_timerd_counter < prev_counter ||
-            first_frame) {
-            prev_counter = ss_timerd_counter;
-            update_layer_2(l2);
-            first_frame = false;
-        }
-
-
-        SS_PERF_END_MEASUREMENT(SS_PERF_QD_UPDATE);
-
-        if (ss_escape_requested()) {
-#ifdef LOCAL_MODE
-            break;
-#else
-            ;
-#endif
-        }
-
-        SS_PERF_END_MEASUREMENT(SS_PERF_QD_FRAME_TIME);
-    }
-}
-
-static void ss_run_layer_mode(void) {
-#if SS_LAYER_BACKEND_DEFAULT_VALUE == SS_LAYER_BACKEND_SIMPLE_VALUE
-    uint32_t prev_counter = 0;
-
-    ss_layer_compat_select(SS_LAYER_BACKEND_SIMPLE);
-    ss_layer_init_simple();
-
-    Layer* l1 = get_layer_1();
-    Layer* l2 = get_layer_2();
-    Layer* l3 = get_layer_3();
-    (void)l1;
-
-    ss_layer_draw_simple();
-    update_layer_2(l2);
-    update_layer_3(l3);
-    ss_layer_draw_simple();
-
-    while (true) {
-        SS_PERF_START_MEASUREMENT(SS_PERF_FRAME_TIME);
-
-        while (!((*mfp) & 0x10)) {
-            if (ss_escape_requested()) {
-#ifdef LOCAL_MODE
-                return;
-#else
-                ;
-#endif
-            }
-        }
-
-        while ((*mfp) & 0x10) {
-            if (ss_escape_requested()) {
-#ifdef LOCAL_MODE
-                return;
-#else
-                ;
-#endif
-            }
-        }
-
-        if (ss_escape_requested()) {
-#ifdef LOCAL_MODE
-            break;
-#else
-            ;
-#endif
-        }
-
-        SS_PERF_START_MEASUREMENT(SS_PERF_LAYER_UPDATE);
-        update_layer_3(l3);
-
-        if (ss_timerd_counter > prev_counter + 1000 ||
-            ss_timerd_counter < prev_counter) {
-            prev_counter = ss_timerd_counter;
-            update_layer_2(l2);
-        }
-
-        SS_PERF_END_MEASUREMENT(SS_PERF_LAYER_UPDATE);
-
-        SS_PERF_START_MEASUREMENT(SS_PERF_DRAW_TIME);
-        ss_layer_draw_simple();
-        SS_PERF_END_MEASUREMENT(SS_PERF_DRAW_TIME);
-
-        SS_PERF_END_MEASUREMENT(SS_PERF_FRAME_TIME);
+char* strtok(char* str, const char* delim) {
+    if (str != NULL) {
+        strtok_ptr = str;
+    } else if (strtok_ptr == NULL) {
+        return NULL;
     }
 
-#elif SS_LAYER_BACKEND_DEFAULT_VALUE == SS_LAYER_BACKEND_LEGACY_VALUE
-    uint32_t prev_counter = 0;
-
-    ss_layer_compat_select(SS_LAYER_BACKEND_LEGACY);
-    ss_layer_init();
-
-    Layer* l1 = get_layer_1();
-    Layer* l2 = get_layer_2();
-    Layer* l3 = get_layer_3();
-    (void)l1;
-
-    ss_all_layer_draw();
-    update_layer_2(l2);
-    update_layer_3(l3);
-    ss_layer_draw_dirty_only();
-
-    while (true) {
-        SS_PERF_START_MEASUREMENT(SS_PERF_FRAME_TIME);
-
-        while (!((*mfp) & 0x10)) {
-            if (ss_escape_requested()) {
-#ifdef LOCAL_MODE
-                return;
-#else
-                ;
-#endif
-            }
-        }
-
-        while ((*mfp) & 0x10) {
-            if (ss_escape_requested()) {
-#ifdef LOCAL_MODE
-                return;
-#else
-                ;
-#endif
-            }
-        }
-
-        if (ss_escape_requested()) {
-#ifdef LOCAL_MODE
-            break;
-#else
-            ;
-#endif
-        }
-
-        SS_PERF_START_MEASUREMENT(SS_PERF_LAYER_UPDATE);
-        update_layer_3(l3);
-
-        if (ss_timerd_counter > prev_counter + 1000 ||
-            ss_timerd_counter < prev_counter) {
-            prev_counter = ss_timerd_counter;
-            update_layer_2(l2);
-        }
-
-        SS_PERF_END_MEASUREMENT(SS_PERF_LAYER_UPDATE);
-
-        SS_PERF_START_MEASUREMENT(SS_PERF_DRAW_TIME);
-        ss_layer_draw_dirty_only();
-        SS_PERF_END_MEASUREMENT(SS_PERF_DRAW_TIME);
-
-        SS_PERF_END_MEASUREMENT(SS_PERF_FRAME_TIME);
+    // デリミタをスキップ
+    while (*strtok_ptr && strchr(delim, *strtok_ptr)) {
+        strtok_ptr++;
     }
 
-#elif SS_LAYER_BACKEND_DEFAULT_VALUE == SS_LAYER_BACKEND_QUICKDRAW_VALUE
-    ss_layer_compat_select(SS_LAYER_BACKEND_QUICKDRAW);
-    ss_run_quickdraw_mode();
-#else
-#error "Unsupported SS_LAYER_BACKEND_DEFAULT_VALUE"
-#endif
+    if (*strtok_ptr == '\0') {
+        strtok_ptr = NULL;
+        return NULL;
+    }
+
+    char* token = strtok_ptr;
+
+    // 次のデリミタを探す
+    while (*strtok_ptr && !strchr(delim, *strtok_ptr)) {
+        strtok_ptr++;
+    }
+
+    if (*strtok_ptr) {
+        *strtok_ptr = '\0';
+        strtok_ptr++;
+    } else {
+        strtok_ptr = NULL;
+    }
+
+    return token;
 }
 
-static void ss_shutdown_display(void) {
-    _iocs_ms_curof();
-    _iocs_skey_mod(-1, 0, 0);
-    _iocs_b_curon();
-    _iocs_g_clr_on();
-    _iocs_crtmod(16);
-}
+
+
+
+
 
 void ssosmain() {
     _iocs_crtmod(16); // 768x512 dots, 16 colors, 1 screen
@@ -250,28 +70,85 @@ void ssosmain() {
     // Initialize performance monitoring system
     ss_perf_init();
 
-    ss_task_stack_base = (uint8_t*)ss_mem_alloc4k(4096 * MAX_TASKS);
 
-    // initialize tcb_table
-    for (uint16_t i = 0; i < MAX_TASKS; i++) {
-        tcb_table[i].state = TS_NONEXIST;
+
+    // CLIコマンドプロセッサを起動
+    ss_cli_processor();
+}
+
+// CLIコマンドプロセッサ
+void ss_cli_processor(void) {
+    char command[256];
+    char prompt[] = "SSOS> ";
+
+    // プロンプトを表示
+    ssos_main_cli_output_string(prompt);
+
+    while (1) {
+        // コマンドを入力（簡易的な入力処理）
+        // 実際のX68000ではIOCSコールを適切に使用する必要があります
+        // ここでは簡易的な実装とします
+
+        // コマンド入力待ち（実際の実装ではキー入力処理が必要）
+        // ここではテスト用にechoコマンドを直接実行
+        ss_execute_command("echo Hello, SSOS CLI!");
+
+        // dummy
+        while (1) ;
+    }
+}
+
+// コマンド実行
+bool ss_execute_command(const char* command) {
+    char cmd_copy[256];
+    strcpy(cmd_copy, command);
+
+    // コマンドの先頭の空白をスキップ
+    char* token = strtok(cmd_copy, " \t");
+
+    if (token == NULL) {
+        return false;
     }
 
-    main_task.stack = (uint8_t*)(ss_save_data_base * TASK_STACK_SIZE - 1);
-    main_task_id = ss_create_task(&main_task);
+    // echoコマンドの処理
+    if (strcmp(token, "echo") == 0) {
+        char* args = strtok(NULL, "");
+        if (args != NULL) {
+            // 引数の先頭の空白をスキップ
+            while (*args == ' ' || *args == '\t') args++;
+            ss_cmd_echo(args);
+        } else {
+            ss_cmd_echo("");
+        }
+        return true;
+    }
 
-#if 0
-    ss_start_task(main_task_id, 0);
+    // 不明なコマンド
+    ssos_main_cli_output_string("Unknown command: ");
+    ssos_main_cli_output_string(token);
+    ssos_main_cli_output_string("\n");
+    return false;
+}
 
-    while (1)
-        ; // never reaches here
-#endif
+// X68000用の文字出力関数
+static void ssos_main_cli_output_char(char c) {
+    _iocs_b_putc(c);
+}
 
-    if (SS_BOOT_UI_MODE == SS_UI_MODE_QUICKDRAW) {
-        ss_run_quickdraw_mode();
+// X68000用の文字列出力関数
+void ssos_main_cli_output_string(const char* str) {
+    if (str == NULL) return;
+    while (*str) {
+        ssos_main_cli_output_char(*str++);
+    }
+}
+
+// echoコマンドの実装
+void ss_cmd_echo(const char* args) {
+    if (args && args[0] != '\0') {
+        ssos_main_cli_output_string(args);
+        ssos_main_cli_output_string("\n");
     } else {
-        ss_run_layer_mode();
+        ssos_main_cli_output_string("\n");
     }
-
-    ss_shutdown_display();
 }

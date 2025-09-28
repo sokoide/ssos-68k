@@ -1,7 +1,6 @@
 #pragma once
 
 #include <stdbool.h>
-#include "layer.h"
 
 typedef enum {
     SS_LAYER_BACKEND_LEGACY = 0,
@@ -22,6 +21,9 @@ void ss_layer_compat_select(SsLayerBackend backend);
 SsLayerBackend ss_layer_compat_active_backend(void);
 bool ss_layer_compat_uses_quickdraw(void);
 bool ss_layer_compat_uses_simple(void);
+
+// Layer構造体の前方宣言
+typedef struct Layer Layer;
 
 void ss_layer_compat_on_dirty_marked(Layer* layer);
 void ss_layer_compat_on_layer_cleaned(Layer* layer);

@@ -1,28 +1,21 @@
 # Check if cross-compilation toolchain is available
-ifeq ($(shell which m68k-xelf-gcc),)
-$(error Cross-compilation toolchain not found. Please run: . ~/.elf2x68k)
-endif
+# ifeq ($(shell which m68k-xelf-gcc),)
+# $(error Cross-compilation toolchain not found. Please run: . ~/.elf2x68k)
+# endif
 
 TARGET=SSOS.X
 SRCS= \
- 	kernel/premain.c \
- 	kernel/dma.c \
- 	kernel/kernel.c \
- 	kernel/memory.c \
- 	kernel/task_manager.c \
- 	kernel/vram.c \
- 	kernel/ss_perf.c \
- 	kernel/ss_errors.c \
- 	kernel/stdlib_stubs.c \
- main/ssosmain.c \
- main/ssoswindows.c \
- window/layer.c \
- window/layer_simple.c \
- window/quickdraw.c \
- window/quickdraw_shell.c \
- window/quickdraw_monitor.c \
- window/quickdraw_demo.c \
- util/printf.c
+  	kernel/premain.c \
+  	kernel/dma.c \
+  	kernel/kernel.c \
+  	kernel/memory.c \
+  	kernel/vram.c \
+  	kernel/ss_perf.c \
+  	kernel/ss_errors.c \
+  	kernel/stdlib_stubs.c \
+  	kernel/task_manager.c \
+  main/ssosmain.c \
+  util/printf.c
 ASRCS= \
 	kernel/entry.s \
 	kernel/interrupts.s
@@ -36,7 +29,7 @@ OBJCOPY=m68k-xelf-objcopy
 OBJDUMP=m68k-xelf-objdump
 READELF=m68k-xelf-readelf
 
-INCLUDE=-I$(XELF_BASE)/m68k-elf/include -I./util -I./kernel -I./window -I./main
+INCLUDE=-I$(XELF_BASE)/m68k-elf/include -I./util -I./kernel -I./main
 LIB=-L$(XELF_BASE)/m68k-elf/lib -L$(XELF_BASE)/lib/gcc/m68k-elf/13.3.0
 
 CCFLAGS=$(INCLUDE) -g -O2 -Wa,-adhlns="$@.lst"

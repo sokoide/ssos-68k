@@ -13,14 +13,7 @@ SRCS=	main.c \
  		../os/kernel/ss_errors.c \
  		../os/kernel/ss_perf.c \
  		../os/main/ssosmain.c \
- 		../os/main/ssoswindows.c \
-                 ../os/window/layer.c \
-                 ../os/window/layer_simple.c \
-                 ../os/window/quickdraw.c \
-                 ../os/window/quickdraw_shell.c \
-                 ../os/window/quickdraw_monitor.c \
-                 ../os/window/quickdraw_demo.c \
-                 ../os/util/printf.c
+                ../os/util/printf.c
 ASRCS= \
 		../os/kernel/interrupts.s
 
