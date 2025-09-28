@@ -77,7 +77,7 @@ void ss_cli_processor(void) {
 
             ss_cli_debug_print_key(keycode, c);
 
-            if ((keycode & 0xFFFF) == ESC_SCANCODE || c == 0x1B) {
+            if (c == 0x1B) {
                 ssos_main_cli_output_string("\n");
                 return;
             }

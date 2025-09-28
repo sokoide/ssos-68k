@@ -76,6 +76,12 @@ struct KeyBuffer {
 
 extern struct KeyBuffer ss_kb;
 
+#define SS_KB_MOD_SHIFT 0x01
+#define SS_KB_MOD_CTRL 0x02
+#define SS_KB_MOD_CAPS 0x04
+
+#define X68K_SC_ESC 0x6D
+
 // defined in task_manager.c
 typedef enum {
     TS_NONEXIST = 1,

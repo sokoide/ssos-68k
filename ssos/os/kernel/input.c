@@ -1,6 +1,8 @@
+#include <stdbool.h>
 #include <stdint.h>
 #include <x68k/iocs.h>
 
+#include "kernel.h"
 #include "ss_config.h"
 
 // IOCSコールの実装（インラインアセンブリ）
@@ -33,114 +35,238 @@ int _iocs_b_coninp(void) {
 
 // X68000キーコードをASCIIコードに変換
 int x68k_keycode_to_ascii(int keycode) {
-    if ((keycode & 0xFFFF) == ESC_SCANCODE) {
+    int scancode = keycode & 0x7F;
+    int modifiers = (keycode >> 8) & 0xFF;
+    int ascii = 0;
+    bool is_letter = false;
+    char letter_upper = 0;
+
+    bool shift = (modifiers & SS_KB_MOD_SHIFT) != 0;
+    bool ctrl = (modifiers & SS_KB_MOD_CTRL) != 0;
+    bool caps = (modifiers & SS_KB_MOD_CAPS) != 0;
+
+    if ((keycode & 0xFFFF) == ESC_SCANCODE || scancode == X68K_SC_ESC) {
         return 0x1B;
     }
 
-    int key = keycode & 0xFF;
-    int mod = (keycode >> 8) & 0xFF;
-    int shifted = (mod & 0x01) || (mod & 0x02);
-
-    switch (key) {
+    switch (scancode) {
     case 0x0B:
-        return shifted ? '!' : '1';
+        ascii = shift ? '!' : '1';
+        break;
     case 0x02:
-        return shifted ? '"' : '2';
+        ascii = shift ? '"' : '2';
+        break;
     case 0x03:
-        return shifted ? '#' : '3';
+        ascii = shift ? '#' : '3';
+        break;
     case 0x04:
-        return shifted ? '$' : '4';
+        ascii = shift ? '$' : '4';
+        break;
     case 0x05:
-        return shifted ? '%' : '5';
+        ascii = shift ? '%' : '5';
+        break;
     case 0x06:
-        return shifted ? '&' : '6';
+        ascii = shift ? '&' : '6';
+        break;
     case 0x07:
-        return shifted ? '\'' : '7';
+        ascii = shift ? '\'' : '7';
+        break;
     case 0x08:
-        return shifted ? '(' : '8';
+        ascii = shift ? '(' : '8';
+        break;
     case 0x09:
-        return shifted ? ')' : '9';
+        ascii = shift ? ')' : '9';
+        break;
     case 0x0A:
-        return shifted ? '*' : '0';
+        ascii = shift ? '*' : '0';
+        break;
     case 0x14:
-        return shifted ? 'Q' : 'q';
+        ascii = 'q';
+        letter_upper = 'Q';
+        is_letter = true;
+        break;
     case 0x1A:
-        return shifted ? 'W' : 'w';
+        ascii = 'w';
+        letter_upper = 'W';
+        is_letter = true;
+        break;
     case 0x15:
-        return shifted ? 'E' : 'e';
+        ascii = 'e';
+        letter_upper = 'E';
+        is_letter = true;
+        break;
     case 0x17:
-        return shifted ? 'R' : 'r';
+        ascii = 'r';
+        letter_upper = 'R';
+        is_letter = true;
+        break;
     case 0x1C:
-        return shifted ? 'T' : 't';
+        ascii = 't';
+        letter_upper = 'T';
+        is_letter = true;
+        break;
     case 0x18:
-        return shifted ? 'Y' : 'y';
+        ascii = 'y';
+        letter_upper = 'Y';
+        is_letter = true;
+        break;
     case 0x0C:
-        return shifted ? 'U' : 'u';
+        ascii = 'u';
+        letter_upper = 'U';
+        is_letter = true;
+        break;
     case 0x12:
-        return shifted ? 'I' : 'i';
+        ascii = 'i';
+        letter_upper = 'I';
+        is_letter = true;
+        break;
     case 0x13:
-        return shifted ? 'O' : 'o';
+        ascii = 'o';
+        letter_upper = 'O';
+        is_letter = true;
+        break;
     case 0x1F:
-        return shifted ? 'P' : 'p';
+        ascii = 'p';
+        letter_upper = 'P';
+        is_letter = true;
+        break;
     case 0x1D:
-        return shifted ? 'A' : 'a';
+        ascii = 'a';
+        letter_upper = 'A';
+        is_letter = true;
+        break;
     case 0x1B:
-        return shifted ? 'S' : 's';
+        ascii = 's';
+        letter_upper = 'S';
+        is_letter = true;
+        break;
     case 0x16:
-        return shifted ? 'D' : 'd';
+        ascii = 'd';
+        letter_upper = 'D';
+        is_letter = true;
+        break;
     case 0x1E:
-        return shifted ? 'F' : 'f';
+        ascii = 'f';
+        letter_upper = 'F';
+        is_letter = true;
+        break;
     case 0x11:
-        return shifted ? 'G' : 'g';
+        ascii = 'g';
+        letter_upper = 'G';
+        is_letter = true;
+        break;
     case 0x10:
-        return shifted ? 'H' : 'h';
+        ascii = 'h';
+        letter_upper = 'H';
+        is_letter = true;
+        break;
     case 0x19:
-        return shifted ? 'J' : 'j';
+        ascii = 'j';
+        letter_upper = 'J';
+        is_letter = true;
+        break;
     case 0x28:
-        return shifted ? 'K' : 'k';
+        ascii = 'k';
+        letter_upper = 'K';
+        is_letter = true;
+        break;
     case 0x20:
-        return shifted ? 'L' : 'l';
+        ascii = 'l';
+        letter_upper = 'L';
+        is_letter = true;
+        break;
     case 0x21:
-        return shifted ? 'Z' : 'z';
+        ascii = 'z';
+        letter_upper = 'Z';
+        is_letter = true;
+        break;
     case 0x22:
-        return shifted ? 'X' : 'x';
+        ascii = 'x';
+        letter_upper = 'X';
+        is_letter = true;
+        break;
     case 0x23:
-        return shifted ? 'C' : 'c';
+        ascii = 'c';
+        letter_upper = 'C';
+        is_letter = true;
+        break;
     case 0x24:
-        return shifted ? 'V' : 'v';
+        ascii = 'v';
+        letter_upper = 'V';
+        is_letter = true;
+        break;
     case 0x25:
-        return shifted ? 'B' : 'b';
+        ascii = 'b';
+        letter_upper = 'B';
+        is_letter = true;
+        break;
     case 0x26:
-        return shifted ? 'N' : 'n';
+        ascii = 'n';
+        letter_upper = 'N';
+        is_letter = true;
+        break;
     case 0x27:
-        return shifted ? 'M' : 'm';
+        ascii = 'm';
+        letter_upper = 'M';
+        is_letter = true;
+        break;
     case 0x01:
-        return '\r';
+        ascii = '\r';
+        break;
     case 0x0E:
-        return '\b';
+        ascii = '\b';
+        break;
     case 0x0F:
-        return '\t';
+        ascii = '\t';
+        break;
     case 0x39:
-        return ' ';
+        ascii = ' ';
+        break;
     case 0x2A:
-        return shifted ? '|' : '\\';
+        ascii = shift ? '|' : '\\';
+        break;
     case 0x2B:
-        return shifted ? '@' : '`';
+        ascii = shift ? '@' : '`';
+        break;
     case 0x2C:
-        return shifted ? '{' : '[';
+        ascii = shift ? '{' : '[';
+        break;
     case 0x2D:
-        return shifted ? '}' : ']';
+        ascii = shift ? '}' : ']';
+        break;
     case 0x2E:
-        return shifted ? '+' : ';';
+        ascii = shift ? '+' : ';';
+        break;
     case 0x2F:
-        return shifted ? '*' : ':';
+        ascii = shift ? '*' : ':';
+        break;
     case 0x30:
-        return shifted ? '<' : ',';
+        ascii = shift ? '<' : ',';
+        break;
     case 0x31:
-        return shifted ? '>' : '.';
+        ascii = shift ? '>' : '.';
+        break;
     case 0x32:
-        return shifted ? '?' : '/';
+        ascii = shift ? '?' : '/';
+        break;
     default:
         return 0;
     }
+
+    if (is_letter) {
+        if (ctrl) {
+            return letter_upper - 'A' + 1;
+        }
+
+        bool uppercase = shift ^ caps;
+        ascii = uppercase ? letter_upper
+                           : (char)(letter_upper - 'A' + 'a');
+        return ascii;
+    }
+
+    if (ctrl) {
+        return 0;
+    }
+
+    return ascii;
 }
