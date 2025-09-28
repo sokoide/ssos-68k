@@ -65,7 +65,7 @@ void ss_cli_processor(void) {
     char prompt[] = "SSOS> ";
     int i;
 
-    aux_puts("SSOS >");
+    aux_puts("SSOS >\n");
 
     while (1) {
         ssos_main_cli_output_string(prompt);
@@ -81,6 +81,7 @@ void ss_cli_processor(void) {
             }
 
             c = keycode & 0xFF;
+            aux_puts("ssos_main_cli_output_char\n");
             ssos_main_cli_output_char('.');
 
             if (c == 0x1B) {

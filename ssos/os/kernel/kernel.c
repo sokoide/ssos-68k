@@ -72,10 +72,11 @@ static bool ss_kb_enqueue(int ascii_code) {
 
 void ss_init() {
     aux_init();
-    aux_puts("Hello\n");
+    aux_puts("* ss_init\n");
 }
 
 void ss_uninit() {
+    aux_puts("* ss_uninit\n");
 }
 
 void ss_wait_for_vsync() {

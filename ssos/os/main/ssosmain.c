@@ -32,7 +32,7 @@ void ssosmain() {
     ss_kb_init();
 
     // CLIコマンドプロセッサを起動
-    // ss_cli_processor();
+    ss_cli_processor();
 
     ss_uninit();
 }
