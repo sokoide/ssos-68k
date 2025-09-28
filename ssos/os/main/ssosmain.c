@@ -70,8 +70,6 @@ void ssosmain() {
     // Initialize performance monitoring system
     ss_perf_init();
 
-
-
     // CLIコマンドプロセッサを起動
     ss_cli_processor();
 }

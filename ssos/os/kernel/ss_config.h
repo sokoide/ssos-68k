@@ -26,9 +26,6 @@
 #define SS_CONFIG_DISPLAY_WIDTH           768
 #define SS_CONFIG_DISPLAY_HEIGHT          512
 
-// Layer system dimensions (for fast map optimization)
-#define SS_CONFIG_LAYER_WIDTH             SS_CONFIG_DISPLAY_WIDTH
-#define SS_CONFIG_LAYER_HEIGHT            SS_CONFIG_DISPLAY_HEIGHT
 
 // Color Configuration
 #define SS_CONFIG_COLOR_FOREGROUND        15
@@ -45,11 +42,6 @@
 #define SS_CONFIG_FONT_HEIGHT             16
 #define SS_CONFIG_FONT_BASE_ADDRESS       0xf3a800
 
-// Layer Configuration
-#define SS_CONFIG_MAX_LAYERS              256
-#ifndef SS_CONFIG_ENABLE_LAYER
-#define SS_CONFIG_ENABLE_LAYER            1
-#endif
 
 // DMA Configuration
 #define SS_CONFIG_DMA_MAX_TRANSFERS       512
@@ -94,8 +86,6 @@
 #define SS_PERF_SAMPLE_INTERVAL SS_CONFIG_PERF_SAMPLE_INTERVAL
 #define SS_PERF_MAX_METRICS     SS_CONFIG_PERF_MAX_METRICS
 
-// Graphics constants - must be compile-time for layer arrays
-#define MAX_LAYERS              SS_CONFIG_MAX_LAYERS
 
 // Hardware constants
 #define MFP_ADDRESS             SS_CONFIG_MFP_ADDRESS

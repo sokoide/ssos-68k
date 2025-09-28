@@ -12,7 +12,7 @@ static uint32_t dma_init_count = 0;
 void ss_dma_lazy_init() {
     if (!dma_cached) {
         dma_cached = (volatile DMA_REG*)0xe84080;
-        // 共通設定を事前設定（Layer描画用）
+        // 共通設定を事前設定
         dma_cached->dcr = 0x00;  // VRAM 8-bit port
         dma_cached->ocr = 0x09;  // memory->vram, 8 bit, array chaining
         dma_cached->scr = 0x05;

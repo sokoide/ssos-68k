@@ -33,7 +33,7 @@ OBJDUMP=m68k-xelf-objdump
 OBJDUMP=m68k-xelf-objdump
 READELF=m68k-xelf-readelf
 
-INCLUDE=-I$(XELF_BASE)/m68k-elf/include -I../os/util -I../os/kernel -I../os/window -I../os/main
+INCLUDE=-I$(XELF_BASE)/m68k-elf/include -I../os/util -I../os/kernel -I../os/main
 LIB=-L$(XELF_BASE)/m68k-elf/lib
 
 CCFLAGS=$(INCLUDE) -O2 -g -DLOCAL_MODE
@@ -71,10 +71,6 @@ $(OBJDIR)/%.o: ../os/kernel/%.c | $(OBJDIR)
 
 # OS main C files
 $(OBJDIR)/%.o: ../os/main/%.c | $(OBJDIR)
-	$(CC) -Wa,-adhlns="$@.lst" -c $< -o $@ $(CCFLAGS)
-
-# OS window C files
-$(OBJDIR)/%.o: ../os/window/%.c | $(OBJDIR)
 	$(CC) -Wa,-adhlns="$@.lst" -c $< -o $@ $(CCFLAGS)
 
 # OS util C files
