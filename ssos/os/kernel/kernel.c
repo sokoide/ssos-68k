@@ -30,9 +30,9 @@ struct KeyBuffer ss_kb;
 
 #define X68K_KEY_STATUS_READY 0x01
 
-static volatile uint8_t ss_kb_mod_state;
-static volatile bool ss_kb_overflowed;
-static volatile bool ss_kb_esc_latched;
+volatile uint8_t ss_kb_mod_state;
+volatile bool ss_kb_overflowed;
+volatile bool ss_kb_esc_latched;
 
 __attribute__((weak)) uint8_t ss_keyboard_hw_status(void) {
     volatile uint8_t* status = (volatile uint8_t*)0xE9A000;
@@ -197,11 +197,4 @@ int ss_kb_read() {
 
 bool ss_kb_is_empty() {
     return ss_kb.len == 0;
-}
-
-// Wrapper function for interrupt handler to call ss_keyboard_process_raw
-void ss_keyboard_process_raw_from_int(uint8_t raw_scancode) {
-    bool pressed = (raw_scancode & 0x80) == 0;
-    uint8_t scancode = raw_scancode & 0x7F;
-    ss_keyboard_process_raw(scancode, pressed);
 }

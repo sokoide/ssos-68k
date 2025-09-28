@@ -71,25 +71,18 @@ void ss_cli_processor(void) {
 
         i = 0;
         while (i < (int)sizeof(command) - 1) {
+            int c = '?';  // Show ? for any key
             int keycode = ss_kb_read();
             if (keycode == -1) {
                 // Small delay to allow interrupt processing
                 for (volatile int j = 0; j < 1000; j++);
                 continue;
             }
-            // For testing: after getting any key, count and break after 4
-            static int key_count = 0;
-            key_count++;
-            int c = '?';  // Show ? for any key
 
-            if (key_count >= 4) {
-                command[i] = '\0';
-                ssos_main_cli_output_string("\n");
-                break;
-            }
+            c = keycode & 0xFF;
 
             if (c == 0x1B) {
-                ssos_main_cli_output_string("\n");
+                ssos_main_cli_output_string("[ESC]\n");
                 return;
             }
 
@@ -118,7 +111,7 @@ void ss_cli_processor(void) {
         }
 
         // Show we got a key
-        ssos_main_cli_output_string("KEY!\n");
+        ssos_main_cli_output_string("KEY!\r\n");
 
         if (i > 0) {
             ss_execute_command(command);
