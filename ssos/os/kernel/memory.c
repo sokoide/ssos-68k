@@ -33,15 +33,16 @@
  */
 
 #include "memory.h"
-#include "kernel.h"
-#include <stdint.h>
+
 #include <stddef.h>
+#include <stdint.h>
+
+#include "kernel.h"
 
 void* ss_ssos_memory_base;
 uint32_t ss_ssos_memory_size;
 SsMemMgr ss_mem_mgr;
 uint8_t* ss_task_stack_base;
-
 
 // LOCAL_MODE時のデフォルト値（extern宣言なので実際の定義はtest_mocks.cで行われる）
 #ifdef LOCAL_MODE
@@ -182,15 +183,19 @@ __attribute__((weak)) void ss_mem_init() {
  * @section Coalescing_Algorithm
  * Boundary Tag Coalescing Strategy:
  *
- * 1. **Find Insertion Point**: Binary search for correct position in sorted free list
- * 2. **Backward Coalescing**: Check if freed block can merge with previous block
+ * 1. **Find Insertion Point**: Binary search for correct position in sorted
+ * free list
+ * 2. **Backward Coalescing**: Check if freed block can merge with previous
+ * block
  * 3. **Forward Coalescing**: Check if freed block can merge with next block
- * 4. **Triple Merge**: Handle case where previous + freed + next form contiguous region
+ * 4. **Triple Merge**: Handle case where previous + freed + next form
+ * contiguous region
  * 5. **Insert New Block**: If no coalescing possible, insert as new free block
  *
  * @section Complexity
  * - **Time**: O(n) where n is number of free blocks (linear search)
- * - **Space**: O(1) additional space, O(MEM_FREE_BLOCKS) total for free block table
+ * - **Space**: O(1) additional space, O(MEM_FREE_BLOCKS) total for free block
+ * table
  *
  * @section Edge_Cases
  * - Adjacent to previous block only
@@ -224,32 +229,36 @@ int ss_mem_free(uint32_t addr, uint32_t sz) {
     }
 
     // Try to coalesce with previous block
-    // Check if the freed block is immediately adjacent to the previous free block
-    // This is the most common coalescing scenario
+    // Check if the freed block is immediately adjacent to the previous free
+    // block This is the most common coalescing scenario
     if (i > 0) {
-        // Calculate if blocks are contiguous: prev_block_end == freed_block_start
-        // check if the block to be freed can be combined with the previous block
-        if (ss_mem_mgr.free_blocks[i - 1].addr + ss_mem_mgr.free_blocks[i - 1].sz == addr) {
+        // Calculate if blocks are contiguous: prev_block_end ==
+        // freed_block_start check if the block to be freed can be combined with
+        // the previous block
+        if (ss_mem_mgr.free_blocks[i - 1].addr +
+                ss_mem_mgr.free_blocks[i - 1].sz ==
+            addr) {
             // can combine - extend previous block to include freed memory
             ss_mem_mgr.free_blocks[i - 1].sz += sz;
 
             // Check for triple merge: prev + freed + next are all contiguous
-            // This is a rare but important optimization to prevent fragmentation
-            // check the next free block for triple merge
+            // This is a rare but important optimization to prevent
+            // fragmentation check the next free block for triple merge
             if (i < ss_mem_mgr.num_free_blocks &&
                 ss_mem_mgr.free_blocks[i].addr == addr + sz) {
                 // Triple merge: combine all three blocks into one
                 // combine it with the next block (triple merge)
-                ss_mem_mgr.free_blocks[i - 1].sz += ss_mem_mgr.free_blocks[i].sz;
+                ss_mem_mgr.free_blocks[i - 1].sz +=
+                    ss_mem_mgr.free_blocks[i].sz;
                 ss_mem_mgr.num_free_blocks--;
 
-                // Remove the consumed next block by shifting remaining blocks left
-                // Shift remaining blocks down
+                // Remove the consumed next block by shifting remaining blocks
+                // left Shift remaining blocks down
                 for (; i < ss_mem_mgr.num_free_blocks; i++) {
                     ss_mem_mgr.free_blocks[i] = ss_mem_mgr.free_blocks[i + 1];
                 }
             }
-            return 0; // Successfully coalesced
+            return 0;  // Successfully coalesced
         }
     }
 
@@ -261,7 +270,7 @@ int ss_mem_free(uint32_t addr, uint32_t sz) {
             // can combine with next block - prepend freed block to next block
             ss_mem_mgr.free_blocks[i].addr = addr;  // Move start address back
             ss_mem_mgr.free_blocks[i].sz += sz;     // Extend size
-            return 0; // Successfully coalesced
+            return 0;                               // Successfully coalesced
         }
     }
 
@@ -280,7 +289,7 @@ int ss_mem_free(uint32_t addr, uint32_t sz) {
         ss_mem_mgr.free_blocks[i].addr = addr;
         ss_mem_mgr.free_blocks[i].sz = sz;
         ss_mem_mgr.num_free_blocks++;
-        return 0; // Successfully inserted
+        return 0;  // Successfully inserted
     }
 
     // CRITICAL ERROR: Free block table is full
@@ -288,8 +297,8 @@ int ss_mem_free(uint32_t addr, uint32_t sz) {
     // The system cannot track any more free memory regions
 
     // Free block table is full - this is a critical error
-    ss_set_error(SS_ERROR_OUT_OF_RESOURCES, SS_SEVERITY_ERROR,
-                __func__, __FILE__, __LINE__, "Free block table is full");
+    ss_set_error(SS_ERROR_OUT_OF_RESOURCES, SS_SEVERITY_ERROR, __func__,
+                 __FILE__, __LINE__, "Free block table is full");
     return -1;
 }
 
@@ -304,7 +313,8 @@ int ss_mem_free4k(uint32_t addr, uint32_t sz) {
  * @brief Allocate memory from the SSOS memory pool
  *
  * Allocates a block of memory of the specified size from the free memory pool.
- * Uses first-fit allocation strategy optimized for embedded systems performance.
+ * Uses first-fit allocation strategy optimized for embedded systems
+ * performance.
  *
  * @param sz Size in bytes to allocate (0 returns 0)
  * @return Address of allocated memory block, or 0 if allocation failed
@@ -349,12 +359,14 @@ __attribute__((weak)) uint32_t ss_mem_alloc(uint32_t sz) {
             ss_mem_mgr.free_blocks[i].sz -= sz;
 
             if (ss_mem_mgr.free_blocks[i].sz == 0) {
-                // PERF OPTIMIZATION: Exact fit - remove empty block from free list
-                // This is the most common case when allocation consumes entire block
+                // PERF OPTIMIZATION: Exact fit - remove empty block from free
+                // list This is the most common case when allocation consumes
+                // entire block
                 ss_mem_mgr.num_free_blocks--;
 
-                // OPTIMIZATION: Use 32-bit moves for better performance on 68000
-                // Calculate remaining blocks to move after current position
+                // OPTIMIZATION: Use 32-bit moves for better performance on
+                // 68000 Calculate remaining blocks to move after current
+                // position
                 int remaining_blocks = ss_mem_mgr.num_free_blocks - i;
                 if (remaining_blocks > 0) {
                     // Move multiple blocks efficiently using 32-bit operations
@@ -364,10 +376,13 @@ __attribute__((weak)) uint32_t ss_mem_alloc(uint32_t sz) {
                     SsMemFreeBlock* dst = &ss_mem_mgr.free_blocks[i];
 
                     // Use 32-bit copies for better performance
-                    // Each SsMemFreeBlock is 8 bytes (2 x uint32_t), so we copy as uint32_t
+                    // Each SsMemFreeBlock is 8 bytes (2 x uint32_t), so we copy
+                    // as uint32_t
                     uint32_t* src32 = (uint32_t*)src;
                     uint32_t* dst32 = (uint32_t*)dst;
-                    int blocks_to_copy = remaining_blocks * sizeof(SsMemFreeBlock) / sizeof(uint32_t);
+                    int blocks_to_copy = remaining_blocks *
+                                         sizeof(SsMemFreeBlock) /
+                                         sizeof(uint32_t);
 
                     // Perform bulk 32-bit copy for better cache performance
                     for (int j = 0; j < blocks_to_copy; j++) {
@@ -389,7 +404,8 @@ __attribute__((weak)) uint32_t ss_mem_alloc(uint32_t sz) {
  * X68000 hardware performance and memory-mapped I/O operations.
  *
  * @param sz Size in bytes to allocate (will be rounded up to 4KB boundary)
- * @return Address of allocated memory block (4KB aligned), or 0 if allocation failed
+ * @return Address of allocated memory block (4KB aligned), or 0 if allocation
+ * failed
  *
  * @section Alignment_Strategy
  * 1. Round requested size up to next 4KB boundary
@@ -412,7 +428,9 @@ __attribute__((weak)) uint32_t ss_mem_alloc4k(uint32_t sz) {
     return ss_mem_alloc(sz);
 }
 
-__attribute__((weak)) uint32_t ss_mem_total_bytes() { return ss_ssos_memory_size; }
+__attribute__((weak)) uint32_t ss_mem_total_bytes() {
+    return ss_ssos_memory_size;
+}
 
 __attribute__((weak)) uint32_t ss_mem_free_bytes() {
     uint32_t ret = 0;

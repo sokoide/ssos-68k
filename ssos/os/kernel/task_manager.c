@@ -1,9 +1,11 @@
 #include "task_manager.h"
-#include "task_manager.h"
-#include "ss_errors.h"
-#include "memory.h"
-#include "ssosmain.h"
+
 #include <stdio.h>
+
+#include "memory.h"
+#include "ss_errors.h"
+#include "ssosmain.h"
+#include "task_manager.h"
 
 // Forward declarations for static functions
 static void ss_task_queue_add_entry(TaskControlBlock* tcb);
@@ -47,8 +49,9 @@ void initial_task_func(int16_t stacd /* not used */,
  *
  * @return 1 if context switch should occur, 0 otherwise
  *
- * Performance optimization: Only processes every INTERRUPT_BATCH_SIZE interrupts
- * to reduce overhead, while maintaining global counter accuracy for timing.
+ * Performance optimization: Only processes every INTERRUPT_BATCH_SIZE
+ * interrupts to reduce overhead, while maintaining global counter accuracy for
+ * timing.
  */
 __attribute__((optimize("no-stack-protector", "omit-frame-pointer"))) int
 timer_interrupt_handler() {
@@ -81,8 +84,9 @@ timer_interrupt_handler() {
 /**
  * @brief Create a new task and allocate task control block
  *
- * Creates a new task with specified attributes and allocates a task control block (TCB).
- * The task is created in TS_DORMANT state and must be started with ss_start_task().
+ * Creates a new task with specified attributes and allocates a task control
+ * block (TCB). The task is created in TS_DORMANT state and must be started with
+ * ss_start_task().
  *
  * @param ti Pointer to TaskInfo structure containing task configuration
  * @return Task ID (1-based) on success, error code on failure
@@ -103,16 +107,16 @@ uint16_t ss_create_task(const TaskInfo* ti) {
 
     // Validate task attributes
     if (ti->task_attr & ~(TA_RNG3 | TA_HLNG | TA_USERBUF)) {
-        ss_set_error(SS_ERROR_INVALID_PARAM, SS_SEVERITY_ERROR,
-                    __func__, __FILE__, __LINE__, "Invalid task attributes");
+        ss_set_error(SS_ERROR_INVALID_PARAM, SS_SEVERITY_ERROR, __func__,
+                     __FILE__, __LINE__, "Invalid task attributes");
         return E_RSATR;
     }
 
     // Validate user buffer configuration
     if ((ti->task_attr & TA_USERBUF) &&
         (ti->stack_size == 0 || ti->stack == NULL)) {
-        ss_set_error(SS_ERROR_INVALID_PARAM, SS_SEVERITY_ERROR,
-                    __func__, __FILE__, __LINE__, "Invalid user buffer configuration");
+        ss_set_error(SS_ERROR_INVALID_PARAM, SS_SEVERITY_ERROR, __func__,
+                     __FILE__, __LINE__, "Invalid user buffer configuration");
         return E_PAR;
     }
 
@@ -148,17 +152,19 @@ uint16_t ss_create_task(const TaskInfo* ti) {
             if (ss_task_stack_base == NULL) {
                 enable_interrupts();
                 ss_set_error(SS_ERROR_NOT_INITIALIZED, SS_SEVERITY_ERROR,
-                            __func__, __FILE__, __LINE__, "Task stack base not initialized");
+                             __func__, __FILE__, __LINE__,
+                             "Task stack base not initialized");
                 return E_SYS;
             }
-            tcb_table[i].stack_addr = ss_task_stack_base + (i + 1) * TASK_STACK_SIZE - 1;
+            tcb_table[i].stack_addr =
+                ss_task_stack_base + (i + 1) * TASK_STACK_SIZE - 1;
         }
 
         id = i + 1;
     } else {
         enable_interrupts();
-        ss_set_error(SS_ERROR_OUT_OF_RESOURCES, SS_SEVERITY_ERROR,
-                    __func__, __FILE__, __LINE__, "No available task slots");
+        ss_set_error(SS_ERROR_OUT_OF_RESOURCES, SS_SEVERITY_ERROR, __func__,
+                     __FILE__, __LINE__, "No available task slots");
         return E_LIMIT;
     }
 
@@ -169,8 +175,8 @@ uint16_t ss_create_task(const TaskInfo* ti) {
 /**
  * @brief Start a task and add it to the ready queue
  *
- * Changes task state from TS_DORMANT to TS_READY and makes it eligible for scheduling.
- * Validates task state, entry point, and stack before starting.
+ * Changes task state from TS_DORMANT to TS_READY and makes it eligible for
+ * scheduling. Validates task state, entry point, and stack before starting.
  *
  * @param id Task ID (1-based index)
  * @param stacd Start code (unused, for compatibility)
@@ -192,23 +198,24 @@ uint16_t ss_start_task(uint16_t id, int16_t stacd /* not used */) {
         // Additional validation before starting task
         if (tcb->task_addr == NULL) {
             enable_interrupts();
-            ss_set_error(SS_ERROR_INVALID_STATE, SS_SEVERITY_ERROR,
-                        __func__, __FILE__, __LINE__, "Task has no valid entry point");
+            ss_set_error(SS_ERROR_INVALID_STATE, SS_SEVERITY_ERROR, __func__,
+                         __FILE__, __LINE__, "Task has no valid entry point");
             return E_OBJ;
         }
 
         if (tcb->stack_addr == NULL) {
             enable_interrupts();
-            ss_set_error(SS_ERROR_INVALID_STATE, SS_SEVERITY_ERROR,
-                        __func__, __FILE__, __LINE__, "Task has no valid stack");
+            ss_set_error(SS_ERROR_INVALID_STATE, SS_SEVERITY_ERROR, __func__,
+                         __FILE__, __LINE__, "Task has no valid stack");
             return E_OBJ;
         }
 
         tcb->state = TS_READY;
 
         // Initialize task context for execution
-        // For SSOS, we use a simplified context model suitable for cooperative scheduling
-        tcb->context = tcb->stack_addr; // Stack pointer serves as context
+        // For SSOS, we use a simplified context model suitable for cooperative
+        // scheduling
+        tcb->context = tcb->stack_addr;  // Stack pointer serves as context
 
         // Add task to appropriate priority queue
         ss_task_queue_add_entry(tcb);
@@ -216,8 +223,8 @@ uint16_t ss_start_task(uint16_t id, int16_t stacd /* not used */) {
         // Trigger scheduler to consider new task
         ss_scheduler();
     } else {
-        ss_set_error(SS_ERROR_INVALID_STATE, SS_SEVERITY_ERROR,
-                    __func__, __FILE__, __LINE__, "Task not in dormant state");
+        ss_set_error(SS_ERROR_INVALID_STATE, SS_SEVERITY_ERROR, __func__,
+                     __FILE__, __LINE__, "Task not in dormant state");
         err = E_OBJ;
     }
 
@@ -265,8 +272,9 @@ static void ss_task_queue_add_entry(TaskControlBlock* tcb) {
  * Selects the highest priority ready task for execution.
  * Uses round-robin scheduling within the same priority level.
  *
- * This is a simplified scheduler suitable for SSOS's cooperative multitasking model.
- * In a full preemptive system, this would include more sophisticated scheduling algorithms.
+ * This is a simplified scheduler suitable for SSOS's cooperative multitasking
+ * model. In a full preemptive system, this would include more sophisticated
+ * scheduling algorithms.
  */
 static void ss_scheduler(void) {
     TaskControlBlock* next_task = NULL;

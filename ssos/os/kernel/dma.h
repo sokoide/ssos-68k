@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdint.h>
+
 #include "ss_config.h"
 
 // X68000環境用のNULL定義

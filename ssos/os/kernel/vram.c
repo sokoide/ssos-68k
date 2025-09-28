@@ -1,9 +1,11 @@
 #include "vram.h"
-#include "kernel.h"
-#include "printf.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include "kernel.h"
+#include "printf.h"
 
 #pragma warning disable format
 #include <x68k/iocs.h>
@@ -19,11 +21,12 @@ volatile uint16_t* crtc_execution_port = (uint16_t*)0xe80480;
 uint16_t* vram_start = (uint16_t*)0x00c00000;
 uint16_t* vram_end = (uint16_t*)0x00d00000;
 
-void ss_clear_vram_fast() { *crtc_execution_port = (*crtc_execution_port) | 2; }
+void ss_clear_vram_fast() {
+    *crtc_execution_port = (*crtc_execution_port) | 2;
+}
 
 void ss_wait_for_clear_vram_completion() {
-    while (*crtc_execution_port & 0b1111)
-        ;
+    while (*crtc_execution_port & 0b1111);
 }
 
 void ss_fill_rect_v(uint8_t* offscreen, uint16_t w, uint16_t h, uint16_t color,
@@ -113,7 +116,7 @@ void ss_draw_rect_v(uint8_t* offscreen, uint16_t w, uint16_t h, uint16_t color,
 }
 
 void ss_put_char_v(uint8_t* offscreen, uint16_t w, uint16_t h,
-                    uint16_t fg_color, uint16_t bg_color, int x, int y, char c) {
+                   uint16_t fg_color, uint16_t bg_color, int x, int y, char c) {
     // 8x16 font - CORRECT implementation matching original behavior
     uint8_t* font_base_8_16 = (uint8_t*)0xf3a800;
     uint16_t font_height = 16;
@@ -131,7 +134,8 @@ void ss_put_char_v(uint8_t* offscreen, uint16_t w, uint16_t h,
         // Bit 7 (MSB) = leftmost pixel, Bit 0 (LSB) = rightmost pixel
         for (int px = 0; px < 8; px++) {
             // Extract bit from font data (MSB first)
-            uint16_t color = ((font_byte >> (7 - px)) & 1) ? fg_color : bg_color;
+            uint16_t color =
+                ((font_byte >> (7 - px)) & 1) ? fg_color : bg_color;
             dst[px] = color;
         }
     }
@@ -139,8 +143,7 @@ void ss_put_char_v(uint8_t* offscreen, uint16_t w, uint16_t h,
 
 int mystrlen(char* str) {
     int r = 0;
-    while (str[r] != 0)
-        r++;
+    while (str[r] != 0) r++;
     return r;
 }
 
@@ -155,18 +158,20 @@ void ss_print_v(uint8_t* offscreen, uint16_t w, uint16_t h, uint16_t fg_color,
 
 // Smart text printing - only draws if text has changed
 // Returns 1 if text was redrawn, 0 if no change
-int ss_print_v_smart(uint8_t* offscreen, uint16_t w, uint16_t h, uint16_t fg_color,
-                     uint16_t bg_color, int x, int y, char* str, char* prev_str) {
+int ss_print_v_smart(uint8_t* offscreen, uint16_t w, uint16_t h,
+                     uint16_t fg_color, uint16_t bg_color, int x, int y,
+                     char* str, char* prev_str) {
     // Quick string comparison - if strings are identical, don't redraw
     if (prev_str != NULL) {
         int i = 0;
         while (str[i] != 0 && prev_str[i] != 0) {
-            if (str[i] != prev_str[i]) break;
+            if (str[i] != prev_str[i])
+                break;
             i++;
         }
         // If strings are identical, skip drawing
         if (str[i] == 0 && prev_str[i] == 0) {
-            return 0; // No change
+            return 0;  // No change
         }
     }
 
@@ -176,12 +181,13 @@ int ss_print_v_smart(uint8_t* offscreen, uint16_t w, uint16_t h, uint16_t fg_col
     int max_len = (old_len > new_len) ? old_len : new_len;
 
     // Clear the maximum text area
-    ss_fill_rect_v(offscreen, w, h, bg_color, x, y, x + max_len * 8 - 1, y + 15);
+    ss_fill_rect_v(offscreen, w, h, bg_color, x, y, x + max_len * 8 - 1,
+                   y + 15);
 
     // Draw the new text
     ss_print_v(offscreen, w, h, fg_color, bg_color, x, y, str);
 
-    return 1; // Text was redrawn
+    return 1;  // Text was redrawn
 }
 
 // PERFORMANCE OPTIMIZATION: Enhanced memory operations with cache alignment
@@ -235,7 +241,8 @@ void ss_memset_32(uint32_t* dst, uint32_t value, size_t count) {
 
 // PERFORMANCE OPTIMIZATION: Cache-friendly memory fill for rectangles
 void ss_fill_rect_v_fast_aligned(uint8_t* offscreen, uint16_t w, uint16_t h,
-                                 uint16_t color, int x0, int y0, int x1, int y1) {
+                                 uint16_t color, int x0, int y0, int x1,
+                                 int y1) {
     // Enhanced version with cache alignment considerations
     uint32_t color32 = color | (color << 8) | (color << 16) | (color << 24);
 

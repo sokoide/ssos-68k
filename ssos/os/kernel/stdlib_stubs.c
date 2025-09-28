@@ -6,11 +6,12 @@
  * 68000 16MHz環境に最適化。
  */
 
-#include <stdint.h>
-#include <stddef.h>
-#include <stdarg.h>
-#include "memory.h"
 #include <math.h>
+#include <stdarg.h>
+#include <stddef.h>
+#include <stdint.h>
+
+#include "memory.h"
 
 /**
  * @brief メモリ領域を指定した値で埋める
@@ -317,12 +318,12 @@ void* calloc(size_t nmemb, size_t size) {
 void free(void* ptr) {
     // 簡易実装: SSOSメモリ管理システムを使用
     if (ptr) {
-        // 実際のサイズがわからないため、ダミーサイズで解放
-        // 本来はmallocで確保したサイズを記録すべき
-        // ここでは警告として実装
-        #ifdef DEBUG
-        // デバッグ時は警告を表示
-        #endif
+// 実際のサイズがわからないため、ダミーサイズで解放
+// 本来はmallocで確保したサイズを記録すべき
+// ここでは警告として実装
+#ifdef DEBUG
+// デバッグ時は警告を表示
+#endif
         // freeは実際には何もしない（簡易実装）
     }
 }
@@ -349,12 +350,14 @@ void* malloc(size_t size) {
  * @return 平方根の整数部分
  */
 uint32_t isqrt(uint32_t x) {
-    if (x == 0) return 0;
-    if (x < 4) return 1; // x=1,2,3の場合
+    if (x == 0)
+        return 0;
+    if (x < 4)
+        return 1;  // x=1,2,3の場合
 
     // 初期値（ニュートン法の初期値）
     uint32_t result = x;
-    uint32_t bit = 1UL << 30; // 最高位ビット
+    uint32_t bit = 1UL << 30;  // 最高位ビット
 
     // 結果が収まるビットを探索
     while (bit > x) bit >>= 2;
@@ -362,8 +365,8 @@ uint32_t isqrt(uint32_t x) {
     // ニュートン法で平方根を計算
     while (bit) {
         if (result >= bit) {
-            result ^= bit; // ビット反転で減算
-            result ^= (bit >> 1); // 1ビット右シフト
+            result ^= bit;         // ビット反転で減算
+            result ^= (bit >> 1);  // 1ビット右シフト
         } else {
             result ^= (bit >> 1);
         }
@@ -434,8 +437,10 @@ int vsnprintf(char* buffer, size_t size, const char* format, va_list va) {
  * @return 平方根の近似値
  */
 double sqrt(double x) {
-    if (x < 0) return 0.0; // 負数の場合
-    if (x == 0) return 0.0;
+    if (x < 0)
+        return 0.0;  // 負数の場合
+    if (x == 0)
+        return 0.0;
 
     // 整数平方根を使って近似値を計算
     uint32_t ix = (uint32_t)x;

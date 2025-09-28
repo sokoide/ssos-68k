@@ -174,14 +174,15 @@ static inline void _out_fct(char character, void* buffer, size_t idx,
 // 'maxsize'
 static inline unsigned int _strnlen_s(const char* str, size_t maxsize) {
     const char* s;
-    for (s = str; *s && maxsize--; ++s)
-        ;
+    for (s = str; *s && maxsize--; ++s);
     return (unsigned int)(s - str);
 }
 
 // internal test if char is a digit (0-9)
 // \return true if char is a digit
-static inline bool _is_digit(char ch) { return (ch >= '0') && (ch <= '9'); }
+static inline bool _is_digit(char ch) {
+    return (ch >= '0') && (ch <= '9');
+}
 
 // internal ASCII string to unsigned int conversion
 static unsigned int _atoi(const char** str) {
@@ -267,7 +268,7 @@ static size_t _ntoa_format(out_fct_type out, char* buffer, size_t idx,
         if (negative) {
             buf[len++] = '-';
         } else if (flags & FLAGS_PLUS) {
-            buf[len++] = '+'; // ignore the space if the '+' exists
+            buf[len++] = '+';  // ignore the space if the '+' exists
         } else if (flags & FLAGS_SPACE) {
             buf[len++] = ' ';
         }
@@ -333,7 +334,7 @@ static size_t _ntoa_long_long(out_fct_type out, char* buffer, size_t idx,
     return _ntoa_format(out, buffer, idx, maxlen, buf, len, negative,
                         (unsigned int)base, prec, width, flags);
 }
-#endif // PRINTF_SUPPORT_LONG_LONG
+#endif  // PRINTF_SUPPORT_LONG_LONG
 
 #if defined(PRINTF_SUPPORT_FLOAT)
 
@@ -463,7 +464,7 @@ static size_t _ftoa(out_fct_type out, char* buffer, size_t idx, size_t maxlen,
         if (negative) {
             buf[len++] = '-';
         } else if (flags & FLAGS_PLUS) {
-            buf[len++] = '+'; // ignore the space if the '+' exists
+            buf[len++] = '+';  // ignore the space if the '+' exists
         } else if (flags & FLAGS_SPACE) {
             buf[len++] = ' ';
         }
@@ -503,9 +504,9 @@ static size_t _etoa(out_fct_type out, char* buffer, size_t idx, size_t maxlen,
     } conv;
 
     conv.F = value;
-    int exp2 = (int)((conv.U >> 52U) & 0x07FFU) - 1023; // effectively log2
+    int exp2 = (int)((conv.U >> 52U) & 0x07FFU) - 1023;  // effectively log2
     conv.U = (conv.U & ((1ULL << 52U) - 1U)) |
-             (1023ULL << 52U); // drop the exponent so conv.F is now in [1,2)
+             (1023ULL << 52U);  // drop the exponent so conv.F is now in [1,2)
     // now approximate log10 from the log2 integer part and an expansion of ln
     // around 1.5
     int expval = (int)(0.1760912590558 + exp2 * 0.301029995663981 +
@@ -537,7 +538,7 @@ static size_t _etoa(out_fct_type out, char* buffer, size_t idx, size_t maxlen,
             } else {
                 prec = 0;
             }
-            flags |= FLAGS_PRECISION; // make sure _ftoa respects precision
+            flags |= FLAGS_PRECISION;  // make sure _ftoa respects precision
             // no characters in exponent
             minwidth = 0U;
             expval = 0;
@@ -584,14 +585,13 @@ static size_t _etoa(out_fct_type out, char* buffer, size_t idx, size_t maxlen,
                          minwidth - 1, FLAGS_ZEROPAD | FLAGS_PLUS);
         // might need to right-pad spaces
         if (flags & FLAGS_LEFT) {
-            while (idx - start_idx < width)
-                out(' ', buffer, idx++, maxlen);
+            while (idx - start_idx < width) out(' ', buffer, idx++, maxlen);
         }
     }
     return idx;
 }
-#endif // PRINTF_SUPPORT_EXPONENTIAL
-#endif // PRINTF_SUPPORT_FLOAT
+#endif  // PRINTF_SUPPORT_EXPONENTIAL
+#endif  // PRINTF_SUPPORT_FLOAT
 
 // internal vsnprintf
 static int _vsnprintf(out_fct_type out, char* buffer, const size_t maxlen,
@@ -658,7 +658,7 @@ static int _vsnprintf(out_fct_type out, char* buffer, const size_t maxlen,
         } else if (*format == '*') {
             const int w = va_arg(va, int);
             if (w < 0) {
-                flags |= FLAGS_LEFT; // reverse padding
+                flags |= FLAGS_LEFT;  // reverse padding
                 width = (unsigned int)-w;
             } else {
                 width = (unsigned int)w;
@@ -738,7 +738,7 @@ static int _vsnprintf(out_fct_type out, char* buffer, const size_t maxlen,
                 base = 2U;
             } else {
                 base = 10U;
-                flags &= ~FLAGS_HASH; // no hash for dec format
+                flags &= ~FLAGS_HASH;  // no hash for dec format
             }
             // uppercase
             if (*format == 'X') {
@@ -830,8 +830,8 @@ static int _vsnprintf(out_fct_type out, char* buffer, const size_t maxlen,
                         width, flags);
             format++;
             break;
-#endif // PRINTF_SUPPORT_EXPONENTIAL
-#endif // PRINTF_SUPPORT_FLOAT
+#endif  // PRINTF_SUPPORT_EXPONENTIAL
+#endif  // PRINTF_SUPPORT_FLOAT
         case 'c': {
             unsigned int l = 1U;
             // pre padding

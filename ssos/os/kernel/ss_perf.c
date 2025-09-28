@@ -1,4 +1,5 @@
 #include "ss_perf.h"
+
 #include "kernel.h"
 
 // Global performance monitor instance
@@ -52,23 +53,26 @@ void ss_perf_sample(void) {
     uint32_t current_time = ss_timerd_counter;
 
     // Only sample at configured intervals
-    if (current_time - ss_perf_monitor.last_sample_time < SS_CONFIG_PERF_SAMPLE_INTERVAL) {
+    if (current_time - ss_perf_monitor.last_sample_time <
+        SS_CONFIG_PERF_SAMPLE_INTERVAL) {
         return;
     }
 
     // Store current sample
-    SsPerformanceSample* sample = &ss_perf_monitor.samples[ss_perf_monitor.current_sample];
+    SsPerformanceSample* sample =
+        &ss_perf_monitor.samples[ss_perf_monitor.current_sample];
 
     sample->timestamp = current_time;
     sample->interrupt_count = ss_perf_monitor.total_interrupts;
     sample->context_switches = ss_perf_monitor.total_context_switches;
     sample->memory_allocations = ss_perf_monitor.total_memory_ops;
-    sample->dma_transfers = 0; // Would be tracked separately
+    sample->dma_transfers = 0;  // Would be tracked separately
     sample->font_render_ops = ss_perf_monitor.total_graphics_ops;
-    sample->cpu_idle_time = 0; // Would need separate tracking
+    sample->cpu_idle_time = 0;  // Would need separate tracking
 
     // Update counters
-    ss_perf_monitor.current_sample = (ss_perf_monitor.current_sample + 1) % SS_CONFIG_PERF_MAX_SAMPLES;
+    ss_perf_monitor.current_sample =
+        (ss_perf_monitor.current_sample + 1) % SS_CONFIG_PERF_MAX_SAMPLES;
     if (ss_perf_monitor.sample_count < SS_CONFIG_PERF_MAX_SAMPLES) {
         ss_perf_monitor.sample_count++;
     }
@@ -118,7 +122,8 @@ SsPerformanceSample ss_perf_get_average(void) {
     for (uint32_t i = 0; i < ss_perf_monitor.sample_count; i++) {
         average.interrupt_count += ss_perf_monitor.samples[i].interrupt_count;
         average.context_switches += ss_perf_monitor.samples[i].context_switches;
-        average.memory_allocations += ss_perf_monitor.samples[i].memory_allocations;
+        average.memory_allocations +=
+            ss_perf_monitor.samples[i].memory_allocations;
         average.dma_transfers += ss_perf_monitor.samples[i].dma_transfers;
         average.font_render_ops += ss_perf_monitor.samples[i].font_render_ops;
         average.cpu_idle_time += ss_perf_monitor.samples[i].cpu_idle_time;
@@ -178,13 +183,16 @@ void ss_perf_end_measurement(uint32_t metric_id) {
 }
 
 uint32_t ss_perf_get_measurement(uint32_t metric_id) {
-    if (metric_id >= SS_PERF_MAX_METRICS || ss_timing_metrics[metric_id].measurement_count == 0) {
+    if (metric_id >= SS_PERF_MAX_METRICS ||
+        ss_timing_metrics[metric_id].measurement_count == 0) {
         return 0;
     }
 
-    return ss_timing_metrics[metric_id].total_time / ss_timing_metrics[metric_id].measurement_count;
+    return ss_timing_metrics[metric_id].total_time /
+           ss_timing_metrics[metric_id].measurement_count;
 }
 
 uint32_t ss_perf_get_average_measurement(uint32_t metric_id) {
-    return ss_perf_get_measurement(metric_id); // Same as get_measurement for now
+    return ss_perf_get_measurement(
+        metric_id);  // Same as get_measurement for now
 }

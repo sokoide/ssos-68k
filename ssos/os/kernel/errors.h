@@ -7,11 +7,11 @@
 // Legacy error codes for backward compatibility
 // Only define if not already defined by ss_errors.h
 #ifndef E_OK
-#define E_OK (0) // 正常終了
+#define E_OK (0)  // 正常終了
 #endif
 
 #ifndef E_SYS
-#define E_SYS (-5)     // システムエラー
+#define E_SYS (-5)  // システムエラー
 #endif
 
 #ifndef E_RSATR
@@ -19,11 +19,11 @@
 #endif
 
 #ifndef E_PAR
-#define E_PAR (-17)    // パラメータ不正
+#define E_PAR (-17)  // パラメータ不正
 #endif
 
 #ifndef E_ID
-#define E_ID (-18)     // ID不正
+#define E_ID (-18)  // ID不正
 #endif
 
 #ifndef E_LIMIT
@@ -31,5 +31,5 @@
 #endif
 
 #ifndef E_OBJ
-#define E_OBJ (-41)    // オブジェクト状態エラー
+#define E_OBJ (-41)  // オブジェクト状態エラー
 #endif

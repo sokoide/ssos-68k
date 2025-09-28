@@ -1,17 +1,17 @@
 #pragma once
 
-#include <stdint.h>
 #include <stddef.h>
+#include <stdint.h>
 
 // Macro taken from https://sourceforge.net/projects/x68000-doom/
 // Merge 3x 8bit values to 15bit + intensity in GRB format
 // Keep only the 5 msb of each value
-#define rgb888_2grb(r, g, b, i)                                                \
+#define rgb888_2grb(r, g, b, i) \
     (((b & 0xF8) >> 2) | ((g & 0xF8) << 8) | ((r & 0xF8) << 3) | i)
 
 // Merge 3x 8bit values to 15bit + intensity in RGB format
 // Keep only the 5 msb of each value
-#define rgb888_2rgb(r, g, b, i)                                                \
+#define rgb888_2rgb(r, g, b, i) \
     (((r & 0xF8) << 8) | ((g & 0xF8) << 3) | ((b & 0xF8) >> 2) | i)
 
 typedef struct {
@@ -41,8 +41,9 @@ void ss_print_v(uint8_t* offscreen, uint16_t sw, uint16_t sh, uint16_t fg_color,
                 uint16_t bg_color, int x, int y, char* str);
 
 // Smart text functions that only redraw when text changes
-int ss_print_v_smart(uint8_t* offscreen, uint16_t sw, uint16_t sh, uint16_t fg_color,
-                     uint16_t bg_color, int x, int y, char* str, char* prev_str);
+int ss_print_v_smart(uint8_t* offscreen, uint16_t sw, uint16_t sh,
+                     uint16_t fg_color, uint16_t bg_color, int x, int y,
+                     char* str, char* prev_str);
 
 void ss_init_palette();
 
@@ -63,7 +64,7 @@ void ss_memcpy_32(uint32_t* dst, const uint32_t* src, size_t count);
 void ss_memset_32(uint32_t* dst, uint32_t value, size_t count);
 
 // Optimized rectangle fill using word-alignment
-void ss_fill_rect_v_fast(uint8_t* offscreen, uint16_t w, uint16_t h, 
+void ss_fill_rect_v_fast(uint8_t* offscreen, uint16_t w, uint16_t h,
                          uint16_t color, int x0, int y0, int x1, int y1);
 
 // globals

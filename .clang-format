@@ -1,0 +1,34 @@
+# C/C++/Objective-Cのフォーマット設定
+# ベースのスタイルとしてGoogleスタイルを使用
+BasedOnStyle: Google
+
+# --- よくカスタマイズされる項目 ---
+
+# インデントの幅を4スペースに設定 (Googleスタイルはデフォルト2)
+IndentWidth: 4
+
+# 1行の最大文字数
+ColumnLimit: 80
+
+# タブ文字の使用を許可しない (Never)
+UseTab: Never
+
+# case文のインデントをswitch文に揃える
+IndentCaseLabels: false
+
+# ポインタのアスタリスクを型側に寄せる (例: int* p)
+# Middle: int * p, Right: int *p
+PointerAlignment: Left
+
+# 短い関数（空のボディも含む）を1行にまとめることを許可しない
+# これにより void f() {} は、以下のように整形される
+# void f() {
+# }
+AllowShortFunctionsOnASingleLine: None
+
+# 短いif文を1行にまとめることを許可しない
+# 例: if (a) return;
+AllowShortIfStatementsOnASingleLine: Never
+
+# includeディレクティブをソートする
+SortIncludes: true

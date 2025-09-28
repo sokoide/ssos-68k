@@ -1,8 +1,8 @@
-TOPTARGETS := all
+TOPTARGETS := all format
 SUBDIRS := boot os standalone
 DISK := ssos.xdf
 
-.PHONY: $(TOPTARGETS) $(SUBDIRS) clean compiledb
+.PHONY: $(TOPTARGETS) $(SUBDIRS) clean compiledb format
 .default: all
 
 $(TOPTARGETS): $(SUBDIRS)
@@ -20,7 +20,5 @@ clean:
 	for dir in $(SUBDIRS); do $(MAKE) -C $$dir clean; done
 	rm -rf $(DISK)
 
-
 compiledb: $(SRCS)
 	compiledb make
-

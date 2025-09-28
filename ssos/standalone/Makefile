@@ -42,7 +42,7 @@ LDFLAGS=$(LIB) -lx68kiocs -nostdlib -lc -lm -lgcc
 ASFLAGS=-m68000 --register-prefix-optional --traditional-format -I../include -I../os/kernel
 
 .PHONY:
-	clean install dump compiledb
+	clean install dump compiledb format
 
 all: $(TARGET)
 	cp $(TARGET) $(HOME)/tmp
@@ -88,3 +88,8 @@ readelf: $(TARGET)
 
 compiledb: $(SRCS)
 	compiledb make
+
+format: $(SRCS)
+	@echo "Formatting all .c and .h files..."
+	@find . -name "*.c" -o -name "*.h" | xargs clang-format -i
+	@echo "Formatting complete."

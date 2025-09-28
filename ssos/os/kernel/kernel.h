@@ -1,7 +1,8 @@
 #pragma once
 
-#include <stdint.h>
 #include <stdbool.h>
+#include <stdint.h>
+
 #include "ss_config.h"
 #include "ss_errors.h"
 
@@ -85,10 +86,10 @@ typedef enum {
 
 typedef enum {
     TWFCT_NON = 0,
-    TWFCT_DLY = 1, // waited by sk_dly_tsk
-    TWFCT_SLP = 2, // waited by sk_slp_tsk
-    TWFCT_FLG = 3, // waited by sk_wait_flag
-    TWFCT_SEM = 4, // waited by sk_wait_semaphore
+    TWFCT_DLY = 1,  // waited by sk_dly_tsk
+    TWFCT_SLP = 2,  // waited by sk_slp_tsk
+    TWFCT_FLG = 3,  // waited by sk_wait_flag
+    TWFCT_SEM = 4,  // waited by sk_wait_semaphore
 } TaskWaitFactor;
 
 typedef enum { KS_NONEXIST = 0, KS_EXIST = 1 } KernelState;
@@ -118,7 +119,7 @@ typedef struct _task_control_block {
     // event flag wait info
     uint32_t wait_pattern;
     uint32_t wait_mode;
-    uint32_t* p_flag_pattern; // flag pattern when wait canceled
+    uint32_t* p_flag_pattern;  // flag pattern when wait canceled
 
     // semaphore wait info
     int32_t wait_semaphore;
@@ -138,8 +139,8 @@ typedef struct {
 extern TaskControlBlock tcb_table[];
 extern TaskControlBlock* ready_queue[];
 extern TaskControlBlock* curr_task;
-extern TaskControlBlock*
-    scheduled_task; // scheduled task which will be executed after the curr_task
+extern TaskControlBlock* scheduled_task;  // scheduled task which will be
+                                          // executed after the curr_task
 extern TaskControlBlock* wait_queue;
 extern uint32_t dispatch_running;
 extern FlagControlBlock fcb_table[];

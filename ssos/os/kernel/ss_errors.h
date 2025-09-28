@@ -71,18 +71,18 @@ const char* ss_error_to_string(SsError error);
 
 // Assertion system for debugging
 #ifdef SS_DEBUG
-#define SS_ASSERT(condition, error_code, description) \
-    if (!(condition)) { \
-        ss_set_error(error_code, SS_SEVERITY_CRITICAL, \
-                    __func__, __FILE__, __LINE__, description); \
-        return error_code; \
+#define SS_ASSERT(condition, error_code, description)                      \
+    if (!(condition)) {                                                    \
+        ss_set_error(error_code, SS_SEVERITY_CRITICAL, __func__, __FILE__, \
+                     __LINE__, description);                               \
+        return error_code;                                                 \
     }
 
-#define SS_ASSERT_VOID(condition, error_code, description) \
-    if (!(condition)) { \
-        ss_set_error(error_code, SS_SEVERITY_CRITICAL, \
-                    __func__, __FILE__, __LINE__, description); \
-        return; \
+#define SS_ASSERT_VOID(condition, error_code, description)                 \
+    if (!(condition)) {                                                    \
+        ss_set_error(error_code, SS_SEVERITY_CRITICAL, __func__, __FILE__, \
+                     __LINE__, description);                               \
+        return;                                                            \
     }
 #else
 #define SS_ASSERT(condition, error_code, description) (void)0
@@ -90,25 +90,25 @@ const char* ss_error_to_string(SsError error);
 #endif
 
 // Input validation macros
-#define SS_CHECK_NULL(ptr) \
-    if ((ptr) == NULL) { \
-        ss_set_error(SS_ERROR_NULL_PTR, SS_SEVERITY_ERROR, \
-                    __func__, __FILE__, __LINE__, "NULL pointer parameter"); \
-        return SS_ERROR_NULL_PTR; \
+#define SS_CHECK_NULL(ptr)                                                     \
+    if ((ptr) == NULL) {                                                       \
+        ss_set_error(SS_ERROR_NULL_PTR, SS_SEVERITY_ERROR, __func__, __FILE__, \
+                     __LINE__, "NULL pointer parameter");                      \
+        return SS_ERROR_NULL_PTR;                                              \
     }
 
-#define SS_CHECK_RANGE(value, min, max) \
-    if ((value) < (min) || (value) > (max)) { \
-        ss_set_error(SS_ERROR_OUT_OF_BOUNDS, SS_SEVERITY_ERROR, \
-                    __func__, __FILE__, __LINE__, "Parameter out of bounds"); \
-        return SS_ERROR_OUT_OF_BOUNDS; \
+#define SS_CHECK_RANGE(value, min, max)                                   \
+    if ((value) < (min) || (value) > (max)) {                             \
+        ss_set_error(SS_ERROR_OUT_OF_BOUNDS, SS_SEVERITY_ERROR, __func__, \
+                     __FILE__, __LINE__, "Parameter out of bounds");      \
+        return SS_ERROR_OUT_OF_BOUNDS;                                    \
     }
 
-#define SS_CHECK_ID(id, max_id) \
-    if ((id) <= 0 || (id) > (max_id)) { \
-        ss_set_error(SS_ERROR_INVALID_ID, SS_SEVERITY_ERROR, \
-                    __func__, __FILE__, __LINE__, "Invalid ID parameter"); \
-        return SS_ERROR_INVALID_ID; \
+#define SS_CHECK_ID(id, max_id)                                        \
+    if ((id) <= 0 || (id) > (max_id)) {                                \
+        ss_set_error(SS_ERROR_INVALID_ID, SS_SEVERITY_ERROR, __func__, \
+                     __FILE__, __LINE__, "Invalid ID parameter");      \
+        return SS_ERROR_INVALID_ID;                                    \
     }
 
 // Legacy compatibility
@@ -117,5 +117,5 @@ const char* ss_error_to_string(SsError error);
 #define E_ID SS_E_ID
 #define E_LIMIT SS_E_LIMIT
 #define E_OBJ SS_E_OBJ
-#define E_RSATR SS_E_PAR    // Invalid attributes - map to parameter error
+#define E_RSATR SS_E_PAR  // Invalid attributes - map to parameter error
 #define E_SYS SS_ERROR_SYSTEM_ERROR  // System error

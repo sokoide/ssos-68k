@@ -1,6 +1,7 @@
 #pragma once
-#include "task_manager.h"
 #include <stdint.h>
+
+#include "task_manager.h"
 
 /* common)
  * 0x000000-0x001FFF: Interrupt vector, IOCS work or etc (8KiB)

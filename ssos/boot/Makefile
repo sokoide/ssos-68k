@@ -17,7 +17,7 @@ LDFLAGS=$(LIB) -lx68kiocs -nostdlib -Tlinker.ld
 ASFLAGS=-m68000 --register-prefix-optional --traditional-format -I../include
 
 .PHONY:
-	all clean dump readelf
+	all clean dump readelf format
 
 all: $(TARGET).bin
 
@@ -39,3 +39,6 @@ dump: $(TARGET)
 
 readelf: $(TARGET)
 	$(READELF) -a $(TARGET).elf
+
+format: $(SRCS)
+	@echo "pass"

@@ -1,6 +1,8 @@
 #include "kernel.h"
-#include "ss_errors.h"
+
 #include <x68k/iocs.h>
+
+#include "ss_errors.h"
 
 // Define constants for external linkage - needed for code that takes addresses
 const int VRAMWIDTH = SS_CONFIG_VRAM_WIDTH;
@@ -20,11 +22,9 @@ struct KeyBuffer ss_kb;
 
 void ss_wait_for_vsync() {
     // if it's vsync, wait for display period
-    while (!((*mfp) & VSYNC_BIT))
-        ;
+    while (!((*mfp) & VSYNC_BIT));
     // wait for vsync
-    while ((*mfp) & VSYNC_BIT)
-        ;
+    while ((*mfp) & VSYNC_BIT);
 }
 
 int ss_handle_keys() {
@@ -55,7 +55,8 @@ int ss_handle_keys() {
                 // Reset corrupted index
                 ss_kb.idxw = 0;
                 ss_set_error(SS_ERROR_OUT_OF_BOUNDS, SS_SEVERITY_WARNING,
-                           __func__, __FILE__, __LINE__, "Keyboard buffer index corrupted, resetting");
+                             __func__, __FILE__, __LINE__,
+                             "Keyboard buffer index corrupted, resetting");
             }
         } else {
             // Buffer is full - track dropped keys for monitoring
@@ -65,8 +66,9 @@ int ss_handle_keys() {
 
         if ((scancode & 0xFFFF) == ESC_SCANCODE) {
             // ESC key - set error context for debugging
-            ss_set_error(SS_ERROR_SYSTEM_ERROR, SS_SEVERITY_INFO,
-                        __func__, __FILE__, __LINE__, "ESC key pressed - system shutdown requested");
+            ss_set_error(SS_ERROR_SYSTEM_ERROR, SS_SEVERITY_INFO, __func__,
+                         __FILE__, __LINE__,
+                         "ESC key pressed - system shutdown requested");
             return -1;
         }
         c = _iocs_b_keysns();
@@ -74,8 +76,9 @@ int ss_handle_keys() {
 
     // Log dropped keys if any occurred
     if (dropped_keys > 0) {
-        ss_set_error(SS_ERROR_OUT_OF_BOUNDS, SS_SEVERITY_WARNING,
-                    __func__, __FILE__, __LINE__, "Keyboard buffer overflow - keys dropped");
+        ss_set_error(SS_ERROR_OUT_OF_BOUNDS, SS_SEVERITY_WARNING, __func__,
+                     __FILE__, __LINE__,
+                     "Keyboard buffer overflow - keys dropped");
     }
 
     return handled_keys;
@@ -98,8 +101,9 @@ int ss_kb_read() {
         // Reset corrupted index
         ss_kb.idxr = 0;
         ss_kb.len = 0;
-        ss_set_error(SS_ERROR_OUT_OF_BOUNDS, SS_SEVERITY_ERROR,
-                   __func__, __FILE__, __LINE__, "Keyboard buffer read index corrupted");
+        ss_set_error(SS_ERROR_OUT_OF_BOUNDS, SS_SEVERITY_ERROR, __func__,
+                     __FILE__, __LINE__,
+                     "Keyboard buffer read index corrupted");
         return -1;
     }
 

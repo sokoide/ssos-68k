@@ -1,7 +1,7 @@
 #pragma once
 
-#include <stdint.h>
 #include <stdbool.h>
+#include <stdint.h>
 
 // CLI コマンドプロセッサ
 void ss_cli_processor(void);

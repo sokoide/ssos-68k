@@ -1,5 +1,6 @@
-#include "ssosmain.h"
 #include <stdint.h>
+
+#include "ssosmain.h"
 
 extern uint8_t __bss_start, __bss_end;
 extern uint8_t __data_rom_start, __data_start, __data_end;

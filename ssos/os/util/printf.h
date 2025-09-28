@@ -113,4 +113,4 @@ int fctprintf(void (*out)(char character, void* arg), void* arg,
 }
 #endif
 
-#endif // PRINTF_BARE_METAL_SRC_INCLUDE_PRINTF_BARE_METAL_H
+#endif  // PRINTF_BARE_METAL_SRC_INCLUDE_PRINTF_BARE_METAL_H

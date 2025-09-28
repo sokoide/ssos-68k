@@ -19,7 +19,7 @@ uint32_t local_data_size;
 uint32_t local_bss_size;
 
 int main(int argc, char** argv) {
-    int ssp = _iocs_b_super(0); // enter supervisor mode
+    int ssp = _iocs_b_super(0);  // enter supervisor mode
 
     set_interrupts();
 
@@ -45,6 +45,6 @@ int main(int argc, char** argv) {
 
     restore_interrupts();
 
-    _iocs_b_super(ssp); // leave supervisor mode
+    _iocs_b_super(ssp);  // leave supervisor mode
     return 0;
 }
