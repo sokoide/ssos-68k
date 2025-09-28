@@ -14,8 +14,11 @@ SRCS= \
   	kernel/ss_errors.c \
   	kernel/stdlib_stubs.c \
   	kernel/task_manager.c \
+  	kernel/input.c \
   main/ssosmain.c \
-  util/printf.c
+  main/cli.c \
+  util/printf.c \
+  util/string.c
 ASRCS= \
 	kernel/entry.s \
 	kernel/interrupts.s

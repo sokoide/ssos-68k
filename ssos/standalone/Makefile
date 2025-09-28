@@ -12,8 +12,11 @@ SRCS=	main.c \
  		../os/kernel/dma.c \
  		../os/kernel/ss_errors.c \
  		../os/kernel/ss_perf.c \
+ 		../os/kernel/input.c \
  		../os/main/ssosmain.c \
-                ../os/util/printf.c
+ 		../os/main/cli.c \
+                ../os/util/printf.c \
+                ../os/util/string.c
 ASRCS= \
 		../os/kernel/interrupts.s
 
