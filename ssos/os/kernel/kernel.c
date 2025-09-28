@@ -28,22 +28,23 @@ struct KeyBuffer ss_kb;
 #define X68K_SC_CAPS 0x60
 
 volatile uint8_t ss_kb_mod_state;
-volatile bool ss_kb_overflowed;
 volatile bool ss_kb_esc_latched;
+volatile bool ss_kb_overflowed;
 
-__attribute__((weak)) uint8_t ss_keyboard_hw_status(void) {
-    volatile uint8_t* status = (volatile uint8_t*)0xE9A000;
-    return *status;
+void ss_init() {
+    aux_init();
+    aux_puts("* ss_init\n");
 }
 
-__attribute__((weak)) uint8_t ss_keyboard_hw_read_data(void) {
-    volatile uint8_t* data = (volatile uint8_t*)0xE9A001;
-    return *data;
+void ss_uninit() {
+    aux_puts("* ss_uninit\n");
 }
 
-__attribute__((weak)) void ss_keyboard_hw_ack(void) {
-    volatile uint8_t* tacr = (volatile uint8_t*)0xE88019;
-    *tacr = 0x08;
+void ss_wait_for_vsync() {
+    // if it's vsync, wait for display period
+    while (!((*mfp) & VSYNC_BIT));
+    // wait for vsync
+    while ((*mfp) & VSYNC_BIT);
 }
 
 static bool ss_kb_enqueue(int ascii_code) {
@@ -68,22 +69,6 @@ static bool ss_kb_enqueue(int ascii_code) {
     }
     ss_kb.len++;
     return true;
-}
-
-void ss_init() {
-    aux_init();
-    aux_puts("* ss_init\n");
-}
-
-void ss_uninit() {
-    aux_puts("* ss_uninit\n");
-}
-
-void ss_wait_for_vsync() {
-    // if it's vsync, wait for display period
-    while (!((*mfp) & VSYNC_BIT));
-    // wait for vsync
-    while ((*mfp) & VSYNC_BIT);
 }
 
 static int ss_keyboard_process_raw(uint8_t raw_scancode, bool pressed) {
@@ -149,6 +134,8 @@ int ss_handle_keys() {
         if (raw < 0) {
             break;
         }
+        // TODO: key input is detected, but the key code is not correctly identified yet
+        aux_puts(".");
         processed_any = true;
         uint8_t raw_byte = (uint8_t)raw;
         bool pressed = (raw_byte & 0x80) == 0;
@@ -156,9 +143,6 @@ int ss_handle_keys() {
         handled_keys += ss_keyboard_process_raw(scancode, pressed);
     }
 
-    if (processed_any) {
-        ss_keyboard_hw_ack();
-    }
 
     if (ss_kb_overflowed) {
         ss_set_error(SS_ERROR_OUT_OF_BOUNDS, SS_SEVERITY_WARNING, __func__,
