@@ -87,8 +87,8 @@ set_interrupts:
 	/* lea     nop_handler, a0 */
 	/* move.l  a0, 0x12c */
 	# key receive - if you use IOCS key*, don't override this
-	/* lea		key_input_handler, a0 */
-	/* move.l  a0, 0x130 */
+	lea		key_input_handler, a0
+	move.l  a0, 0x130
 	# CRTC V-DISP, Timer A
 	lea		vdisp_handler, a0
 	move.l  a0, 0x134
