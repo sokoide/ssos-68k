@@ -454,16 +454,80 @@ context_switch:
 
 
 key_input_handler:
-	movem.l	d0/a0, -(sp)
+    movem.l d0-d1/a0,-(sp)
 
-	add.l	#1, ss_key_counter
+    lea     0xe9a000, a0
+    move.b  (a0), d0
+    btst    #0, d0
+    beq.s   .no_data
 
-	# Call SSOS keyboard handler to buffer the key
-	jsr ss_handle_keys
+    move.b  1(a0), d1
+    jsr     ss_buffer_raw_key
 
-	movem.l	(sp)+, d0/a0
-	rte
+.no_data:
+    move.b  #8, 0xe88019
 
+    movem.l (sp)+, d0-d1/a0
+    rte
+
+
+	.global ss_buffer_raw_key
+ss_buffer_raw_key:
+    movem.l a0/a1,-(sp)
+
+    lea     ss_kb_buffer, a0
+    lea     ss_kb_buffer_head, a1
+    move.l  (a1), d0
+
+    move.l  d0, a1
+    add.l   #1, a1
+    move.l  a1, d0
+    and.l   #63, d0
+    move.l  d0, a1
+    move.l  a1, -(sp)
+
+    lea     ss_kb_buffer_tail, a1
+    cmp.l   (a1), a1
+    beq.s   .buffer_full
+
+    move.b  d1, (a0, d0)
+    move.l  (sp)+, a1
+    move.l  a1, ss_kb_buffer_head
+
+    movem.l (sp)+, a0/a1
+    rts
+
+.buffer_full:
+    add.l   #4, sp
+    movem.l (sp)+, a0/a1
+    rts
+
+.global ss_kb_read_raw
+ss_kb_read_raw:
+    movem.l a0/a1/d0,-(sp)
+
+    lea     ss_kb_buffer_tail, a0
+    lea     ss_kb_buffer_head, a1
+    move.l  (a0), d0
+    cmp.l   (a1), d0
+    beq.s   .buffer_empty
+
+    lea     ss_kb_buffer, a0
+    move.b  (a0, d0), d0
+
+    lea     ss_kb_buffer_tail, a0
+    move.l  (a0), d1
+    add.l   #1, d1
+    and.l   #63, d1
+    move.l  d1, (a0)
+
+    movem.l (sp)+, a0/a1/d0
+    rts
+
+.buffer_empty:
+    move.l  #-1, d0
+    movem.l (sp)+, a0/a1/d0
+    rts
 
 	.section .data
 	.even
@@ -478,6 +542,14 @@ ss_timerd_counter:
 ss_key_counter:
 	dc.l	0
 ss_context_switch_counter:
+	dc.l	0
+
+.global ss_kb_buffer, ss_kb_buffer_head, ss_kb_buffer_tail
+ss_kb_buffer:
+	.ds.b	64
+ss_kb_buffer_head:
+	dc.l	0
+ss_kb_buffer_tail:
 	dc.l	0
 
  	.section .bss
