@@ -5,6 +5,8 @@
 #include <stdint.h>
 #include <string.h>
 
+#include <x68k/iocs.h>
+
 #include "../kernel/input.h"
 #include "../kernel/ss_config.h"
 #include "../util/string.h"
@@ -71,11 +73,20 @@ void ss_cli_processor(void) {
         while (i < (int)sizeof(command) - 1) {
             int keycode = ss_kb_read();
             if (keycode == -1) {
+                // Small delay to allow interrupt processing
+                for (volatile int j = 0; j < 1000; j++);
                 continue;
             }
-            int c = x68k_keycode_to_ascii(keycode);
+            // For testing: after getting any key, count and break after 4
+            static int key_count = 0;
+            key_count++;
+            int c = '?';  // Show ? for any key
 
-            ss_cli_debug_print_key(keycode, c);
+            if (key_count >= 4) {
+                command[i] = '\0';
+                ssos_main_cli_output_string("\n");
+                break;
+            }
 
             if (c == 0x1B) {
                 ssos_main_cli_output_string("\n");
@@ -105,6 +116,9 @@ void ss_cli_processor(void) {
                 ssos_main_cli_output_char((char)c);
             }
         }
+
+        // Show we got a key
+        ssos_main_cli_output_string("KEY!\n");
 
         if (i > 0) {
             ss_execute_command(command);

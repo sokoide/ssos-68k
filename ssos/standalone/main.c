@@ -31,26 +31,21 @@ void simulate_keypress(uint8_t scancode) {
 }
 
 uint8_t ss_keyboard_hw_status(void) {
-    // Return "ready" if we have simulated keys in buffer
-    if (simulated_key_head != simulated_key_tail) {
-        return 0x01;  // Data ready
-    }
-    return 0x00;  // No data
+    // Read from real keyboard hardware status register
+    volatile uint8_t* status = (volatile uint8_t*)0xE9A001;
+    return *status;
 }
 
 uint8_t ss_keyboard_hw_read_data(void) {
-    // Return simulated key from buffer
-    if (simulated_key_head != simulated_key_tail) {
-        last_scancode = simulated_key_buffer[simulated_key_tail];
-        simulated_key_tail = (simulated_key_tail + 1) % 64;
-        return last_scancode;
-    }
-    return 0;  // No data
+    // Read from real keyboard hardware data register
+    volatile uint8_t* data = (volatile uint8_t*)0xE9A003;
+    return *data;
 }
 
 void ss_keyboard_hw_ack(void) {
-    // Simulate MFP interrupt acknowledge
-    // In real hardware, this would write to 0xe88019
+    // Acknowledge MFP interrupt by writing to TACR
+    volatile uint8_t* tacr = (volatile uint8_t*)0xE88019;
+    *tacr = 0x08;
 }
 
 // Declare assembly functions
@@ -95,9 +90,6 @@ int main(int argc, char** argv) {
     local_ssos_memory_base = malloc(local_ssos_memory_size);
     assert(local_ssos_memory_base);
 
-    // Test keyboard input simulation
-    test_keyboard_input();
-    
     ssosmain();
 
     if (NULL != local_ssos_memory_base)

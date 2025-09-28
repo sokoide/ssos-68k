@@ -198,3 +198,10 @@ int ss_kb_read() {
 bool ss_kb_is_empty() {
     return ss_kb.len == 0;
 }
+
+// Wrapper function for interrupt handler to call ss_keyboard_process_raw
+void ss_keyboard_process_raw_from_int(uint8_t raw_scancode) {
+    bool pressed = (raw_scancode & 0x80) == 0;
+    uint8_t scancode = raw_scancode & 0x7F;
+    ss_keyboard_process_raw(scancode, pressed);
+}

@@ -462,7 +462,7 @@ key_input_handler:
     beq.s   .no_data
 
     move.b  2(a0), d1
-    jsr     ss_buffer_raw_key
+    jsr     ss_keyboard_process_raw_from_int
 
 .no_data:
     move.b  #8, 0xe88019
