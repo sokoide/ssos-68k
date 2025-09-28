@@ -26,6 +26,9 @@ void ssosmain() {
     // Initialize performance monitoring system
     ss_perf_init();
 
+    // Initialize keyboard buffer
+    ss_kb_init();
+
     // CLIコマンドプロセッサを起動
     ss_cli_processor();
 }

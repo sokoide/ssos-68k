@@ -68,10 +68,10 @@ int ss_kb_read();
 bool ss_kb_is_empty();
 
 struct KeyBuffer {
-    int data[KEY_BUFFER_SIZE];
-    int idxr;
-    int idxw;
-    int len;
+    volatile int data[KEY_BUFFER_SIZE];
+    volatile int idxr;
+    volatile int idxw;
+    volatile int len;
 };
 
 extern struct KeyBuffer ss_kb;

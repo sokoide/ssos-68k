@@ -458,6 +458,9 @@ key_input_handler:
 
 	add.l	#1, ss_key_counter
 
+	# Call SSOS keyboard handler to buffer the key
+	jsr ss_handle_keys
+
 	movem.l	(sp)+, d0/a0
 	rte
 

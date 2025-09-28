@@ -69,7 +69,10 @@ void ss_cli_processor(void) {
 
         i = 0;
         while (i < (int)sizeof(command) - 1) {
-            int keycode = _iocs_b_keyinp();
+            int keycode = ss_kb_read();
+            if (keycode == -1) {
+                continue;
+            }
             int c = x68k_keycode_to_ascii(keycode);
 
             ss_cli_debug_print_key(keycode, c);
