@@ -166,24 +166,32 @@ void ss_kb_init() {
 }
 
 int ss_kb_read() {
+    int key = -1;
+
+    // Disable interrupts during buffer access to prevent race conditions
+    disable_interrupts();
+
     // Check if buffer is empty
     if (ss_kb.len == 0) {
+        enable_interrupts();
         return -1;
     }
 
     // Validate buffer state before reading
     if (ss_kb.idxr < 0 || ss_kb.idxr >= KEY_BUFFER_SIZE) {
-        // Reset corrupted index
+        // Reset corrupted index - restore length if it was valid
+        int saved_len = ss_kb.len;
         ss_kb.idxr = 0;
         ss_kb.len = 0;
+        enable_interrupts();
         ss_set_error(SS_ERROR_OUT_OF_BOUNDS, SS_SEVERITY_ERROR, __func__,
-                     __FILE__, __LINE__,
-                     "Keyboard buffer read index corrupted");
+                      __FILE__, __LINE__,
+                      "Keyboard buffer read index corrupted");
         return -1;
     }
 
     // Safe read from buffer
-    int key = ss_kb.data[ss_kb.idxr];
+    key = ss_kb.data[ss_kb.idxr];
     ss_kb.len--;
     ss_kb.idxr++;
 
@@ -191,6 +199,9 @@ int ss_kb_read() {
     if (ss_kb.idxr >= KEY_BUFFER_SIZE) {
         ss_kb.idxr = 0;
     }
+
+    // Re-enable interrupts
+    enable_interrupts();
 
     return key;
 }
