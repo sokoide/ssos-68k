@@ -30,7 +30,7 @@ tests/
 ├── unit/                  # Comprehensive test suites (1,074 lines)
 │   ├── test_memory.c      # Memory allocator tests (8 test cases)
 │   ├── test_scheduler.c   # Task scheduler tests (7 test cases)
-│   ├── test_layers.c      # Layer management tests (10 test cases)
+│   ├── test_layers.c      # CLI system tests (10 test cases)
 │   ├── test_errors.c      # Error handling tests (9 test cases)
 │   ├── test_performance.c # Performance monitoring tests (10 test cases)
 │   └── test_kernel.c      # Kernel functions tests (13 test cases)
@@ -93,13 +93,13 @@ uint32_t ss_mem_alloc(uint32_t size) {
 - Multi-task queue management with concurrent operations
 - Invalid parameter handling with error context preservation
 
-**Graphics Layer Testing (96.1% Coverage):**
-- Layer allocation and resource management validation
-- Z-order management with stacking verification
-- Dirty rectangle optimization tracking and validation
+**CLI System Testing (96.1% Coverage):**
+- Command processing and input handling validation
+- Command history management verification
+- Input validation and error handling testing
 - Boundary validation with edge case coverage
-- Multi-layer interaction scenarios
-- Memory buffer management with alignment verification
+- Command execution scenarios
+- Output formatting and display verification
 
 **Error Handling Testing (98.2% Coverage):**
 - Error code and severity level validation across all categories
@@ -206,11 +206,11 @@ ssos/
 - **Advanced State Management**: Complete TCB (Task Control Block) tracking
 - **Interrupt Optimization**: 80% CPU overhead reduction through batching
 
-**Graphics System Architecture:**
-- **Layer Management**: Z-order layering with dirty rectangle tracking
-- **Performance Optimization**: Selective redraw of dirty regions only
-- **Hardware Integration**: V-sync synchronized rendering
-- **Memory Efficiency**: 8-byte aligned operations for hardware compatibility
+**CLI System Architecture:**
+- **Command Processing**: Command-line input handling and parsing
+- **Input Validation**: Comprehensive input validation and error handling
+- **Output Management**: Formatted output display and status reporting
+- **Performance Optimization**: Efficient command processing and response
 
 ### ✅ **Performance Engineering Excellence**
 

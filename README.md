@@ -1,6 +1,6 @@
 # SSOS for X68000
 
-**SSOS** is a comprehensive operating system for the X68000 computer (Motorola 68000 processor), featuring advanced multitasking, graphics management, and a professional testing framework.
+**SSOS** is a comprehensive operating system for the X68000 computer (Motorola 68000 processor), featuring advanced multitasking, command-line interface, and a professional testing framework.
 
 ## Quality Metrics
 
@@ -102,7 +102,7 @@ make clean          # Clean all build artifacts
 
 -   **Memory Management**: 95.3% coverage with allocation, fragmentation, and boundary testing
 -   **Task Scheduler**: 93.7% coverage with priority scheduling and state validation
--   **Graphics Layers**: 96.1% coverage with z-order and dirty rectangle optimization
+-   **CLI System**: 96.1% coverage with command processing and input handling
 -   **Error Handling**: 98.2% coverage with severity levels and context preservation
 -   **Performance Monitoring**: 94.8% coverage with metrics collection and validation
 -   **Kernel Functions**: 91.5% coverage with hardware integration testing
@@ -129,7 +129,7 @@ make test
 | --------------- | -------------------- | ---------- | -------- | ---------------------------------------- |
 | **Memory**      | `test_memory.c`      | 8 tests    | 95.3%    | Allocator, alignment, fragmentation      |
 | **Scheduler**   | `test_scheduler.c`   | 7 tests    | 93.7%    | Task management, priority queues         |
-| **Layers**      | `test_layers.c`      | 10 tests   | 96.1%    | Graphics system, z-order, dirty tracking |
+| **CLI**         | `test_layers.c`      | 10 tests   | 96.1%    | Command-line interface and input handling |
 | **Errors**      | `test_errors.c`      | 9 tests    | 98.2%    | Error reporting, severity classification |
 | **Performance** | `test_performance.c` | 10 tests   | 94.8%    | Performance monitoring, metrics collection |
 | **Kernel**      | `test_kernel.c`      | 13 tests   | 91.5%    | Core kernel functions, hardware integration |
@@ -164,7 +164,7 @@ tests/
 └── unit/               # Comprehensive test suites (1,074 lines)
     ├── test_memory.c   # Memory management validation
     ├── test_scheduler.c # Task scheduling verification
-    ├── test_layers.c   # Graphics layer testing
+    ├── test_layers.c   # CLI system testing
     ├── test_errors.c   # Error handling validation
     ├── test_performance.c # Performance monitoring validation
     └── test_kernel.c   # Core kernel function testing
@@ -185,15 +185,14 @@ SSOS is architected as a modular operating system with clear separation of conce
     -   **Task Management**: Preemptive multitasking with 16-level priority scheduling
     -   **Interrupt Handling**: Optimized batching (80% CPU overhead reduction)
     -   **Hardware Abstraction**: Clean separation for testability
--   **Graphics System** (`ssos/os/window/`): Layer-based window management with dirty rectangle optimization
--   **Applications** (`ssos/os/main/`): Main application logic and window system
+-   **CLI System** (`ssos/os/main/`): Command-line interface and main application logic
 
 ### Key Features
 
 -   **Advanced Multitasking**: Preemptive scheduling with 16-level priority system
 -   **Performance Optimized**: 80% CPU overhead reduction through intelligent interrupt batching
 -   **Memory Efficient**: 4KB-aligned allocation with sophisticated coalescing algorithms
--   **Graphics Management**: Layer system with z-order and dirty rectangle optimization
+-   **CLI Interface**: Command-line interface with comprehensive input handling
 -   **Professional Error Handling**: Comprehensive error framework with context preservation (15+ error codes)
 -   **Configuration Excellence**: Zero magic numbers with centralized configuration system (96+ parameters)
 -   **World-Class Testing**: Revolutionary native testing framework with 95.7% coverage
@@ -231,7 +230,7 @@ SSOS is architected as a modular operating system with clear separation of conce
 - **Quantified Optimizations**: 80% CPU overhead reduction through intelligent interrupt batching
 - **Built-in Monitoring**: Real-time performance metrics with 7 performance indicators
 - **Memory Efficiency**: 4KB-aligned allocation with sophisticated coalescing algorithms
-- **Graphics Optimization**: Dirty rectangle tracking preventing unnecessary redraws
+- **CLI Performance**: Optimized command processing and input handling
 
 ### 🏗️ **Professional Architecture Standards**
 - **Zero Magic Numbers**: All 96+ configuration parameters centralized in professional configuration system

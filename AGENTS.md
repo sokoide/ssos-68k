@@ -1,7 +1,7 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-SSOS lives in `ssos/`: `boot/` builds the boot image, `os/` contains the kernel (`kernel/`), graphics (`window/`), main UI (`main/`), and shared utilities (`util/`). Public headers reside in `include/`, and `standalone/` builds the Human68K executable. Native regression assets sit in `docs/`, while helper scripts live in `tools/`. Unit and integration tests mirror production code under `ssos/tests/` (cross-target) and `tests/` (native harness powered by the same framework).
+SSOS lives in `ssos/`: `boot/` builds the boot image, `os/` contains the kernel (`kernel/`), CLI system (`main/`), and shared utilities (`util/`). Public headers reside in `include/`, and `standalone/` builds the Human68K executable. Native regression assets sit in `docs/`, while helper scripts live in `tools/`. Unit and integration tests mirror production code under `ssos/tests/` (cross-target) and `tests/` (native harness powered by the same framework).
 
 ## Build, Test, and Development Commands
 Export the toolchain before building: `export XELF_BASE=/path/to/m68k-xelf` and `. ~/.elf2x68k`. Run `make` inside `ssos/` to produce the bootable `ssos.xdf` plus the standalone binary in `~/tmp/`. Use `make -C ssos os` or `make -C ssos boot` when iterating on subsystems, and `make compiledb` to refresh `compile_commands.json`. For analysis, `make dump` disassembles binaries and `make readelf` inspects ELF headers. Tests run via `make -C ssos/tests test` for target coverage, or `make -C tests native` for a fast host run (auto-executes `test_runner_native`).

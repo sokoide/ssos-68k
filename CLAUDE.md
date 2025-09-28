@@ -68,24 +68,24 @@ The OS consists of three main components:
 1. **Boot Loader** (`ssos/boot/`): Assembly-based boot sector that loads the OS
 2. **OS Kernel** (`ssos/os/`): Core OS functionality including:
    - Memory management (`kernel/memory.c`)
-   - Task management (`kernel/task_manager.c`) 
+   - Task management (`kernel/task_manager.c`)
    - Hardware abstraction (`kernel/dma.c`, `kernel/vram.c`)
    - Interrupt handling (`kernel/interrupts.s`)
-3. **Applications** (`ssos/os/main/`): Window system and main application logic
+3. **Applications** (`ssos/os/main/`): CLI system and main application logic
 
 ### Key Files
 - `ssos/os/kernel/entry.s`: OS entry point and low-level initialization
 - `ssos/os/kernel/kernel.c`: Core kernel functionality, V-sync handling, and key input management
 - `ssos/os/kernel/task_manager.c`: Preemptive multitasking with timer-based context switching
 - `ssos/os/main/ssosmain.c`: Main application initialization, graphics mode setup, and memory allocation
-- `ssos/os/window/layer.c`: Window layering and graphics system
+- `ssos/os/main/cli.c`: Command-line interface system
 - `ssos/standalone/main.c`: Standalone mode entry point that bypasses boot loader
 
 ### Build System
 The project uses recursive Makefiles. The top-level build process:
 1. Builds `makedisk` utility
 2. Compiles boot loader to `BOOT.X.bin`
-3. Compiles OS kernel to `SSOS.X.bin`  
+3. Compiles OS kernel to `SSOS.X.bin`
 4. Uses `makedisk` to create bootable `.xdf` disk image
 
 ### Standalone vs OS Mode
@@ -103,7 +103,7 @@ The project uses recursive Makefiles. The top-level build process:
 ### Key Architectural Patterns
 - **Task Management**: Preemptive multitasking with timer interrupts every `CONTEXT_SWITCH_INTERVAL` ticks
 - **Memory Management**: Custom allocator with 4KB page alignment for task stacks
-- **Graphics**: Direct VRAM manipulation with hardware V-sync synchronization
+- **CLI Interface**: Command-line interface with comprehensive input handling
 - **Input Handling**: Interrupt-driven keyboard input with circular buffer (`KEY_BUFFER_SIZE`)
 
 ## Toolchain

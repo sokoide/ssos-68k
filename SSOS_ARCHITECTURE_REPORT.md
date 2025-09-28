@@ -14,17 +14,17 @@ SSOS-68K is a sophisticated microkernel operating system designed for the Motoro
 ┌─────────────────────────────────────────────────────┐
 │                Application Layer                    │
 │  ┌─────────────────┐  ┌─────────────────────────┐   │
-│  │ ssosmain.c      │  │ ssoswindows.c           │   │
-│  │ • Main loop     │  │ • Window management     │   │
-│  │ • Event handling│  │ • UI components         │   │
+│  │ ssosmain.c      │  │ cli.c                   │   │
+│  │ • Main loop     │  │ • CLI interface         │   │
+│  │ • Event handling│  │ • Command processing    │   │
 │  └─────────────────┘  └─────────────────────────┘   │
 └─────────────────────────────────────────────────────┘
 ┌─────────────────────────────────────────────────────┐
-│                Graphics Subsystem                   │
+│                CLI Subsystem                        │
 │  ┌────────────────────────────────────────────────┐ │
-│  │ layer.c - Window layering and composition      │ │
-│  │ • Dirty region optimization                    │ │
-│  │ • Hardware-accelerated blitting                │ │
+│  │ cli.c - Command-line interface and processing  │ │
+│  │ • Input handling and validation                │ │
+│  │ • Command execution and output                 │ │
 │  └────────────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────┘
 ┌─────────────────────────────────────────────────────┐
@@ -106,24 +106,24 @@ uint32_t ss_mem_alloc4k(uint32_t sz)  // 4KB-aligned allocation
 uint32_t ss_mem_alloc(uint32_t sz)    // Standard allocation
 ```
 
-### 3. Graphics and Rendering System
+### 3. CLI System
 
-**Location**: `ssos/os/window/layer.c`
+**Location**: `ssos/os/main/cli.c`
 
 **Architecture**:
 
--   **Layered Composition**: Multi-layer window system with z-ordering
--   **Dirty Region Optimization**: Only redraws modified screen areas
--   **V-Sync Synchronization**: Hardware-synchronized frame updates
--   **Performance Monitoring**: Real-time frame timing analysis
+-   **Command Processing**: Command-line input handling and parsing
+-   **Input Validation**: Comprehensive input validation and error handling
+-   **Output Management**: Formatted output display and status reporting
+-   **Performance Monitoring**: Real-time command processing analysis
 
-**Optimization Strategy**:
+**Implementation Strategy**:
 
 ```c
-// Major optimization: dirty-only rendering
-ss_layer_draw_dirty_only();
+// Command processing with validation
+ss_cli_process_command(const char* cmd);
 // Performance measurement integration
-SS_PERF_START_MEASUREMENT(SS_PERF_DRAW_TIME);
+SS_PERF_START_MEASUREMENT(SS_PERF_CLI_TIME);
 ```
 
 ## Build System Architecture
