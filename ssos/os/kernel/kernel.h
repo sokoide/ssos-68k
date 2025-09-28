@@ -154,3 +154,5 @@ extern TaskControlBlock* wait_queue;
 extern uint32_t dispatch_running;
 extern FlagControlBlock fcb_table[];
 extern uint32_t global_counter;
+
+extern int dequeue_raw(void);

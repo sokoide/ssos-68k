@@ -452,226 +452,109 @@ context_switch:
 
     rts
 
-
 key_input_handler:
-    movem.l d0-d1/a0/a1/a2,-(sp)
+    movem.l d0/d1/a0,-(sp)
 
-    lea     0xe9a001, a0
+    # キーボードデータを読み取り（MFP経由）
+    move.l  #0xe88001, a0      /* MFP GPIP/GPDRアドレス */
+    move.b  (a0), d0           /* キーボードデータを取得 */
+
+    # キーボードデータが有効かチェック
+    btst    #0, d0             /* データ有効ビットチェック */
+    beq.s   .no_key_data       /* データがなければスキップ */
+
+    # データを処理してバッファに格納
+    jsr     enqueue_raw        /* 生データをキューに追加 */
+
+.no_key_data:
+    # キーボード割り込みビット(ISRA bit 0)をクリア
+    move.l  #0xe8800f, a0      /* ISRAアドレス */
     move.b  (a0), d0
-    btst    #0, d0
-    beq   .no_data
+    and.b   #0xfe, d0          /* bit 0をクリア */
+    move.b  d0, (a0)
 
-    move.b  2(a0), d1
-
-    # Extract pressed state from bit 7
-    move.b  d1, d0
-    and.b   #0x80, d0
-    beq     .key_pressed
-    # Key released
-    bra.s     .process_modifier
-
-.key_pressed:
-    # Key pressed - clear bit 7 to get scancode
-    and.b   #0x7F, d1
-    bra     .process_modifier
-
-.process_modifier:
-    # Check for modifier keys
-    cmp.b   #0x63, d1
-    beq     .handle_shift
-    cmp.b   #0x64, d1
-    beq     .handle_shift
-    cmp.b   #0x61, d1
-    beq     .handle_ctrl
-    cmp.b   #0x60, d1
-    beq     .handle_caps
-    bra.s     .handle_normal_key
-
-.handle_shift:
-    # Toggle shift state based on pressed state
-    tst.b   d0
-    beq     .shift_pressed
-    # Shift released
-    lea     ss_kb_mod_state, a1
-    and.b   #0xFE, (a1)
-    bra.s     .no_data
-.shift_pressed:
-    # Shift pressed
-    lea     ss_kb_mod_state, a1
-    or.b    #0x01, (a1)
-    bra.s     .no_data
-
-.handle_ctrl:
-    # Toggle ctrl state based on pressed state
-    tst.b   d0
-    beq.s   .ctrl_pressed
-    # Ctrl released
-    lea     ss_kb_mod_state, a1
-    and.b   #0xFD, (a1)
-    bra.s   .no_data
-.ctrl_pressed:
-    # Ctrl pressed
-    lea     ss_kb_mod_state, a1
-    or.b    #0x02, (a1)
-    bra.s   .no_data
-
-.handle_caps:
-    # Toggle caps state (only on press)
-    tst.b   d0
-    bne.s   .no_data
-    lea     ss_kb_mod_state, a1
-    eor.b   #0x04, (a1)
-    bra.s   .no_data
-
-.handle_normal_key:
-    # Only process key press, not release
-    tst.b   d0
-    bne.s   .no_data
-
-    # Create keycode: (modifiers << 8) | scancode
-    lea     ss_kb_mod_state, a1
-    move.b  (a1), d0
-    lsl.w   #8, d0
-    move.b  d1, d0
-
-    # Enqueue keycode using ss_kb_enqueue logic
-    jsr     ss_kb_enqueue_asm
-
-    # Check if enqueue failed (buffer full)
-    tst.l   d0
-    bne.s   .enqueue_success
-    # Buffer full, set overflow flag
-    lea     ss_kb_overflowed, a1
-    move.b  #1, (a1)
-
-.enqueue_success:
-    # Check if ESC key was pressed
-    cmp.b   #0x6D, d1
-    bne.s   .no_data
-    # Set ESC latch
-    lea     ss_kb_esc_latched, a1
-    move.b  #1, (a1)
-
-.no_data:
-    move.b  #8, 0xe88019
-
-    movem.l (sp)+, d0-d1/a0/a1/a2
+    movem.l (sp)+, d0/d1/a0
     rte
 
-# Assembly implementation of ss_kb_enqueue logic
-# Input: d0 = keycode to enqueue
-# Output: d0 = 1 if success, 0 if buffer full
-ss_kb_enqueue_asm:
-    movem.l a0/a1,-(sp)
+/*-----------------------------------------
+ * enqueue_raw
+ * 入力: d0.b = 受信したキーコード
+ * 破壊: d1, a0, a1
+ *-----------------------------------------*/
+.globl enqueue_raw
+enqueue_raw:
+    movem.l d1/a0-a3, -(sp)
 
-    # Check if indices are valid (KEY_BUFFER_SIZE = 32)
-    lea     ss_kb, a1
-    move.l  8(a1), d1
-    move.l  12(a1), d2
+    lea     ss_kb_buf, a0
+    lea     ss_kb_head, a1
+    lea     ss_kb_count, a2
 
-    # Validate indices
-    cmp.l   #31, d1
-    bhi.s   .reset_indices
-    cmp.l   #31, d2
-    bhi.s   .reset_indices
-    bra.s   .check_buffer_full
-
-.reset_indices:
-    # Reset corrupted indices
-    move.l  #0, 8(a1)
-    move.l  #0, 12(a1)
-    move.l  #0, 16(a1)
-    move.l  #0, d0
-    movem.l (sp)+, a0/a1
-    rts
-
-.check_buffer_full:
-    # Check if buffer is full
-    move.l  16(a1), d2
-    cmp.l   #32, d2
-    bhs.s   .buffer_full
-
-    # Store keycode in buffer
-    lea     0(a1), a2
-    lsl.l   #2, d1
-    move.l  d0, (a2, d1)
-
-    # Update write index
-    add.l   #1, 8(a1)
-    move.l  8(a1), d1
+    move.l  (a2), d1
     cmp.l   #32, d1
-    blo.s   .no_wrap_write
-    move.l  #0, 8(a1)
-.no_wrap_write:
+    bhs.s   .full
 
-    # Update length
-    add.l   #1, 16(a1)
+    move.l  (a1), d1
+    and.l   #31, d1
+    move.b  d0, (a0,d1.w)
 
-    move.l  #1, d0
-    movem.l (sp)+, a0/a1
+    # head = (head+1)&31
+    move.l  (a1), d1
+    addq.l  #1, d1
+    and.l   #31, d1
+    move.l  d1, (a1)
+
+    # count++
+    move.l  (a2), d1
+    addq.l  #1, d1
+    move.l  d1, (a2)
+
+    movem.l (sp)+, d1/a0-a3
     rts
 
-.buffer_full:
-    move.l  #0, d0
-    movem.l (sp)+, a0/a1
+.full:
+    movem.l (sp)+, d1/a0-a3
     rts
 
+#-----------------------------------------
+# dequeue_raw
+# 出力: d0.b = 取り出したキーコード
+#       d0 = -1 の場合は空
+#-----------------------------------------
+.globl dequeue_raw
+dequeue_raw:
+    # 出力: d0.l = 取り出した値（0..255）、空なら -1
+    # 破壊: d1, a0-a3（全部保存/復元）
+    movem.l d1/a0-a3, -(sp)
 
-	.global ss_buffer_raw_key
-ss_buffer_raw_key:
-    movem.l a0/a1,-(sp)
+    lea     ss_kb_buf,   a0
+    lea     ss_kb_tail,  a1
+    lea     ss_kb_head,  a2
+    lea     ss_kb_count, a3
 
-    lea     ss_kb_buffer, a0
-    lea     ss_kb_buffer_head, a1
-    move.l  (a1), d0
+    move.l  (a3), d1
+    beq.s   .empty
 
-    move.l  d0, a1
-    add.l   #1, a1
-    move.l  a1, d0
-    and.l   #63, d0
-    move.l  d0, -(sp)
+    move.l  (a1), d1
+    and.l   #31, d1
+    move.b  (a0, d1.w), d0
 
-    lea     ss_kb_buffer_tail, a1
-    cmp.l   (a1), d0
-    beq.s   .buffer_full
+    # tail = (tail + 1) & 31
+    move.l  (a1), d1
+    addq.l  #1, d1
+    and.l   #31, d1
+    move.l  d1, (a1)
 
-    move.b  d1, (a0, d0)
-    move.l  (sp)+, a1
-    move.l  a1, ss_kb_buffer_head
+    # count--
+    move.l  (a3), d1
+    subq.l  #1, d1
+    move.l  d1, (a3)
 
-    movem.l (sp)+, a0/a1
+    movem.l (sp)+, d1/a0-a3
     rts
 
-.buffer_full_duplicate:
-    add.l   #4, sp
-    movem.l (sp)+, a0/a1
-    rts
-
-.global ss_kb_read_raw
-ss_kb_read_raw:
-    movem.l a0/a1/d0,-(sp)
-
-    lea     ss_kb_buffer_tail, a0
-    lea     ss_kb_buffer_head, a1
-    move.l  (a0), d0
-    cmp.l   (a1), d0
-    beq.s   .buffer_empty
-
-    lea     ss_kb_buffer, a0
-    move.b  (a0, d0), d0
-
-    lea     ss_kb_buffer_tail, a0
-    move.l  (a0), d1
-    add.l   #1, d1
-    and.l   #63, d1
-    move.l  d1, (a0)
-
-    movem.l (sp)+, a0/a1/d0
-    rts
-
-.buffer_empty:
-    move.l  #-1, d0
-    movem.l (sp)+, a0/a1/d0
+.empty:
+    moveq   #-1, d0
+    movem.l (sp)+, d1/a0-a3
     rts
 
 	.section .data
@@ -688,6 +571,12 @@ ss_key_counter:
 	dc.l	0
 ss_context_switch_counter:
 	dc.l	0
+	.even
+ss_kb_buf:      .space 32
+	.even
+ss_kb_head:     .long 0
+ss_kb_tail:     .long 0
+ss_kb_count:    .long 0
 
 
  	.section .bss
