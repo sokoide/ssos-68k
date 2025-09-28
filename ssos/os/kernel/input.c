@@ -1,6 +1,8 @@
 #include <stdint.h>
 #include <x68k/iocs.h>
 
+#include "ss_config.h"
+
 // IOCSコールの実装（インラインアセンブリ）
 int _iocs_b_keyinp(void) {
     int result;
@@ -31,16 +33,15 @@ int _iocs_b_coninp(void) {
 
 // X68000キーコードをASCIIコードに変換
 int x68k_keycode_to_ascii(int keycode) {
-    // キーコードの下位8ビットがキー、上位8ビットが修飾キー
+    if ((keycode & 0xFFFF) == ESC_SCANCODE) {
+        return 0x1B;
+    }
+
     int key = keycode & 0xFF;
     int mod = (keycode >> 8) & 0xFF;
+    int shifted = (mod & 0x01) || (mod & 0x02);
 
-    // 修飾キーが押されている場合は、シフトされた文字を返す
-    int shifted = (mod & 0x01) || (mod & 0x02);  // ShiftキーまたはCtrlキー
-
-    // キーコードをASCIIコードに変換
     switch (key) {
-    // 数字キー
     case 0x0B:
         return shifted ? '!' : '1';
     case 0x02:
@@ -61,8 +62,6 @@ int x68k_keycode_to_ascii(int keycode) {
         return shifted ? ')' : '9';
     case 0x0A:
         return shifted ? '*' : '0';
-
-    // アルファベットキー (QWERTY配列)
     case 0x14:
         return shifted ? 'Q' : 'q';
     case 0x1A:
@@ -115,18 +114,14 @@ int x68k_keycode_to_ascii(int keycode) {
         return shifted ? 'N' : 'n';
     case 0x27:
         return shifted ? 'M' : 'm';
-
-    // 特殊キー
     case 0x01:
-        return '\r';  // Enter
+        return '\r';
     case 0x0E:
-        return '\b';  // Backspace
+        return '\b';
     case 0x0F:
-        return '\t';  // Tab
+        return '\t';
     case 0x39:
-        return ' ';  // Space
-
-    // 記号キー
+        return ' ';
     case 0x2A:
         return shifted ? '|' : '\\';
     case 0x2B:
@@ -145,9 +140,7 @@ int x68k_keycode_to_ascii(int keycode) {
         return shifted ? '>' : '.';
     case 0x32:
         return shifted ? '?' : '/';
-
-    // デフォルト
     default:
-        return 0;  // 不明なキーコード
+        return 0;
     }
 }

@@ -6,7 +6,57 @@
 #include <string.h>
 
 #include "../kernel/input.h"
+#include "../kernel/ss_config.h"
 #include "../util/string.h"
+
+static void ss_cli_output_hex8(int value) {
+    ssos_main_cli_output_hex(value & 0xFF);
+}
+
+static void ss_cli_output_hex16(int value) {
+    ssos_main_cli_output_hex((value >> 8) & 0xFF);
+    ssos_main_cli_output_hex(value & 0xFF);
+}
+
+static void ss_cli_debug_print_key(int keycode, int ascii) {
+    ssos_main_cli_output_string("KEY 0x");
+    ss_cli_output_hex16(keycode & 0xFFFF);
+    ssos_main_cli_output_string(" ASCII 0x");
+    ss_cli_output_hex8(ascii);
+    ssos_main_cli_output_string(" ");
+
+    if (ascii >= 0x20 && ascii <= 0x7E) {
+        ssos_main_cli_output_char((char)0x27);
+        ssos_main_cli_output_char((char)ascii);
+        ssos_main_cli_output_char((char)0x27);
+    } else if (ascii == 0x1B) {
+        ssos_main_cli_output_string("ESC");
+    } else {
+        switch (ascii) {
+        case '\r':
+            ssos_main_cli_output_string("\\r");
+            break;
+        case '\n':
+            ssos_main_cli_output_string("\\n");
+            break;
+        case '\t':
+            ssos_main_cli_output_string("\\t");
+            break;
+        case '\b':
+            ssos_main_cli_output_string("\\b");
+            break;
+        case 0:
+            ssos_main_cli_output_string("null");
+            break;
+        default:
+            ssos_main_cli_output_string("0x");
+            ss_cli_output_hex8(ascii);
+            break;
+        }
+    }
+
+    ssos_main_cli_output_string("\n");
+}
 
 // CLIコマンドプロセッサ
 void ss_cli_processor(void) {
@@ -15,51 +65,44 @@ void ss_cli_processor(void) {
     int i;
 
     while (1) {
-        // プロンプトを表示
         ssos_main_cli_output_string(prompt);
 
-        // コマンド入力
         i = 0;
-        while (i < sizeof(command) - 1) {
-            // キー入力待ち
-            // while (_iocs_b_keysns() == 0) {
-            //     // ここで idle thread に渡すとか、hlt とかで待機させる
-            // }
-            // int keycode = _iocs_b_keyinp();
-            // // キーコードをASCIIコードに変換
-            // int c = x68k_keycode_to_ascii(keycode);
-            int c = _iocs_b_coninp();
-            ssos_main_cli_output_hex(c);
-            ssos_main_cli_output_string("\n");
+        while (i < (int)sizeof(command) - 1) {
+            int keycode = _iocs_b_keyinp();
+            int c = x68k_keycode_to_ascii(keycode);
 
-            // Enterキーが押されたらコマンドを実行
-            if (c == '\r') {
+            ss_cli_debug_print_key(keycode, c);
+
+            if ((keycode & 0xFFFF) == ESC_SCANCODE || c == 0x1B) {
+                ssos_main_cli_output_string("\n");
+                return;
+            }
+
+            if (c == 0) {
+                continue;
+            }
+
+            if (c == '\r' || c == '\n') {
                 command[i] = '\0';
                 ssos_main_cli_output_string("\n");
                 break;
             }
 
-            // Backspaceキーが押されたら1文字削除
-            if (c == '\b') {  // Backspace
+            if (c == '\b') {
                 if (i > 0) {
                     i--;
-                    // カーソルを1文字戻してスペースを出力し、再度カーソルを戻す
                     ssos_main_cli_output_string("\b \b");
                 }
                 continue;
             }
 
-            // 印字可能文字のみを処理
             if (c >= 0x20 && c <= 0x7E) {
-                command[i++] = c;
-                // 入力した文字を表示
-                ssos_main_cli_output_char(c);
-                // Note: 実際の文字出力はエコーバックしない
-                // ユーザーが入力した文字は画面に表示されない
+                command[i++] = (char)c;
+                ssos_main_cli_output_char((char)c);
             }
         }
 
-        // コマンドを実行
         if (i > 0) {
             ss_execute_command(command);
         }
