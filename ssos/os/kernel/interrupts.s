@@ -456,12 +456,12 @@ context_switch:
 key_input_handler:
     movem.l d0-d1/a0,-(sp)
 
-    lea     0xe9a000, a0
+    lea     0xe9a001, a0
     move.b  (a0), d0
     btst    #0, d0
     beq.s   .no_data
 
-    move.b  1(a0), d1
+    move.b  2(a0), d1
     jsr     ss_buffer_raw_key
 
 .no_data:
@@ -544,17 +544,18 @@ ss_key_counter:
 ss_context_switch_counter:
 	dc.l	0
 
-.global ss_kb_buffer, ss_kb_buffer_head, ss_kb_buffer_tail
-ss_kb_buffer:
-	.ds.b	64
-ss_kb_buffer_head:
-	dc.l	0
-ss_kb_buffer_tail:
-	dc.l	0
 
  	.section .bss
 	.even
 ss_save_data_base:
  	ds.b	1024
+
+.global ss_kb_buffer, ss_kb_buffer_head, ss_kb_buffer_tail
+ss_kb_buffer:
+	.ds.b	64
+ss_kb_buffer_head:
+	ds.l	0
+ss_kb_buffer_tail:
+	ds.l	0
 
 	.end interrupts
