@@ -461,7 +461,7 @@ key_input_handler:
 
     # キーボードデータが有効かチェック
     btst    #0, d0             /* データ有効ビットチェック */
-    beq.s   .no_key_data       /* データがなければスキップ */
+    bne.s   .no_key_data       /* データがなければスキップ */
 
     # データを処理してバッファに格納
     jsr     enqueue_raw        /* 生データをキューに追加 */
