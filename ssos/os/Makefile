@@ -5,23 +5,24 @@
 
 TARGET=SSOS.X
 SRCS= \
-  	kernel/premain.c \
-  	kernel/dma.c \
-  	kernel/kernel.c \
-  	kernel/memory.c \
-  	kernel/vram.c \
-  	kernel/ss_perf.c \
-  	kernel/ss_errors.c \
-  	kernel/stdlib_stubs.c \
-  	kernel/task_manager.c \
-  	kernel/input.c \
-  main/ssosmain.c \
-  main/cli.c \
-  util/printf.c \
-  util/string.c
+	kernel/premain.c \
+	kernel/dma.c \
+	kernel/kernel.c \
+	kernel/memory.c \
+	kernel/vram.c \
+	kernel/ss_perf.c \
+	kernel/ss_errors.c \
+	kernel/stdlib_stubs.c \
+	kernel/task_manager.c \
+	kernel/input.c \
+	main/ssosmain.c \
+	main/cli.c \
+	util/printf.c \
+	util/string.c
 ASRCS= \
 	kernel/entry.s \
-	kernel/interrupts.s
+	kernel/interrupts.s \
+	kernel/aux.s
 
 OBJS=$(ASRCS:.s=.o) $(SRCS:.c=.o)
 

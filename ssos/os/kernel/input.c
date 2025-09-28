@@ -259,8 +259,7 @@ int x68k_keycode_to_ascii(int keycode) {
         }
 
         bool uppercase = shift ^ caps;
-        ascii = uppercase ? letter_upper
-                           : (char)(letter_upper - 'A' + 'a');
+        ascii = uppercase ? letter_upper : (char)(letter_upper - 'A' + 'a');
         return ascii;
     }
 

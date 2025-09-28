@@ -455,16 +455,18 @@ context_switch:
 key_input_handler:
     movem.l d0/d1/a0,-(sp)
 
-    # キーボードデータを読み取り（MFP経由）
+    # ステータスを確認し、データが準備されている場合のみ読み取る
     move.l  #0xe88001, a0      /* MFP GPIP/GPDRアドレス */
-    move.b  (a0), d0           /* キーボードデータを取得 */
+    move.b  (a0), d0
+    btst    #0, d0             /* ビット0: 0=データ有効/1=未準備 */
+    bne.s   .no_key_data
 
-    # キーボードデータが有効かチェック
-    btst    #0, d0             /* データ有効ビットチェック */
-    bne.s   .no_key_data       /* データがなければスキップ */
+    # キーボードデータを読み取り（キーボード I/Oレジスタ経由）
+    move.l  #0xE9A001, a0      /* キーボードデータレジスタ */
+    move.b  (a0), d0           /* 生のメイク/ブレイクコード */
 
-    # データを処理してバッファに格納
-    jsr     enqueue_raw        /* 生データをキューに追加 */
+    # キューへ格納
+    jsr     enqueue_raw
 
 .no_key_data:
     # キーボード割り込みビット(ISRA bit 0)をクリア

@@ -17,6 +17,8 @@ void ssosmain() {
     _iocs_skey_mod(0, 0, 0);
     _iocs_ms_curon();
 
+    ss_init();
+
     ss_clear_vram_fast();
     ss_wait_for_clear_vram_completion();
 
@@ -30,7 +32,9 @@ void ssosmain() {
     ss_kb_init();
 
     // CLIコマンドプロセッサを起動
-    ss_cli_processor();
+    // ss_cli_processor();
+
+    ss_uninit();
 }
 
 // CLIコマンドプロセッサ（実装は cli.c に移動）

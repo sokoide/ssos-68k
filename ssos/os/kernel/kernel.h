@@ -55,13 +55,17 @@ extern const volatile uint32_t ss_save_data_base;
 extern void disable_interrupts(void);
 extern void enable_interrupts(void);
 
+// defined in kernel/aux.s
+extern void aux_init();
+extern void aux_puts(const char* s);
+
 // defined in kernel.c
 extern volatile uint8_t* mfp;
 
-// KEY_BUFFER_SIZE now defined in ss_config.h
+void ss_init();
+void ss_uninit();
 
 void ss_wait_for_vsync();
-
 int ss_handle_keys();
 void ss_kb_init();
 int ss_kb_read();

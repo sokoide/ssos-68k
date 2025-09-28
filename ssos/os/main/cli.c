@@ -4,7 +4,6 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
-
 #include <x68k/iocs.h>
 
 #include "../kernel/input.h"
@@ -66,6 +65,8 @@ void ss_cli_processor(void) {
     char prompt[] = "SSOS> ";
     int i;
 
+    aux_puts("SSOS >");
+
     while (1) {
         ssos_main_cli_output_string(prompt);
 
@@ -80,6 +81,7 @@ void ss_cli_processor(void) {
             }
 
             c = keycode & 0xFF;
+            ssos_main_cli_output_char('.');
 
             if (c == 0x1B) {
                 ssos_main_cli_output_string("[ESC]\n");

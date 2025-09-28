@@ -1,7 +1,6 @@
 #include "kernel.h"
 
-#include <x68k/iocs.h>
-
+#include "input.h"
 #include "ss_errors.h"
 
 // Define constants for external linkage - needed for code that takes addresses
@@ -28,8 +27,6 @@ struct KeyBuffer ss_kb;
 #define X68K_SC_CTRL 0x61
 #define X68K_SC_CAPS 0x60
 
-#define X68K_KEY_STATUS_READY 0x01
-
 volatile uint8_t ss_kb_mod_state;
 volatile bool ss_kb_overflowed;
 volatile bool ss_kb_esc_latched;
@@ -49,7 +46,7 @@ __attribute__((weak)) void ss_keyboard_hw_ack(void) {
     *tacr = 0x08;
 }
 
-static bool ss_kb_enqueue(int scancode) {
+static bool ss_kb_enqueue(int ascii_code) {
     if (ss_kb.idxw < 0 || ss_kb.idxw >= KEY_BUFFER_SIZE || ss_kb.idxr < 0 ||
         ss_kb.idxr >= KEY_BUFFER_SIZE) {
         ss_kb.idxw = 0;
@@ -64,13 +61,21 @@ static bool ss_kb_enqueue(int scancode) {
         return false;
     }
 
-    ss_kb.data[ss_kb.idxw] = scancode;
+    ss_kb.data[ss_kb.idxw] = ascii_code & 0xFF;
     ss_kb.idxw++;
     if (ss_kb.idxw >= KEY_BUFFER_SIZE) {
         ss_kb.idxw = 0;
     }
     ss_kb.len++;
     return true;
+}
+
+void ss_init() {
+    aux_init();
+    aux_puts("Hello\n");
+}
+
+void ss_uninit() {
 }
 
 void ss_wait_for_vsync() {
@@ -112,12 +117,20 @@ static int ss_keyboard_process_raw(uint8_t raw_scancode, bool pressed) {
 
     int modifiers = ss_kb_mod_state;
     int keycode = ((modifiers & 0xFF) << 8) | (raw_scancode & 0x7F);
+    int ascii = x68k_keycode_to_ascii(keycode);
 
-    if (!ss_kb_enqueue(keycode)) {
+    if (ascii == 0) {
+        if (raw_scancode == X68K_SC_ESC) {
+            ss_kb_esc_latched = true;
+        }
+        return 0;
+    }
+
+    if (!ss_kb_enqueue(ascii)) {
         ss_kb_overflowed = true;
     }
 
-    if (raw_scancode == X68K_SC_ESC) {
+    if (ascii == 0x1B) {
         ss_kb_esc_latched = true;
     }
 
@@ -125,18 +138,26 @@ static int ss_keyboard_process_raw(uint8_t raw_scancode, bool pressed) {
 }
 
 // Drain raw make/break codes from the X68000 keyboard controller. Called from
-// the keyboard interrupt handler context.
+// task context after raw bytes have been buffered by the interrupt handler.
 int ss_handle_keys() {
     int handled_keys = 0;
+    bool processed_any = false;
 
-    while ((ss_keyboard_hw_status() & X68K_KEY_STATUS_READY) != 0) {
-        uint8_t raw = ss_keyboard_hw_read_data();
-        bool pressed = (raw & 0x80) == 0;
-        uint8_t scancode = raw & 0x7F;
+    while (1) {
+        int raw = dequeue_raw();
+        if (raw < 0) {
+            break;
+        }
+        processed_any = true;
+        uint8_t raw_byte = (uint8_t)raw;
+        bool pressed = (raw_byte & 0x80) == 0;
+        uint8_t scancode = raw_byte & 0x7F;
         handled_keys += ss_keyboard_process_raw(scancode, pressed);
     }
 
-    ss_keyboard_hw_ack();
+    if (processed_any) {
+        ss_keyboard_hw_ack();
+    }
 
     if (ss_kb_overflowed) {
         ss_set_error(SS_ERROR_OUT_OF_BOUNDS, SS_SEVERITY_WARNING, __func__,
@@ -169,49 +190,24 @@ int ss_kb_read() {
     int key = -1;
 
     disable_interrupts();
-    key = dequeue_raw();
+
+    ss_handle_keys();
+
+    if (ss_kb.len == 0) {
+        enable_interrupts();
+        return -1;
+    }
+
+    key = ss_kb.data[ss_kb.idxr];
+    ss_kb.len--;
+    ss_kb.idxr++;
+    if (ss_kb.idxr >= KEY_BUFFER_SIZE) {
+        ss_kb.idxr = 0;
+    }
+
     enable_interrupts();
 
-    if (key >= 0) {
-        return key;
-    }
-    return -1;
-    // // Disable interrupts during buffer access to prevent race conditions
-    // disable_interrupts();
-
-    // // Check if buffer is empty
-    // if (ss_kb.len == 0) {
-    //     enable_interrupts();
-    //     return -1;
-    // }
-
-    // // Validate buffer state before reading
-    // if (ss_kb.idxr < 0 || ss_kb.idxr >= KEY_BUFFER_SIZE) {
-    //     // Reset corrupted index - restore length if it was valid
-    //     int saved_len = ss_kb.len;
-    //     ss_kb.idxr = 0;
-    //     ss_kb.len = 0;
-    //     enable_interrupts();
-    //     ss_set_error(SS_ERROR_OUT_OF_BOUNDS, SS_SEVERITY_ERROR, __func__,
-    //                   __FILE__, __LINE__,
-    //                   "Keyboard buffer read index corrupted");
-    //     return -1;
-    // }
-
-    // // Safe read from buffer
-    // key = ss_kb.data[ss_kb.idxr];
-    // ss_kb.len--;
-    // ss_kb.idxr++;
-
-    // // Wrap around buffer index
-    // if (ss_kb.idxr >= KEY_BUFFER_SIZE) {
-    //     ss_kb.idxr = 0;
-    // }
-
-    // // Re-enable interrupts
-    // enable_interrupts();
-
-    // return key;
+    return key;
 }
 
 bool ss_kb_is_empty() {
