@@ -57,7 +57,7 @@ int x68k_keycode_to_ascii(int keycode) {
         ascii = shift ? '!' : '1';
         break;
     case 0x03:
-        ascii = shift ? '"' : '2';
+        ascii = shift ? '@' : '2';
         break;
     case 0x04:
         ascii = shift ? '#' : '3';
@@ -69,19 +69,28 @@ int x68k_keycode_to_ascii(int keycode) {
         ascii = shift ? '%' : '5';
         break;
     case 0x07:
-        ascii = shift ? '&' : '6';
+        ascii = shift ? '^' : '6';
         break;
     case 0x08:
-        ascii = shift ? '\'' : '7';
+        ascii = shift ? '&' : '7';
         break;
     case 0x09:
-        ascii = shift ? '(' : '8';
+        ascii = shift ? '*' : '8';
         break;
     case 0x0A:
-        ascii = shift ? ')' : '9';
+        ascii = shift ? '(' : '9';
         break;
     case 0x0B:
-        ascii = shift ? '*' : '0';
+        ascii = shift ? ')' : '0';
+        break;
+    case 0x0C:
+        ascii = shift ? '_' : '-';
+        break;
+    case 0x4A:
+        ascii = shift ? '+' : '=';
+        break;
+    case 0x0F: // backspace
+        ascii = 8;
         break;
     // buggy below
     case 0x14:
