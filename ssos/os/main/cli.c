@@ -81,11 +81,10 @@ void ss_cli_processor(void) {
             }
 
             c = keycode & 0xFF;
-            aux_puts("ssos_main_cli_output_char\n");
-            ssos_main_cli_output_char('.');
+            ssos_main_cli_output_string(".");
 
             if (c == 0x1B) {
-                ssos_main_cli_output_string("[ESC]\n");
+                // ssos_main_cli_output_string("[ESC]\n");
                 return;
             }
 
@@ -95,30 +94,33 @@ void ss_cli_processor(void) {
 
             if (c == '\r' || c == '\n') {
                 command[i] = '\0';
-                ssos_main_cli_output_string("\n");
+                // ssos_main_cli_output_string("\n");
                 break;
             }
 
             if (c == '\b') {
                 if (i > 0) {
                     i--;
-                    ssos_main_cli_output_string("\b \b");
+                    // ssos_main_cli_output_string("\b \b");
                 }
                 continue;
             }
 
             if (c >= 0x20 && c <= 0x7E) {
                 command[i++] = (char)c;
-                ssos_main_cli_output_char((char)c);
+                // ssos_main_cli_output_char((char)c);
             }
         }
 
         // Show we got a key
-        ssos_main_cli_output_string("KEY!\r\n");
+        // ssos_main_cli_output_string("KEY!\r\n");
 
         if (i > 0) {
-            ss_execute_command(command);
+            // ss_execute_command(command);
         }
+
+        // TODO:
+        return;
     }
 }
 

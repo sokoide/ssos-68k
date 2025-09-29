@@ -134,15 +134,18 @@ int ss_handle_keys() {
         if (raw < 0) {
             break;
         }
-        // TODO: key input is detected, but the key code is not correctly identified yet
+        // TODO: key input is detected, but the key code is not correctly
+        // identified yet
         aux_puts(".");
+        char buff[64];
+        sprintf(buff, "0x%04x\0", raw);
+        aux_puts(buff);
         processed_any = true;
         uint8_t raw_byte = (uint8_t)raw;
         bool pressed = (raw_byte & 0x80) == 0;
         uint8_t scancode = raw_byte & 0x7F;
         handled_keys += ss_keyboard_process_raw(scancode, pressed);
     }
-
 
     if (ss_kb_overflowed) {
         ss_set_error(SS_ERROR_OUT_OF_BOUNDS, SS_SEVERITY_WARNING, __func__,
