@@ -71,6 +71,8 @@ static bool ss_kb_enqueue(int ascii_code) {
     return true;
 }
 
+// this function is buggy
+// scan code for ESC is 1
 static int ss_keyboard_process_raw(uint8_t raw_scancode, bool pressed) {
     switch (raw_scancode) {
     case X68K_SC_LSHIFT:
@@ -134,16 +136,16 @@ int ss_handle_keys() {
         if (raw < 0) {
             break;
         }
-        // TODO: key input is detected, but the key code is not correctly
-        // identified yet
-        aux_puts(".");
-        char buff[64];
-        sprintf(buff, "0x%04x\0", raw);
-        aux_puts(buff);
+        char buff[128];
+
         processed_any = true;
         uint8_t raw_byte = (uint8_t)raw;
         bool pressed = (raw_byte & 0x80) == 0;
         uint8_t scancode = raw_byte & 0x7F;
+
+        sprintf(buff, "raw:%02X scan:0x%02X pressed:%d.\n", raw_byte, scancode,
+                pressed);
+        aux_puts(buff);
         handled_keys += ss_keyboard_process_raw(scancode, pressed);
     }
 
