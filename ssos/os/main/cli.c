@@ -81,7 +81,7 @@ void ss_cli_processor(void) {
             }
 
             c = keycode & 0xFF;
-            ssos_main_cli_output_string(".");
+            ssos_main_cli_output_char((char)c);
 
             if (c == 0x1B) {
                 ssos_main_cli_output_string("[ESC]\n");
