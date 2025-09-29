@@ -83,11 +83,17 @@ extern volatile uint8_t ss_kb_mod_state;
 extern volatile bool ss_kb_overflowed;
 extern volatile bool ss_kb_esc_latched;
 
+// mods
 #define SS_KB_MOD_SHIFT 0x01
 #define SS_KB_MOD_CTRL 0x02
 #define SS_KB_MOD_CAPS 0x04
 
-#define X68K_SC_ESC 0x6D
+// scan codes
+#define X68K_SC_ESC 0x01
+#define X68K_SC_SHIFT 0x70
+#define X68K_SC_CTRL 0x71
+#define X68K_SC_CAPS 0x5D
+
 
 // defined in task_manager.c
 typedef enum {

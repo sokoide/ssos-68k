@@ -50,36 +50,40 @@ int x68k_keycode_to_ascii(int keycode) {
     }
 
     switch (scancode) {
-    case 0x0B:
-        ascii = shift ? '!' : '1';
+    case 0x01: // ESC
+        ascii = 0x1B;
         break;
     case 0x02:
-        ascii = shift ? '"' : '2';
+        ascii = shift ? '!' : '1';
         break;
     case 0x03:
-        ascii = shift ? '#' : '3';
+        ascii = shift ? '"' : '2';
         break;
     case 0x04:
-        ascii = shift ? '$' : '4';
+        ascii = shift ? '#' : '3';
         break;
     case 0x05:
-        ascii = shift ? '%' : '5';
+        ascii = shift ? '$' : '4';
         break;
     case 0x06:
-        ascii = shift ? '&' : '6';
+        ascii = shift ? '%' : '5';
         break;
     case 0x07:
-        ascii = shift ? '\'' : '7';
+        ascii = shift ? '&' : '6';
         break;
     case 0x08:
-        ascii = shift ? '(' : '8';
+        ascii = shift ? '\'' : '7';
         break;
     case 0x09:
-        ascii = shift ? ')' : '9';
+        ascii = shift ? '(' : '8';
         break;
     case 0x0A:
+        ascii = shift ? ')' : '9';
+        break;
+    case 0x0B:
         ascii = shift ? '*' : '0';
         break;
+    // buggy below
     case 0x14:
         ascii = 'q';
         letter_upper = 'Q';
@@ -209,9 +213,6 @@ int x68k_keycode_to_ascii(int keycode) {
         ascii = 'm';
         letter_upper = 'M';
         is_letter = true;
-        break;
-    case 0x01:
-        ascii = '\r';
         break;
     case 0x0E:
         ascii = '\b';
