@@ -84,7 +84,7 @@ void ss_cli_processor(void) {
             ssos_main_cli_output_string(".");
 
             if (c == 0x1B) {
-                // ssos_main_cli_output_string("[ESC]\n");
+                ssos_main_cli_output_string("[ESC]\n");
                 return;
             }
 
@@ -118,9 +118,6 @@ void ss_cli_processor(void) {
         if (i > 0) {
             // ss_execute_command(command);
         }
-
-        // TODO:
-        return;
     }
 }
 

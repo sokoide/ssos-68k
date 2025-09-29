@@ -23,7 +23,6 @@ struct KeyBuffer ss_kb;
 // These values follow the Sharp X68000 technical reference; adjust if the
 // target hardware uses a different layout.
 volatile uint8_t ss_kb_mod_state;
-volatile bool ss_kb_esc_latched;
 volatile bool ss_kb_overflowed;
 
 void ss_init() {
@@ -99,19 +98,8 @@ static int ss_keyboard_process_raw(uint8_t raw_scancode, bool pressed) {
     int keycode = ((modifiers & 0xFF) << 8) | (raw_scancode & 0x7F);
     int ascii = x68k_keycode_to_ascii(keycode);
 
-    if (ascii == 0) {
-        if (raw_scancode == X68K_SC_ESC) {
-            ss_kb_esc_latched = true;
-        }
-        return 0;
-    }
-
     if (!ss_kb_enqueue(ascii)) {
         ss_kb_overflowed = true;
-    }
-
-    if (ascii == 0x1B) {
-        ss_kb_esc_latched = true;
     }
 
     return 1;
@@ -148,14 +136,6 @@ int ss_handle_keys() {
         ss_kb_overflowed = false;
     }
 
-    if (ss_kb_esc_latched) {
-        ss_set_error(SS_ERROR_SYSTEM_ERROR, SS_SEVERITY_INFO, __func__,
-                     __FILE__, __LINE__,
-                     "ESC key pressed - system shutdown requested");
-        ss_kb_esc_latched = false;
-        return -1;
-    }
-
     return handled_keys;
 }
 
@@ -165,7 +145,6 @@ void ss_kb_init() {
     ss_kb.len = 0;
     ss_kb_mod_state = 0;
     ss_kb_overflowed = false;
-    ss_kb_esc_latched = false;
 }
 
 int ss_kb_read() {

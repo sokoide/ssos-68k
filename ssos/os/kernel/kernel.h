@@ -81,7 +81,6 @@ struct KeyBuffer {
 extern struct KeyBuffer ss_kb;
 extern volatile uint8_t ss_kb_mod_state;
 extern volatile bool ss_kb_overflowed;
-extern volatile bool ss_kb_esc_latched;
 
 // mods
 #define SS_KB_MOD_SHIFT 0x01
