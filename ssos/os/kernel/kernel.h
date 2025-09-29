@@ -58,6 +58,7 @@ extern void enable_interrupts(void);
 // defined in kernel/aux.s
 extern void aux_init();
 extern void aux_puts(const char* s);
+extern void hlt(void);
 
 // defined in kernel.c
 extern volatile uint8_t* mfp;
@@ -92,7 +93,6 @@ extern volatile bool ss_kb_overflowed;
 #define X68K_SC_SHIFT 0x70
 #define X68K_SC_CTRL 0x71
 #define X68K_SC_CAPS 0x5D
-
 
 // defined in task_manager.c
 typedef enum {

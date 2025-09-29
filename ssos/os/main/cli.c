@@ -76,7 +76,7 @@ void ss_cli_processor(void) {
             int keycode = ss_kb_read();
             if (keycode == -1) {
                 // Small delay to allow interrupt processing
-                for (volatile int j = 0; j < 1000; j++);
+                for (volatile int j = 0; j < 100; j++) hlt();
                 continue;
             }
 
@@ -111,9 +111,6 @@ void ss_cli_processor(void) {
                 // ssos_main_cli_output_char((char)c);
             }
         }
-
-        // Show we got a key
-        // ssos_main_cli_output_string("KEY!\r\n");
 
         if (i > 0) {
             // ss_execute_command(command);

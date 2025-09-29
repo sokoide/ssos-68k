@@ -50,7 +50,7 @@ int x68k_keycode_to_ascii(int keycode) {
     }
 
     switch (scancode) {
-    case 0x01: // ESC
+    case 0x01:  // ESC
         ascii = 0x1B;
         break;
     case 0x02:

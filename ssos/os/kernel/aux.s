@@ -51,3 +51,10 @@ aux_puts:
 .done:
     movem.l (sp)+, d1/a0
     rts
+
+# TODO: move to a different file
+    .globl hlt
+hlt:
+    # Supervisor + IPL=3
+    stop    #0x2300
+    rts
