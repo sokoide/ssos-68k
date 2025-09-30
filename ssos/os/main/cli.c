@@ -56,7 +56,7 @@ static void ss_cli_debug_print_key(int keycode, int ascii) {
         }
     }
 
-    ssos_main_cli_output_string("\n");
+    ssos_main_cli_output_string("\r\n");
 }
 
 // CLIコマンドプロセッサ
@@ -81,10 +81,8 @@ void ss_cli_processor(void) {
             }
 
             c = keycode & 0xFF;
-            ssos_main_cli_output_char((char)c);
-
             if (c == 0x1B) {
-                ssos_main_cli_output_string("[ESC]\n");
+                ssos_main_cli_output_string("[ESC]\r\n");
                 return;
             }
 
@@ -94,7 +92,7 @@ void ss_cli_processor(void) {
 
             if (c == '\r' || c == '\n') {
                 command[i] = '\0';
-                // ssos_main_cli_output_string("\n");
+                ssos_main_cli_output_string("\r\n");
                 break;
             }
 
@@ -108,12 +106,12 @@ void ss_cli_processor(void) {
 
             if (c >= 0x20 && c <= 0x7E) {
                 command[i++] = (char)c;
-                // ssos_main_cli_output_char((char)c);
+                ssos_main_cli_output_char((char)c);
             }
         }
 
         if (i > 0) {
-            // ss_execute_command(command);
+            ss_execute_command(command);
         }
     }
 }
@@ -121,6 +119,7 @@ void ss_cli_processor(void) {
 // コマンド実行
 bool ss_execute_command(const char* command) {
     char cmd_copy[256];
+
     strcpy(cmd_copy, command);
 
     // コマンドの先頭の空白をスキップ
@@ -141,12 +140,15 @@ bool ss_execute_command(const char* command) {
             ss_cmd_echo("");
         }
         return true;
+    } else if (strcmp(token, "version") == 0) {
+        ssos_main_cli_output_string("ssos version 0.0.1\r\n");
+        return true;
     }
 
     // 不明なコマンド
     ssos_main_cli_output_string("Unknown command: ");
     ssos_main_cli_output_string(token);
-    ssos_main_cli_output_string("\n");
+    ssos_main_cli_output_string("\r\n");
     return false;
 }
 
@@ -179,8 +181,8 @@ void ssos_main_cli_output_string(const char* str) {
 void ss_cmd_echo(const char* args) {
     if (args && args[0] != '\0') {
         ssos_main_cli_output_string(args);
-        ssos_main_cli_output_string("\n");
+        ssos_main_cli_output_string("\r\n");
     } else {
-        ssos_main_cli_output_string("\n");
+        ssos_main_cli_output_string("\r\n");
     }
 }

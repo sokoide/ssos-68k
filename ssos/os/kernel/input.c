@@ -117,6 +117,7 @@ static const KeyMapping key_map[] = {
     // Special keys
     {0x0f, KEY_TYPE_FIXED, .value.fixed = {'\b'}},  // Backspace
     {0x10, KEY_TYPE_FIXED, .value.fixed = {'\t'}},  // Tab
+    {0x1d, KEY_TYPE_FIXED, .value.fixed = {'\n'}},  // Enter
     {0x35, KEY_TYPE_FIXED, .value.fixed = {' '}},   // Space
 
     // Symbol keys
