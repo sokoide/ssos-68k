@@ -17,6 +17,15 @@ static void ss_damage_draw_layer_region(const Layer* layer, uint16_t x, uint16_t
 DamageBuffer g_damage_buffer;
 DamagePerfStats g_damage_perf;
 
+// Global occlusion configuration
+OcclusionConfig g_occlusion_config = {
+    .full_occlusion_threshold = 95,    // 95% occlusion needed to mark as fully occluded
+    .split_threshold = 50,             // 50% occlusion needed to consider splitting
+    .max_enhanced_regions = 8,         // Maximum number of enhanced regions to process
+    .performance_samples = 0,
+    .avg_processing_time = 0
+};
+
 // Initialize the damage buffer system
 void ss_damage_init() {
     // Initialize buffer dimensions
@@ -256,41 +265,54 @@ void ss_damage_draw_regions() {
 
 // Optimize damage regions by removing occluded areas
 void ss_damage_optimize_for_occlusion() {
-    // TEMPORARILY DISABLED: For debugging damage system
-    // The current occlusion algorithm is too aggressive and blocks all updates
-    // TODO: Implement a more nuanced occlusion algorithm
-    
-    // For now, we'll just return without doing any optimization
-    return;
-    
-    // Original implementation below - commented out for debugging
-    // Check each region against upper layers for occlusion
+    uint32_t start_time = ss_timerd_counter;
+    int regions_optimized = 0;
+    int regions_removed = 0;
+
+    // Process each damage region
     for (int i = 0; i < g_damage_buffer.region_count; i++) {
         DamageRect* region = &g_damage_buffer.regions[i];
-        if (!region->needs_redraw) continue;
-        
-        bool fully_occluded = false;
-        
-        // Check against upper layers (higher z-order)
-        for (int layer_idx = ss_layer_mgr->topLayerIdx - 1; layer_idx >= 0; layer_idx--) {
-            Layer* upper_layer = ss_layer_mgr->zLayers[layer_idx];
-            
-            // Check if upper layer completely covers this damage region
-            if (upper_layer->x <= region->x && 
-                upper_layer->y <= region->y &&
-                upper_layer->x + upper_layer->w >= region->x + region->w &&
-                upper_layer->y + upper_layer->h >= region->y + region->h &&
-                (upper_layer->attr & LAYER_ATTR_VISIBLE)) {
-                
-                fully_occluded = true;
-                break;
-            }
-        }
-        
-        if (fully_occluded) {
+        if (!region->needs_redraw || region->w == 0 || region->h == 0) continue;
+
+        // Calculate occlusion percentage and get occluding layers
+        uint8_t occluding_layers[MAX_LAYERS];
+        uint8_t layer_count;
+        uint32_t occlusion_percentage = ss_damage_calculate_occlusion_fraction(
+            region, occluding_layers, &layer_count);
+
+        // Case 1: Fully occluded (above threshold) - remove region
+        if (occlusion_percentage >= g_occlusion_config.full_occlusion_threshold) {
             region->needs_redraw = false;
+            regions_removed++;
+            continue;
         }
+
+        // Case 2: Partially occluded but worth keeping - mark for potential future optimization
+        if (occlusion_percentage >= g_occlusion_config.split_threshold) {
+            // For now, we keep the region as-is
+            // TODO: Implement region splitting in Phase 2
+            regions_optimized++;
+        }
+
+        // Case 3: Minimal occlusion (< split_threshold) - keep region unchanged
+        // This is the common case where optimization would cost more than benefit
     }
+
+    // Update performance metrics
+    uint32_t processing_time = ss_timerd_counter - start_time;
+    g_occlusion_config.performance_samples++;
+
+    // Simple moving average for processing time
+    if (g_occlusion_config.performance_samples == 1) {
+        g_occlusion_config.avg_processing_time = processing_time;
+    } else {
+        g_occlusion_config.avg_processing_time =
+            (g_occlusion_config.avg_processing_time * (g_occlusion_config.performance_samples - 1) + processing_time)
+            / g_occlusion_config.performance_samples;
+    }
+
+    // Update performance statistics
+    g_damage_perf.total_regions_processed += regions_optimized + regions_removed;
 }
 
 // Check if two damage rectangles overlap
@@ -363,6 +385,24 @@ void ss_damage_perf_update(uint32_t pixels_drawn, bool used_dma) {
     }
 }
 
+// Report occlusion optimization statistics
+void ss_damage_occlusion_report() {
+    // This would display occlusion statistics in a real implementation
+    // For now, we can track the metrics internally
+    // The performance impact can be measured by comparing regions processed vs regions drawn
+
+    // Calculate occlusion efficiency: if avg processing time is low and regions are removed,
+    // then the optimization is effective
+    if (g_occlusion_config.performance_samples > 0) {
+        // Simple efficiency metric (could be enhanced)
+        uint32_t efficiency = g_damage_perf.total_regions_processed /
+                             (g_occlusion_config.avg_processing_time + 1);
+
+        // This data could be used to adapt thresholds in future versions
+        // For now, it's collected for debugging purposes
+    }
+}
+
 // Helper function to calculate overlap area
 static int ss_damage_overlap_area(const DamageRect* rect, uint16_t x, uint16_t y, uint16_t w, uint16_t h) {
     int x1 = (rect->x > x) ? rect->x : x;
@@ -390,15 +430,80 @@ static void ss_damage_calculate_layer_region_overlap(const Layer* layer, const D
                                                     uint16_t* overlap_w, uint16_t* overlap_h) {
     uint16_t x1 = (layer->x > region->x) ? layer->x : region->x;
     uint16_t y1 = (layer->y > region->y) ? layer->y : region->y;
-    uint16_t x2 = ((layer->x + layer->w) < (region->x + region->w)) ? 
+    uint16_t x2 = ((layer->x + layer->w) < (region->x + region->w)) ?
                    (layer->x + layer->w) : (region->x + region->w);
-    uint16_t y2 = ((layer->y + layer->h) < (region->y + region->h)) ? 
+    uint16_t y2 = ((layer->y + layer->h) < (region->y + region->h)) ?
                    (layer->y + layer->h) : (region->y + region->h);
-    
+
     *overlap_x = x1 - layer->x;  // Convert to layer-local coordinates
     *overlap_y = y1 - layer->y;
     *overlap_w = x2 - x1;
     *overlap_h = y2 - y1;
+}
+
+// Calculate the percentage of a damage region that is occluded by upper layers
+uint32_t ss_damage_calculate_occlusion_fraction(const DamageRect* region,
+                                                uint8_t* occluding_layers,
+                                                uint8_t* layer_count) {
+    uint32_t total_occluded_area = 0;
+    uint32_t region_area = region->w * region->h;
+
+    if (region_area == 0) return 0;
+
+    *layer_count = 0;
+
+    // Check against all upper layers (higher z-order)
+    for (int layer_idx = 0; layer_idx < ss_layer_mgr->topLayerIdx; layer_idx++) {
+        Layer* upper_layer = ss_layer_mgr->zLayers[layer_idx];
+
+        // Skip if this layer is not visible
+        if (!(upper_layer->attr & LAYER_ATTR_VISIBLE)) continue;
+
+        // Calculate overlap rectangle
+        uint16_t x1 = (upper_layer->x > region->x) ? upper_layer->x : region->x;
+        uint16_t y1 = (upper_layer->y > region->y) ? upper_layer->y : region->y;
+        uint16_t x2 = ((upper_layer->x + upper_layer->w) < (region->x + region->w)) ?
+                       (upper_layer->x + upper_layer->w) : (region->x + region->w);
+        uint16_t y2 = ((upper_layer->y + upper_layer->h) < (region->y + region->h)) ?
+                       (upper_layer->y + upper_layer->h) : (region->y + region->h);
+
+        // Check if there's an overlap
+        if (x2 > x1 && y2 > y1) {
+            uint32_t overlap_area = (x2 - x1) * (y2 - y1);
+            total_occluded_area += overlap_area;
+
+            // Store the occluding layer index (up to our limit)
+            if (*layer_count < MAX_LAYERS) {
+                occluding_layers[*layer_count] = layer_idx;
+                (*layer_count)++;
+            }
+        }
+    }
+
+    // Cap the occluded area to prevent >100% due to overlapping layers
+    if (total_occluded_area > region_area) {
+        total_occluded_area = region_area;
+    }
+
+    // Calculate percentage (0-100)
+    return (total_occluded_area * 100) / region_area;
+}
+
+// Check if a region should be split based on occlusion percentage
+bool ss_damage_should_split_region(uint32_t occlusion_percentage) {
+    return occlusion_percentage >= g_occlusion_config.split_threshold &&
+           occlusion_percentage < g_occlusion_config.full_occlusion_threshold;
+}
+
+// Check if a region is fully occluded (above threshold)
+bool ss_damage_is_region_fully_occluded(const DamageRect* region) {
+    uint8_t occluding_layers[MAX_LAYERS];
+    uint8_t layer_count;
+
+    uint32_t occlusion_percentage = ss_damage_calculate_occlusion_fraction(
+        region, occluding_layers, &layer_count);
+
+    return occlusion_percentage >= g_occlusion_config.full_occlusion_threshold;
 }
 
 // Draw a specific region of a layer

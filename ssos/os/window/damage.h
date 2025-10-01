@@ -13,6 +13,16 @@ typedef struct {
     bool needs_redraw;       // Whether this region needs redrawing
 } DamageRect;
 
+// Enhanced damage rectangle with occlusion tracking
+typedef struct {
+    DamageRect base;                    // Base damage rectangle
+    uint32_t occlusion_percentage;      // Percentage of area occluded (0-100)
+    bool is_partially_occluded;         // True if 0% < occlusion < 100%
+    uint8_t occluding_layer_count;      // Number of layers occluding this region
+    // Store indices of occluding layers for quick reference
+    uint8_t occluding_layer_indices[MAX_LAYERS];
+} EnhancedDamageRect;
+
 // Damage buffer structure for efficient dirty region management
 typedef struct {
     uint8_t* buffer;                    // Offscreen buffer (384KB for 768x512)
@@ -39,6 +49,24 @@ void ss_damage_clear_regions();
 void ss_damage_draw_regions();
 void ss_damage_optimize_for_occlusion();
 
+// Occlusion optimization functions
+uint32_t ss_damage_calculate_occlusion_fraction(const DamageRect* region,
+                                                uint8_t* occluding_layers,
+                                                uint8_t* layer_count);
+bool ss_damage_should_split_region(uint32_t occlusion_percentage);
+bool ss_damage_is_region_fully_occluded(const DamageRect* region);
+
+// Occlusion configuration for adaptive thresholds
+typedef struct {
+    uint32_t full_occlusion_threshold;      // Default: 95%
+    uint32_t split_threshold;               // Default: 50%
+    uint32_t max_enhanced_regions;          // Default: 8
+    uint32_t performance_samples;
+    uint32_t avg_processing_time;
+} OcclusionConfig;
+
+extern OcclusionConfig g_occlusion_config;
+
 // Utility functions
 bool ss_damage_rects_overlap(const DamageRect* a, const DamageRect* b);
 void ss_damage_merge_rects(DamageRect* dest, const DamageRect* src);
@@ -58,6 +86,9 @@ extern DamagePerfStats g_damage_perf;
 void ss_damage_perf_reset();
 void ss_damage_perf_report();
 void ss_damage_perf_update(uint32_t pixels_drawn, bool used_dma);
+
+// Occlusion performance reporting
+void ss_damage_occlusion_report();
 
 // Alignment helpers for 8-pixel boundaries (X68000 optimal)
 static inline uint16_t ss_damage_align8(uint16_t value) {
