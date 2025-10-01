@@ -202,33 +202,6 @@ void ss_damage_clear_regions() {
 }
 
 // Draw all damage regions - main drawing loop
-// External declarations for debug variables (defined in ssosmain.c)
-extern uint32_t debug_damage_count;
-extern uint32_t debug_occlusion_count;
-
-// DEBUG: Damage system debugging functions
-void ss_debug_damage_info() {
-    // Display damage buffer statistics
-    if (g_damage_buffer.region_count > 0) {
-        // In a real implementation, you might display:
-        // sprintf(debug_msg, "Damage regions: %d", g_damage_buffer.region_count);
-        // For now, we can increment counters for debugging
-        debug_damage_count++;
-    }
-}
-
-void ss_debug_occlusion_info() {
-    // Track occlusion optimizations
-    debug_occlusion_count++;
-}
-
-// Display debug info on screen (placeholder for implementation)
-void ss_debug_display_stats() {
-    // This would overlay debug info on screen
-    // Currently just increment counters
-    debug_damage_count++;
-}
-
 void ss_damage_draw_regions() {
     SS_PERF_START_MEASUREMENT(SS_PERF_DAMAGE_DRAW);
     

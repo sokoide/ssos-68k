@@ -15,14 +15,6 @@
 
 #include "damage.h"
 
-// DEBUG: Add damage system debugging
-uint32_t debug_damage_count = 0;
-uint32_t debug_occlusion_count = 0;
-
-// External declarations for damage system debugging
-extern void ss_debug_damage_info();
-extern void ss_debug_occlusion_info();
-extern void ss_debug_display_stats();
 
 void ssosmain() {
     int c;
@@ -86,9 +78,7 @@ void ssosmain() {
     // Reset damage buffer after initial complete draw to clear any accumulated regions
     ss_damage_reset();
     
-    // DEBUG: Log damage buffer reset
-    // debug_damage_count = 0; // Reset counter when damage buffer is reset
-while (true) {
+  while (true) {
     // Performance monitoring: Start frame timing
     SS_PERF_START_MEASUREMENT(SS_PERF_FRAME_TIME);
 

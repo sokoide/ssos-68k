@@ -74,36 +74,6 @@ void ss_layer_set(Layer* layer, uint8_t* vram, uint16_t x, uint16_t y,
     }
 }
 
-void ss_layer_set_z(Layer* layer, uint16_t z) {
-    // uint16_t prev = layer->z;
-
-    // TODO:
-    // if (z < 0) {
-    //     z = 0;
-    // }
-    // if (z > ss_layer_mgr->topLayerIdx + 1) {
-    //     z = ss_layer_mgr->topLayerIdx + 1;
-    // }
-    // layer->z = z;
-
-    // // reorder zLayers
-    // if (prev > z) {
-    //     // lower than the previous z
-    //     for (int i = prev; i > z; i--) {
-    //         ss_layer_mgr->zLayers[i] = ss_layer_mgr->zLayers[i - 1];
-    //         ss_layer_mgr->zLayers[i]->z = i;
-    //     }
-    //     ss_layer_mgr->zLayers[z] = layer;
-    // } else if (prev < z) {
-    //     // higher than the previous z
-    //     for (int i = prev; i < z; i++) {
-    //         ss_layer_mgr->zLayers[i] = ss_layer_mgr->zLayers[i + 1];
-    //         ss_layer_mgr->zLayers[i]->z = i;
-    //     }
-    //     ss_layer_mgr->zLayers[z] = layer;
-    // }
-    // ss_layer_draw();
-}
 
 void ss_all_layer_draw() { ss_all_layer_draw_rect(0, 0, WIDTH, HEIGHT); }
 
@@ -256,16 +226,7 @@ void ss_layer_draw_rect_layer_dma(Layer* l, uint8_t* src, uint8_t* dst,
         dma_clear();
 }
 
-/*
-void ss_layer_move(Layer* layer, uint16_t x, uint16_t y) {
-    uint16_t prevx = layer->x;
-    uint16_t prevy = layer->y;
-    layer->x = x;
-    layer->y = y;
-    ss_all_layer_draw_rect(prevx, prevy, prevx + layer->w, prevy + layer->h);
-    ss_all_layer_draw_rect(x, y, x + layer->w, y + layer->h);
-}
-*/
+
 
 // Mark a rectangular region of a layer as dirty (needs redrawing)
 void ss_layer_mark_dirty(Layer* layer, uint16_t x, uint16_t y, uint16_t w, uint16_t h) {
@@ -399,22 +360,3 @@ void ss_layer_invalidate(Layer* layer) {
     layer->needs_redraw = 1;
 }
 
-void ss_layer_update_map(Layer* layer) {
-    uint8_t lid = 0;
-    if (NULL != layer) {
-        lid = layer - ss_layer_mgr->layers;
-    }
-
-    uint16_t map_width = WIDTH >> 3;  // WIDTH / 8
-    uint16_t layer_y_end = (layer->y + layer->h) >> 3;
-    uint16_t layer_x_end = (layer->x + layer->w) >> 3;
-
-    for (int i = lid; i < ss_layer_mgr->topLayerIdx; i++) {
-        for (int dy = layer->y >> 3; dy < layer_y_end; dy++) {
-            uint8_t* map_row = &ss_layer_mgr->map[dy * map_width];
-            for (int dx = layer->x >> 3; dx < layer_x_end; dx++) {
-                map_row[dx] = i;
-            }
-        }
-    }
-}
