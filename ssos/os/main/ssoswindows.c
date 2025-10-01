@@ -93,7 +93,7 @@ void update_layer_2(Layer* l) {
     sprintf(szMessage, "A: V-DISP counter: %9d (vsync count)", ss_timera_counter);
     if (ss_print_v_smart(l->vram, l->w, l->h, fg, bg, x, y, szMessage, prev_timera)) {
         strcpy(prev_timera, szMessage);
-        ss_layer_mark_dirty(l, x, y, mystrlen(szMessage) * 8, 16);
+        ss_damage_add_rect(l->x + x, l->y + y, mystrlen(szMessage) * 8, 16);
         dirty_regions++;
     }
     y += 16;
@@ -101,7 +101,7 @@ void update_layer_2(Layer* l) {
     sprintf(szMessage, "D: 1000Hz timer:   %9d (every 1ms)", ss_timerd_counter);
     if (ss_print_v_smart(l->vram, l->w, l->h, fg, bg, x, y, szMessage, prev_timerd)) {
         strcpy(prev_timerd, szMessage);
-        ss_layer_mark_dirty(l, x, y, mystrlen(szMessage) * 8, 16);
+        ss_damage_add_rect(l->x + x, l->y + y, mystrlen(szMessage) * 8, 16);
         dirty_regions++;
     }
     y += 16;
@@ -109,7 +109,7 @@ void update_layer_2(Layer* l) {
     sprintf(szMessage, "global_counter:    %9d (every 1ms)", global_counter);
     if (ss_print_v_smart(l->vram, l->w, l->h, fg, bg, x, y, szMessage, prev_global)) {
         strcpy(prev_global, szMessage);
-        ss_layer_mark_dirty(l, x, y, mystrlen(szMessage) * 8, 16);
+        ss_damage_add_rect(l->x + x, l->y + y, mystrlen(szMessage) * 8, 16);
         dirty_regions++;
     }
     y += 16;
@@ -117,7 +117,7 @@ void update_layer_2(Layer* l) {
     sprintf(szMessage, "Context Switch:    %9d (not implemented yet)", ss_context_switch_counter);
     if (ss_print_v_smart(l->vram, l->w, l->h, fg, bg, x, y, szMessage, prev_context)) {
         strcpy(prev_context, szMessage);
-        ss_layer_mark_dirty(l, x, y, mystrlen(szMessage) * 8, 16);
+        ss_damage_add_rect(l->x + x, l->y + y, mystrlen(szMessage) * 8, 16);
         dirty_regions++;
     }
     y += 16;
@@ -142,7 +142,7 @@ void update_layer_2(Layer* l) {
     sprintf(szMessage, "ssp: 0x%08x, pc: 0x%08x, sr: 0x%04x", ssp, pc, sr);
     if (ss_print_v_smart(l->vram, l->w, l->h, fg, bg, x, y, szMessage, prev_ssp)) {
         strcpy(prev_ssp, szMessage);
-        ss_layer_mark_dirty(l, x, y, mystrlen(szMessage) * 8, 16);
+        ss_damage_add_rect(l->x + x, l->y + y, mystrlen(szMessage) * 8, 16);
         dirty_regions++;
     }
     y += 16;
@@ -153,7 +153,7 @@ void update_layer_2(Layer* l) {
     sprintf(szMessage, ".text   addr: 0x%08x-0x%08x, size: %d", base, base + sz - 1, sz);
     if (ss_print_v_smart(l->vram, l->w, l->h, fg, bg, x, y, szMessage, prev_text)) {
         strcpy(prev_text, szMessage);
-        ss_layer_mark_dirty(l, x, y, mystrlen(szMessage) * 8, 16);
+        ss_damage_add_rect(l->x + x, l->y + y, mystrlen(szMessage) * 8, 16);
         dirty_regions++;
     }
     y += 16;
@@ -162,7 +162,7 @@ void update_layer_2(Layer* l) {
     sprintf(szMessage, ".data   addr: 0x%08x-0x%08x, size: %d", base, base + sz - 1, sz);
     if (ss_print_v_smart(l->vram, l->w, l->h, fg, bg, x, y, szMessage, prev_data)) {
         strcpy(prev_data, szMessage);
-        ss_layer_mark_dirty(l, x, y, mystrlen(szMessage) * 8, 16);
+        ss_damage_add_rect(l->x + x, l->y + y, mystrlen(szMessage) * 8, 16);
         dirty_regions++;
     }
     y += 16;
@@ -171,7 +171,7 @@ void update_layer_2(Layer* l) {
     sprintf(szMessage, ".bss    addr: 0x%08x-0x%08x, size: %d", base, base + sz - 1, sz);
     if (ss_print_v_smart(l->vram, l->w, l->h, fg, bg, x, y, szMessage, prev_bss)) {
         strcpy(prev_bss, szMessage);
-        ss_layer_mark_dirty(l, x, y, mystrlen(szMessage) * 8, 16);
+        ss_damage_add_rect(l->x + x, l->y + y, mystrlen(szMessage) * 8, 16);
         dirty_regions++;
     }
     y += 16;
@@ -180,7 +180,7 @@ void update_layer_2(Layer* l) {
             ss_ssos_memory_base, ss_ssos_memory_base + ss_ssos_memory_size - 1, ss_ssos_memory_size);
     if (ss_print_v_smart(l->vram, l->w, l->h, fg, bg, x, y, szMessage, prev_ram)) {
         strcpy(prev_ram, szMessage);
-        ss_layer_mark_dirty(l, x, y, mystrlen(szMessage) * 8, 16);
+        ss_damage_add_rect(l->x + x, l->y + y, mystrlen(szMessage) * 8, 16);
         dirty_regions++;
     }
     y += 16;
@@ -188,7 +188,7 @@ void update_layer_2(Layer* l) {
     sprintf(szMessage, "ss_timer_counter_base addr: 0x%p", &ss_timera_counter);
     if (ss_print_v_smart(l->vram, l->w, l->h, fg, bg, x, y, szMessage, prev_timer_addr)) {
         strcpy(prev_timer_addr, szMessage);
-        ss_layer_mark_dirty(l, x, y, mystrlen(szMessage) * 8, 16);
+        ss_damage_add_rect(l->x + x, l->y + y, mystrlen(szMessage) * 8, 16);
         dirty_regions++;
     }
     y += 16;
@@ -196,7 +196,7 @@ void update_layer_2(Layer* l) {
     sprintf(szMessage, "ss_save_data_base addr: 0x%p", &ss_save_data_base);
     if (ss_print_v_smart(l->vram, l->w, l->h, fg, bg, x, y, szMessage, prev_save_addr)) {
         strcpy(prev_save_addr, szMessage);
-        ss_layer_mark_dirty(l, x, y, mystrlen(szMessage) * 8, 16);
+        ss_damage_add_rect(l->x + x, l->y + y, mystrlen(szMessage) * 8, 16);
         dirty_regions++;
     }
     y += 16;
@@ -204,7 +204,7 @@ void update_layer_2(Layer* l) {
     sprintf(szMessage, "memory total: %d, free: %d", ss_mem_total_bytes(), ss_mem_free_bytes());
     if (ss_print_v_smart(l->vram, l->w, l->h, fg, bg, x, y, szMessage, prev_memory)) {
         strcpy(prev_memory, szMessage);
-        ss_layer_mark_dirty(l, x, y, mystrlen(szMessage) * 8, 16);
+        ss_damage_add_rect(l->x + x, l->y + y, mystrlen(szMessage) * 8, 16);
         dirty_regions++;
     }
     y += 16;
@@ -214,7 +214,7 @@ void update_layer_2(Layer* l) {
                 ss_mem_mgr.free_blocks[i].addr, ss_mem_mgr.free_blocks[i].sz);
         if (ss_print_v_smart(l->vram, l->w, l->h, fg, bg, x, y, szMessage, prev_blocks[i])) {
             strcpy(prev_blocks[i], szMessage);
-            ss_layer_mark_dirty(l, x, y, mystrlen(szMessage) * 8, 16);
+            ss_damage_add_rect(l->x + x, l->y + y, mystrlen(szMessage) * 8, 16);
             dirty_regions++;
         }
         y += 16;
@@ -244,7 +244,7 @@ void update_layer_3(Layer* l) {
     sprintf(szMessage, "layer id: %d", lid);
     if (ss_print_v_smart(l->vram, l->w, l->h, fg, bg, x, y, szMessage, prev_layer_id)) {
         strcpy(prev_layer_id, szMessage);
-        ss_layer_mark_dirty(l, x, y, mystrlen(szMessage) * 8, 16);
+        ss_damage_add_rect(l->x + x, l->y + y, mystrlen(szMessage) * 8, 16);
         dirty_regions++;
     }
     y += 16;
@@ -261,7 +261,7 @@ void update_layer_3(Layer* l) {
                 dy, (dt & 0xFF00) >> 8, dt & 0xFF);
         if (ss_print_v_smart(l->vram, l->w, l->h, fg, bg, x, y, szMessage, prev_mouse_dt)) {
             strcpy(prev_mouse_dt, szMessage);
-            ss_layer_mark_dirty(l, x, y, mystrlen(szMessage) * 8, 16);
+            ss_damage_add_rect(l->x + x, l->y + y, mystrlen(szMessage) * 8, 16);
             dirty_regions++;
         }
     }
@@ -273,7 +273,7 @@ void update_layer_3(Layer* l) {
                 pos & 0x0000FFFF);
         if (ss_print_v_smart(l->vram, l->w, l->h, fg, bg, x, y, szMessage, prev_mouse_pos)) {
             strcpy(prev_mouse_pos, szMessage);
-            ss_layer_mark_dirty(l, x, y, mystrlen(szMessage) * 8, 16);
+            ss_damage_add_rect(l->x + x, l->y + y, mystrlen(szMessage) * 8, 16);
             dirty_regions++;
         }
     }
@@ -285,7 +285,7 @@ void update_layer_3(Layer* l) {
 
         // Clear the entire keyboard line first
         ss_fill_rect_v(l->vram, l->w, l->h, bg, 8, y, l->w - 8, y + 16);
-        ss_layer_mark_dirty(l, 8, y, l->w - 8, 16);
+        ss_damage_add_rect(l->x + 8, l->y + y, l->w - 8, 16);
         dirty_regions++;
 
         if (ss_kb.len > 0) {

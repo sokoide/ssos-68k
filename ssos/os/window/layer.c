@@ -222,11 +222,7 @@ void ss_layer_draw_rect_layer_dma(Layer* l, uint8_t* src, uint8_t* dst,
     // Update performance metrics for adaptive behavior
     ss_update_performance_metrics();
 
-    // ADAPTIVE DMA THRESHOLD: Use CPU load to decide transfer method
-    // - High CPU activity: Use DMA for larger blocks to free up CPU
-    // - Low CPU activity: Use DMA even for smaller blocks for consistency
-    // - Normal activity: Balanced approach
-
+    // OPTIMIZED: Use X68000 16-color mode specific DMA for better performance
     if (block_count <= ss_adaptive_dma_threshold) {
         // Use CPU transfer for small blocks
         if (block_count >= 4 && ((uintptr_t)src & 3) == 0 && ((uintptr_t)dst & 3) == 0) {
@@ -252,17 +248,12 @@ void ss_layer_draw_rect_layer_dma(Layer* l, uint8_t* src, uint8_t* dst,
         return;
     }
 
-    // Use DMA for larger transfers (adaptive threshold)
-    dma_clear();
-    // Configure DMA transfer
-    dma_init(dst, 1);
-    xfr_inf[0].addr = src;
-    xfr_inf[0].count = block_count;
-
-    // Execute DMA transfer
-    dma_start();
-    dma_wait_completion();
-    dma_clear();
+    // Use optimized X68000 16-color mode DMA for larger transfers
+        dma_clear();
+        dma_init_x68k_16color(dst, src, block_count);
+        dma_start();
+        dma_wait_completion();
+        dma_clear();
 }
 
 /*

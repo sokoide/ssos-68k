@@ -15,6 +15,15 @@
 
 #include "damage.h"
 
+// DEBUG: Add damage system debugging
+uint32_t debug_damage_count = 0;
+uint32_t debug_occlusion_count = 0;
+
+// External declarations for damage system debugging
+extern void ss_debug_damage_info();
+extern void ss_debug_occlusion_info();
+extern void ss_debug_display_stats();
+
 void ssosmain() {
     int c;
     int scancode = 0;
@@ -76,6 +85,9 @@ void ssosmain() {
     
     // Reset damage buffer after initial complete draw to clear any accumulated regions
     ss_damage_reset();
+    
+    // DEBUG: Log damage buffer reset
+    // debug_damage_count = 0; // Reset counter when damage buffer is reset
 while (true) {
     // Performance monitoring: Start frame timing
     SS_PERF_START_MEASUREMENT(SS_PERF_FRAME_TIME);
@@ -120,10 +132,18 @@ while (true) {
     // Performance monitoring: End layer update timing
     SS_PERF_END_MEASUREMENT(SS_PERF_LAYER_UPDATE);
 
-    // TESTING: Use layer system to verify damage system issues
+    // OPTIMIZED: Use damage system with occlusion optimization disabled
     SS_PERF_START_MEASUREMENT(SS_PERF_DRAW_TIME);
-    ss_layer_draw_dirty_only();
+    ss_damage_draw_regions();
     SS_PERF_END_MEASUREMENT(SS_PERF_DRAW_TIME);
+    
+    // Performance monitoring: Display damage statistics every 5 seconds
+    static uint32_t last_perf_report = 0;
+    if (ss_timerd_counter > last_perf_report + 5000) {
+        last_perf_report = ss_timerd_counter;
+        // In a real implementation, you might want to display these stats
+        // ss_damage_perf_report();
+    }
 
     // Performance monitoring: End frame timing
     SS_PERF_END_MEASUREMENT(SS_PERF_FRAME_TIME);

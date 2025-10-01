@@ -202,6 +202,33 @@ void ss_damage_clear_regions() {
 }
 
 // Draw all damage regions - main drawing loop
+// External declarations for debug variables (defined in ssosmain.c)
+extern uint32_t debug_damage_count;
+extern uint32_t debug_occlusion_count;
+
+// DEBUG: Damage system debugging functions
+void ss_debug_damage_info() {
+    // Display damage buffer statistics
+    if (g_damage_buffer.region_count > 0) {
+        // In a real implementation, you might display:
+        // sprintf(debug_msg, "Damage regions: %d", g_damage_buffer.region_count);
+        // For now, we can increment counters for debugging
+        debug_damage_count++;
+    }
+}
+
+void ss_debug_occlusion_info() {
+    // Track occlusion optimizations
+    debug_occlusion_count++;
+}
+
+// Display debug info on screen (placeholder for implementation)
+void ss_debug_display_stats() {
+    // This would overlay debug info on screen
+    // Currently just increment counters
+    debug_damage_count++;
+}
+
 void ss_damage_draw_regions() {
     SS_PERF_START_MEASUREMENT(SS_PERF_DAMAGE_DRAW);
     
@@ -256,6 +283,14 @@ void ss_damage_draw_regions() {
 
 // Optimize damage regions by removing occluded areas
 void ss_damage_optimize_for_occlusion() {
+    // TEMPORARILY DISABLED: For debugging damage system
+    // The current occlusion algorithm is too aggressive and blocks all updates
+    // TODO: Implement a more nuanced occlusion algorithm
+    
+    // For now, we'll just return without doing any optimization
+    return;
+    
+    // Original implementation below - commented out for debugging
     // Check each region against upper layers for occlusion
     for (int i = 0; i < g_damage_buffer.region_count; i++) {
         DamageRect* region = &g_damage_buffer.regions[i];
