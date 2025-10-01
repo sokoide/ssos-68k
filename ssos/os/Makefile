@@ -16,6 +16,7 @@ SRCS= \
 	main/ssosmain.c \
 	main/ssoswindows.c \
 	window/layer.c \
+	window/damage.c \
 	util/printf.c
 ASRCS= \
 	kernel/entry.s \

@@ -15,6 +15,7 @@ SRCS=	main.c \
 		../os/main/ssosmain.c \
 		../os/main/ssoswindows.c \
 		../os/window/layer.c \
+		../os/window/damage.c \
 		../os/util/printf.c
 ASRCS= \
 		../os/kernel/interrupts.s
