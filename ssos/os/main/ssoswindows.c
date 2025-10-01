@@ -1,4 +1,5 @@
 #include "ssoswindows.h"
+#include "damage.h"
 #include "kernel.h"
 #include "layer.h"
 #include "memory.h"
@@ -76,7 +77,7 @@ void update_layer_2(Layer* l) {
     static char prev_save_addr[256] = {0};
     static char prev_memory[256] = {0};
     static char prev_blocks[10][256] = {0}; // For memory manager blocks
-    
+
     char szMessage[256];
     uint16_t fg = 0;
     uint16_t bg = 15;
@@ -218,7 +219,7 @@ void update_layer_2(Layer* l) {
         }
         y += 16;
     }
-    
+
     // Only invalidate if we actually changed something - MAJOR OPTIMIZATION!
     // This eliminates unnecessary redraws when values haven't changed
 }
@@ -231,7 +232,7 @@ void update_layer_3(Layer* l) {
     static char prev_mouse_pos[256] = {0};
     static char prev_layer_id[256] = {0};
     static int prev_kb_len = 0;
-    
+
     char szMessage[256];
     uint16_t fg = 0;
     uint16_t bg = 15;
@@ -281,12 +282,12 @@ void update_layer_3(Layer* l) {
     // keyboard - only update if keyboard buffer length changed
     if (ss_kb.len != prev_kb_len) {
         prev_kb_len = ss_kb.len;
-        
+
         // Clear the entire keyboard line first
         ss_fill_rect_v(l->vram, l->w, l->h, bg, 8, y, l->w - 8, y + 16);
         ss_layer_mark_dirty(l, 8, y, l->w - 8, 16);
         dirty_regions++;
-        
+
         if (ss_kb.len > 0) {
             ss_print_v(l->vram, l->w, l->h, fg, bg, x, y, "Code:");
             x += 8 * 5;
@@ -294,7 +295,7 @@ void update_layer_3(Layer* l) {
             // Create a temporary copy to avoid modifying the original buffer during display
             int temp_len = ss_kb.len;
             int temp_idxr = ss_kb.idxr;
-            
+
             for (int i = 0; i < temp_len && i < 6; i++) { // Limit to 6 codes to prevent overflow
                 int scancode = ss_kb.data[temp_idxr];
                 temp_idxr++;
@@ -304,7 +305,7 @@ void update_layer_3(Layer* l) {
                 ss_print_v(l->vram, l->w, l->h, fg, bg, x, y, szMessage);
                 x += 8 * 11;
             }
-            
+
             // Now actually consume the keyboard buffer
             while (ss_kb.len > 0) {
                 ss_kb.len--;
@@ -314,7 +315,7 @@ void update_layer_3(Layer* l) {
             }
         }
     }
-    
+
     // The old code ALWAYS invalidated the entire layer - terrible for performance!
     // Now we only mark specific dirty regions when something actually changes
 }

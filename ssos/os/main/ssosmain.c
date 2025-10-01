@@ -13,6 +13,8 @@
 #include <string.h>
 #include <x68k/iocs.h>
 
+#include "damage.h"
+
 void ssosmain() {
     int c;
     int scancode = 0;
@@ -36,6 +38,9 @@ void ssosmain() {
 
     // Initialize performance monitoring system
     ss_perf_init();
+
+    // Initialize damage buffer system for dirty region tracking
+    ss_damage_init();
 
     ss_task_stack_base = (uint8_t*)ss_mem_alloc4k(4096 * MAX_TASKS);
 
@@ -62,12 +67,15 @@ void ssosmain() {
     Layer* l2 = get_layer_2();
     Layer* l3 = get_layer_3();
 
-    ss_all_layer_draw();
+    // Initial setup: update content first
     update_layer_2(l2);
     update_layer_3(l3);
 
-    // Force initial draw of all layers
-    ss_layer_draw_dirty_only();
+    // Initial complete draw - use layer system for full screen refresh
+    ss_all_layer_draw();
+    
+    // Reset damage buffer after initial complete draw to clear any accumulated regions
+    ss_damage_reset();
 while (true) {
     // Performance monitoring: Start frame timing
     SS_PERF_START_MEASUREMENT(SS_PERF_FRAME_TIME);
@@ -112,7 +120,7 @@ while (true) {
     // Performance monitoring: End layer update timing
     SS_PERF_END_MEASUREMENT(SS_PERF_LAYER_UPDATE);
 
-    // MAJOR OPTIMIZATION: Only draw dirty regions instead of everything!
+    // TESTING: Use layer system to verify damage system issues
     SS_PERF_START_MEASUREMENT(SS_PERF_DRAW_TIME);
     ss_layer_draw_dirty_only();
     SS_PERF_END_MEASUREMENT(SS_PERF_DRAW_TIME);
@@ -122,6 +130,7 @@ while (true) {
 }
 
 CLEANUP:
+    ss_damage_cleanup();  // Cleanup damage buffer
     // uninit
     _iocs_ms_curof();
     _iocs_skey_mod(-1, 0, 0);
