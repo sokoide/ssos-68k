@@ -203,6 +203,8 @@ void ss_layer_mark_clean(Layer* layer) {
 }
 
 // Draw a specific rectangle of a layer
+// Optimized scanline-based dirty region drawing with interval merging
+// Hybrid approach: 8-pixel blocks with optimized merging for better balance
 void ss_layer_draw_rect_layer_bounds(Layer* l, uint16_t dx0, uint16_t dy0, uint16_t dx1, uint16_t dy1) {
     if (0 == (l->attr & LAYER_ATTR_VISIBLE))
         return;
@@ -213,43 +215,75 @@ void ss_layer_draw_rect_layer_bounds(Layer* l, uint16_t dx0, uint16_t dy0, uint1
     if (dy1 > l->h) dy1 = l->h;
     if (dx0 >= dx1 || dy0 >= dy1) return;
 
+    // Optimize: Use 8-pixel alignment for faster processing but with improved merging
+    uint16_t aligned_dx0 = dx0 & ~0x7;  // Round down to 8-pixel boundary
+    uint16_t aligned_dx1 = (dx1 + 7) & ~0x7;  // Round up to 8-pixel boundary
+    
     for (int16_t dy = dy0; dy < dy1; dy++) {
         int16_t vy = l->y + dy;
         if (vy < 0 || vy >= HEIGHT)
             continue;
-        // Optimized DMA transfer using bit shifts
+            
+        // Pre-calculate values for this scanline
         uint16_t map_width = WIDTH >> 3;  // WIDTH / 8
         uint16_t vy_div8 = vy >> 3;
         uint16_t l_x_div8 = l->x >> 3;
-
+        uint8_t layer_z = l->z;
+        
         int16_t startdx = -1;
-        for (int16_t dx = dx0; dx < dx1; dx += 8) {
-            if (ss_layer_mgr->map[vy_div8 * map_width + ((l->x + dx) >> 3)] == l->z) {
-                // set the first addr to transfer -> startdx
-                if (startdx == -1)
+        uint16_t consecutive_count = 0;
+        
+        // Process in 8-pixel blocks for efficiency, but merge consecutive blocks
+        for (int16_t dx = aligned_dx0; dx < aligned_dx1; dx += 8) {
+            uint16_t vx = l->x + dx;
+            if (vx >= WIDTH) break;
+            
+            // Check 8-pixel block visibility (faster than per-pixel check)
+            if (ss_layer_mgr->map[vy_div8 * map_width + (vx >> 3)] == layer_z) {
+                if (startdx == -1) {
+                    // Start new merged region
                     startdx = dx;
+                    consecutive_count = 8;
+                } else {
+                    // Extend existing region (no gap)
+                    consecutive_count += 8;
+                }
             } else if (startdx >= 0) {
-                // transfer between startdx and dx
-                int16_t vx = l->x + startdx;
-                ss_layer_draw_rect_layer_dma(
-                    l, &l->vram[dy * l->w + startdx],
-                    ((uint8_t*)&vram_start[vy * VRAMWIDTH + vx]) + 1,
-                    dx - startdx);
+                // End of visible region - perform DMA transfer for merged blocks
+                uint16_t transfer_x = l->x + startdx;
+                uint16_t actual_start = (startdx < dx0) ? dx0 : startdx;
+                uint16_t actual_end = ((startdx + consecutive_count) > dx1) ? dx1 : (startdx + consecutive_count);
+                uint16_t transfer_width = actual_end - actual_start;
+                
+                if (transfer_width > 0) {
+                    void* src = &l->vram[dy * l->w + actual_start];
+                    void* dst = ((uint8_t*)&vram_start[vy * VRAMWIDTH + transfer_x]) + 1 + (actual_start - startdx);
+                    ss_layer_draw_rect_layer_dma(l, src, dst, transfer_width);
+                }
+                
                 startdx = -1;
+                consecutive_count = 0;
             }
         }
-        // DMA if the last block is not transferred yet
+        
+        // Handle final merged region if it extends to the end
         if (startdx >= 0) {
-            int16_t vx = l->x + startdx;
-            ss_layer_draw_rect_layer_dma(
-                l, &l->vram[dy * l->w + startdx],
-                ((uint8_t*)&vram_start[vy * VRAMWIDTH + vx]) + 1,
-                dx1 - startdx);
+            uint16_t transfer_x = l->x + startdx;
+            uint16_t actual_start = (startdx < dx0) ? dx0 : startdx;
+            uint16_t actual_end = ((startdx + consecutive_count) > dx1) ? dx1 : (startdx + consecutive_count);
+            uint16_t transfer_width = actual_end - actual_start;
+            
+            if (transfer_width > 0) {
+                void* src = &l->vram[dy * l->w + actual_start];
+                void* dst = ((uint8_t*)&vram_start[vy * VRAMWIDTH + transfer_x]) + 1 + (actual_start - startdx);
+                ss_layer_draw_rect_layer_dma(l, src, dst, transfer_width);
+            }
         }
     }
 }
 
 // Draw only the dirty regions of all layers - MAJOR PERFORMANCE IMPROVEMENT
+// Optimized dirty region drawing with scanline-based interval merging
 void ss_layer_draw_dirty_only() {
     // Performance monitoring: Start dirty region drawing
     SS_PERF_START_MEASUREMENT(SS_PERF_DIRTY_DRAW);
@@ -260,17 +294,21 @@ void ss_layer_draw_dirty_only() {
             if (layer->dirty_w > 0 && layer->dirty_h > 0) {
                 // Performance monitoring: Start dirty rectangle drawing
                 SS_PERF_START_MEASUREMENT(SS_PERF_DIRTY_RECT);
-                // Only redraw the dirty rectangle
+                
+                // Draw the dirty rectangle using the new optimized scanline-based method
                 ss_layer_draw_rect_layer_bounds(layer,
                     layer->dirty_x, layer->dirty_y,
                     layer->dirty_x + layer->dirty_w,
                     layer->dirty_y + layer->dirty_h);
+                    
                 SS_PERF_END_MEASUREMENT(SS_PERF_DIRTY_RECT);
             } else {
                 // Performance monitoring: Start full layer drawing
                 SS_PERF_START_MEASUREMENT(SS_PERF_FULL_LAYER);
-                // If no specific dirty rectangle, draw entire layer (for initial draw)
-                ss_layer_draw_rect_layer_bounds(layer, layer->x, layer->y, layer->x + layer->w, layer->y + layer->h);
+                
+                // For initial draw or full layer invalidation, use optimized method too
+                ss_layer_draw_rect_layer_bounds(layer, 0, 0, layer->w, layer->h);
+                
                 SS_PERF_END_MEASUREMENT(SS_PERF_FULL_LAYER);
             }
             ss_layer_mark_clean(layer);
