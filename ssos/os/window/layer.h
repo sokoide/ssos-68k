@@ -40,3 +40,10 @@ void ss_layer_invalidate(Layer* layer);
 void ss_layer_mark_dirty(Layer* layer, uint16_t x, uint16_t y, uint16_t w, uint16_t h);
 void ss_layer_mark_clean(Layer* layer);
 void ss_layer_draw_dirty_only();
+void ss_layer_draw_rect_layer_bounds(Layer* l, uint16_t dx0, uint16_t dy0, uint16_t dx1, uint16_t dy1);
+
+// Window management functions
+Layer* ss_layer_find_at_position(uint16_t x, uint16_t y);
+void ss_layer_bring_to_front(Layer* layer);
+void ss_layer_set_z_order(Layer* layer, uint16_t new_z);
+void ss_layer_update_z_map(Layer* modified_layer);

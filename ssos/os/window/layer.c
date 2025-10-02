@@ -327,3 +327,156 @@ void ss_layer_invalidate(Layer* layer) {
     layer->dirty_h = layer->h;
     layer->needs_redraw = 1;
 }
+
+// Find the topmost visible layer at the given screen position
+Layer* ss_layer_find_at_position(uint16_t x, uint16_t y) {
+    // Check layers from top to bottom (highest z first)
+    for (int i = ss_layer_mgr->topLayerIdx - 1; i >= 0; i--) {
+        Layer* layer = ss_layer_mgr->zLayers[i];
+
+        // Check if layer is visible and within bounds
+        if ((layer->attr & LAYER_ATTR_VISIBLE) &&
+            x >= layer->x && x < layer->x + layer->w &&
+            y >= layer->y && y < layer->y + layer->h) {
+            return layer;
+        }
+    }
+    return NULL; // No layer found at this position
+}
+
+// Bring a layer to the front (highest z-order)
+void ss_layer_bring_to_front(Layer* layer) {
+    if (!layer || !(layer->attr & LAYER_ATTR_USED)) {
+        return;
+    }
+
+    // Calculate layer id to check if it's the background layer
+    uint8_t layer_id = layer - ss_layer_mgr->layers;
+
+    // Background layer (layer id 0) should always stay at the bottom
+    if (layer_id == 0) {
+        return; // Don't move the background layer
+    }
+
+    // Find current position of this layer in z-order
+    int current_pos = -1;
+    for (int i = 0; i < ss_layer_mgr->topLayerIdx; i++) {
+        if (ss_layer_mgr->zLayers[i] == layer) {
+            current_pos = i;
+            break;
+        }
+    }
+
+    // If layer is already on top, nothing to do
+    if (current_pos == ss_layer_mgr->topLayerIdx - 1) {
+        return;
+    }
+
+    // Remove layer from current position
+    if (current_pos >= 0) {
+        // Shift layers down to fill the gap
+        for (int i = current_pos; i < ss_layer_mgr->topLayerIdx - 1; i++) {
+            ss_layer_mgr->zLayers[i] = ss_layer_mgr->zLayers[i + 1];
+            // Update z value
+            ss_layer_mgr->zLayers[i]->z = i;
+        }
+    }
+
+    // Place layer at the top
+    ss_layer_mgr->zLayers[ss_layer_mgr->topLayerIdx - 1] = layer;
+    layer->z = ss_layer_mgr->topLayerIdx - 1;
+
+    // Update z-order map to reflect the new layer order
+    ss_layer_update_z_map(layer);
+
+    // Mark the affected area as dirty for redraw
+    ss_layer_mark_dirty(layer, 0, 0, layer->w, layer->h);
+}
+
+// Set layer to a specific z-order position
+void ss_layer_set_z_order(Layer* layer, uint16_t new_z) {
+    if (!layer || !(layer->attr & LAYER_ATTR_USED) || new_z >= ss_layer_mgr->topLayerIdx) {
+        return;
+    }
+
+    uint16_t old_z = layer->z;
+    if (old_z == new_z) {
+        return; // No change needed
+    }
+
+    // Remove layer from current position
+    for (int i = old_z; i < ss_layer_mgr->topLayerIdx - 1; i++) {
+        ss_layer_mgr->zLayers[i] = ss_layer_mgr->zLayers[i + 1];
+        ss_layer_mgr->zLayers[i]->z = i;
+    }
+
+    // Insert layer at new position
+    if (new_z < old_z) {
+        // Moving up: shift layers down to make space
+        for (int i = ss_layer_mgr->topLayerIdx - 1; i > new_z; i--) {
+            ss_layer_mgr->zLayers[i] = ss_layer_mgr->zLayers[i - 1];
+            ss_layer_mgr->zLayers[i]->z = i;
+        }
+    } else {
+        // Moving down: shift layers up to make space
+        for (int i = ss_layer_mgr->topLayerIdx - 1; i > new_z; i--) {
+            ss_layer_mgr->zLayers[i] = ss_layer_mgr->zLayers[i - 1];
+            ss_layer_mgr->zLayers[i]->z = i;
+        }
+    }
+
+    // Place layer at new position
+    ss_layer_mgr->zLayers[new_z] = layer;
+    layer->z = new_z;
+
+    // Mark affected areas as dirty for redraw
+    ss_layer_mark_dirty(layer, 0, 0, layer->w, layer->h);
+}
+
+// Update z-order map to reflect layer ordering changes
+void ss_layer_update_z_map(Layer* modified_layer) {
+    if (!modified_layer || !modified_layer->vram) {
+        return;
+    }
+
+    // Calculate layer boundaries in 8-pixel blocks
+    uint16_t layer_x_blocks = (modified_layer->w + 7) >> 3;  // Round up
+    uint16_t layer_y_blocks = (modified_layer->h + 7) >> 3;
+    uint16_t map_width = WIDTH >> 3;  // WIDTH / 8
+    uint16_t layer_x_div8 = modified_layer->x >> 3;
+    uint16_t layer_y_div8 = modified_layer->y >> 3;
+    uint8_t layer_z = modified_layer->z;
+    uint8_t layer_id = modified_layer - ss_layer_mgr->layers;
+
+    // Update z-order map for this layer's area
+    for (uint16_t block_y = 0; block_y < layer_y_blocks; block_y++) {
+        uint16_t actual_y = modified_layer->y + (block_y << 3);
+        if (actual_y >= HEIGHT) break;
+
+        uint16_t vy_div8 = actual_y >> 3;
+        for (uint16_t block_x = 0; block_x < layer_x_blocks; block_x++) {
+            uint16_t actual_x = modified_layer->x + (block_x << 3);
+            if (actual_x >= WIDTH) break;
+
+            uint16_t block_map_x = actual_x >> 3;
+            uint16_t block_map_y = actual_y >> 3;
+
+            // Check if this block belongs to our layer
+            if (block_map_x >= layer_x_div8 &&
+                block_map_x < layer_x_div8 + layer_x_blocks &&
+                block_map_y >= layer_y_div8 &&
+                block_map_y < layer_y_div8 + layer_y_blocks) {
+
+                // Calculate layer-local coordinates for this block
+                uint16_t local_block_x = block_map_x - layer_x_div8;
+                uint16_t local_block_y = block_map_y - layer_y_div8;
+                uint16_t layer_map_w = modified_layer->w >> 3;
+
+                if (local_block_x < layer_map_w) {
+                    // Update the z-order map with the layer's z value
+                    ss_layer_mgr->map[block_map_y * map_width + block_map_x] = layer_z;
+                }
+            }
+        }
+    }
+}
