@@ -5,6 +5,7 @@
 #include "memory.h"
 #include "printf.h"
 #include "vram.h"
+#include <stdint.h>
 #include <string.h>
 #include <x68k/iocs.h>
 
@@ -259,139 +260,96 @@ void update_layer_3(Layer* l) {
     uint32_t pos = _iocs_ms_curgt();
 
     // Track previous mouse click state to detect click events
-    static uint8_t prev_lclick = 0;
-    uint8_t current_lclick = (dt & 0xFF00) >> 8;
+    static bool prev_lclick = false;
+    bool current_lclick = ((dt & 0xFF00) >> 8) != 0;
 
     // Track dragging state
     static bool is_dragging = false;
-    static uint16_t drag_start_x = 0;
-    static uint16_t drag_start_y = 0;
     static Layer* dragged_layer = NULL;
+    static uint16_t drag_offset_x = 0;
+    static uint16_t drag_offset_y = 0;
 
-    // DEBUG: Always show current mouse state
+    uint16_t mouse_x = (pos & 0xFFFF0000) >> 16;
+    uint16_t mouse_y = pos & 0x0000FFFF;
+
+    // DEBUG: Periodically show current mouse state
     static uint8_t debug_counter = 0;
-    if ((debug_counter++ % 30) == 0) {  // Show every 30 frames to avoid spam
-        sprintf(g_click_debug_msg, "MOUSE: x=%d y=%d click=%d", 
-                (pos & 0xFFFF0000) >> 16, pos & 0x0000FFFF, current_lclick);
+    if ((debug_counter++ % 30) == 0) {
+        sprintf(g_click_debug_msg, "MOUSE: x=%d y=%d click=%d",
+                mouse_x, mouse_y, current_lclick ? 1 : 0);
     }
 
-    // Handle left mouse button press - potentially start drag
-    if (current_lclick == 1 && prev_lclick == 0) {
-        // Left mouse button was just pressed - start drag check
-        uint16_t mouse_x = (pos & 0xFFFF0000) >> 16;
-        uint16_t mouse_y = pos & 0x0000FFFF;
+    const uint16_t TITLEBAR_HEIGHT = 24;
 
-        // DEBUG: Show mouse info
-        sprintf(g_click_debug_msg, "CLICK: x=%d y=%d lclick=%d", mouse_x, mouse_y, current_lclick);
-
-        // Find which window was clicked (if any)
+    if (current_lclick && !prev_lclick) {
         Layer* clicked_layer = ss_layer_find_at_position(mouse_x, mouse_y);
         if (clicked_layer) {
-            uint8_t clicked_layer_id = clicked_layer - ss_layer_mgr->layers;
+            uint8_t clicked_id = clicked_layer - ss_layer_mgr->layers;
 
-            // Only start dragging non-background layers
-            if (clicked_layer_id > 0) {
-                // Initialize drag state
+            if (clicked_id > 0) {
+                ss_layer_bring_to_front(clicked_layer);
+                ss_damage_add_rect(clicked_layer->x, clicked_layer->y, clicked_layer->w, clicked_layer->h);
+            }
+
+            uint16_t local_y = (mouse_y >= clicked_layer->y) ? (mouse_y - clicked_layer->y) : 0;
+            if (clicked_id > 0 && local_y <= TITLEBAR_HEIGHT) {
                 is_dragging = true;
-                drag_start_x = mouse_x;
-                drag_start_y = mouse_y;
                 dragged_layer = clicked_layer;
-
-                // Debug message
-                sprintf(g_click_debug_msg, "DRAG START: L%d at (%d,%d)", clicked_layer_id, mouse_x, mouse_y);
+                drag_offset_x = mouse_x - clicked_layer->x;
+                drag_offset_y = mouse_y - clicked_layer->y;
+                sprintf(g_click_debug_msg, "DRAG START: L%d at (%d,%d)", clicked_id, mouse_x, mouse_y);
+            } else {
+                is_dragging = false;
+                dragged_layer = NULL;
             }
         } else {
+            is_dragging = false;
+            dragged_layer = NULL;
             sprintf(g_click_debug_msg, "NO LAYER at (%d,%d)", mouse_x, mouse_y);
         }
     }
 
-    // Handle left mouse release - end drag
-    if (current_lclick == 0 && prev_lclick == 1 && is_dragging && dragged_layer) {
-            // Left mouse button was released while dragging
-            // Calculate final position
-            uint16_t final_x = (pos & 0xFFFF0000) >> 16;
-            uint16_t final_y = pos & 0x0000FFFF;
+    if (is_dragging && dragged_layer && current_lclick) {
+        int32_t target_x = (int32_t)mouse_x - (int32_t)drag_offset_x;
+        int32_t target_y = (int32_t)mouse_y - (int32_t)drag_offset_y;
 
-            // Calculate movement delta
-            int16_t delta_x = final_x - drag_start_x;
-            int16_t delta_y = final_y - drag_start_y;
+        int32_t max_x = (int32_t)WIDTH - dragged_layer->w;
+        int32_t max_y = (int32_t)HEIGHT - dragged_layer->h;
+        if (max_x < 0) max_x = 0;
+        if (max_y < 0) max_y = 0;
 
-            // Only process drag if there's actual movement
-            if (delta_x != 0 || delta_y != 0) {
-                // Calculate new position for dragged layer
-                uint16_t new_x = dragged_layer->x + delta_x;
-                uint16_t new_y = dragged_layer->y + delta_y;
+        if (target_x < 0) target_x = 0;
+        if (target_y < 0) target_y = 0;
+        if (target_x > max_x) target_x = max_x;
+        if (target_y > max_y) target_y = max_y;
 
-                // Ensure layer stays within screen bounds
-                if (new_x < 0) new_x = 0;
-                if (new_y < 0) new_y = 0;
-                if (new_x + dragged_layer->w > WIDTH) new_x = WIDTH - dragged_layer->w;
-                if (new_y + dragged_layer->h > HEIGHT) new_y = HEIGHT - dragged_layer->h;
+        uint16_t new_x = (uint16_t)target_x;
+        uint16_t new_y = (uint16_t)target_y;
 
-                // Update layer position
-                dragged_layer->x = new_x;
-                dragged_layer->y = new_y;
+        if (new_x != dragged_layer->x || new_y != dragged_layer->y) {
+            uint16_t old_x = dragged_layer->x;
+            uint16_t old_y = dragged_layer->y;
 
-                // Mark old and new positions as dirty
-                ss_damage_add_rect(drag_start_x, drag_start_y, dragged_layer->w, dragged_layer->h);
-                ss_damage_add_rect(new_x, new_y, dragged_layer->w, dragged_layer->h);
-
-                // Update z-order map for new position
-                ss_layer_update_z_map(dragged_layer);
-
-                // Debug message
-                sprintf(g_click_debug_msg, "DRAG END: L%d to (%d,%d)",
-                        dragged_layer - ss_layer_mgr->layers, new_x, new_y);
-            }
-
-            // Reset drag state
-            is_dragging = false;
-            dragged_layer = NULL;
-        }
-
-      // Handle mouse movement while dragging
-    if (is_dragging && dragged_layer && current_lclick == 1) {
-        uint16_t current_x = (pos & 0xFFFF0000) >> 16;
-        uint16_t current_y = pos & 0x0000FFFF;
-
-        int16_t delta_x = current_x - drag_start_x;
-        int16_t delta_y = current_y - drag_start_y;
-
-        // DEBUG: Show drag state
-        sprintf(g_click_debug_msg, "DRAGGING: L%d delta=%d,%d", 
-                dragged_layer - ss_layer_mgr->layers, delta_x, delta_y);
-
-        // Only update if there's actual movement
-        if (delta_x != 0 || delta_y != 0) {
-            // Calculate new position for dragged layer
-            uint16_t new_x = dragged_layer->x + delta_x;
-            uint16_t new_y = dragged_layer->y + delta_y;
-
-            // Ensure layer stays within screen bounds
-            if (new_x < 0) new_x = 0;
-            if (new_y < 0) new_y = 0;
-            if (new_x + dragged_layer->w > WIDTH) new_x = WIDTH - dragged_layer->w;
-            if (new_y + dragged_layer->h > HEIGHT) new_y = HEIGHT - dragged_layer->h;
-
-            // IMPORTANT: Update layer position NOW
             dragged_layer->x = new_x;
             dragged_layer->y = new_y;
 
-            // Mark old and new positions as dirty
-            ss_damage_add_rect(drag_start_x, drag_start_y, dragged_layer->w, dragged_layer->h);
+            ss_damage_add_rect(old_x, old_y, dragged_layer->w, dragged_layer->h);
             ss_damage_add_rect(new_x, new_y, dragged_layer->w, dragged_layer->h);
 
-            // Update z-order map for new position
-            ss_layer_update_z_map(dragged_layer);
+            ss_layer_rebuild_z_map();
 
-            // Update drag start position for next movement
-            drag_start_x = new_x;
-            drag_start_y = new_y;
-
-            // Debug message
-            sprintf(g_click_debug_msg, "DRAG: L%d to (%d,%d)",
+            sprintf(g_click_debug_msg, "DRAG: L%d (%d,%d)",
                     dragged_layer - ss_layer_mgr->layers, new_x, new_y);
         }
+    }
+
+    if (!current_lclick && prev_lclick) {
+        if (is_dragging && dragged_layer) {
+            sprintf(g_click_debug_msg, "DRAG END: L%d (%d,%d)",
+                    dragged_layer - ss_layer_mgr->layers, dragged_layer->x, dragged_layer->y);
+        }
+        is_dragging = false;
+        dragged_layer = NULL;
     }
 
     prev_lclick = current_lclick;

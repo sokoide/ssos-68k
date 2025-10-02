@@ -5,6 +5,7 @@
 #include "vram.h"
 #include "ss_perf.h"
 #include <stddef.h>
+#include <string.h>
 
 LayerMgr* ss_layer_mgr;
 
@@ -14,12 +15,9 @@ void ss_layer_init() {
     for (int i = 0; i < MAX_LAYERS; i++) {
         ss_layer_mgr->layers[i].attr = 0;
     }
-    ss_layer_mgr->map = (uint8_t*)ss_mem_alloc4k(WIDTH / 8 * HEIGHT / 8);
-    // reset to 0 every 4 bytes
-    uint32_t* p = (uint32_t*)ss_layer_mgr->map;
-    for (int i = 0; i < WIDTH / 8 * HEIGHT / 8 / sizeof(uint32_t); i++) {
-        *p++ = 0;
-    }
+    uint32_t map_bytes = (WIDTH >> 3) * (HEIGHT >> 3);
+    ss_layer_mgr->map = (uint8_t*)ss_mem_alloc4k(map_bytes);
+    memset(ss_layer_mgr->map, 0, map_bytes);
 }
 
 Layer* ss_layer_get() {
@@ -57,27 +55,54 @@ void ss_layer_set(Layer* layer, uint8_t* vram, uint16_t x, uint16_t y,
     layer->dirty_w = layer->w;
     layer->dirty_h = layer->h;
 
-    uint8_t lid = layer - ss_layer_mgr->layers;
-
-    // Use bit shifts for faster division by 8
-    uint16_t map_width = WIDTH >> 3;  // WIDTH / 8
-    uint16_t layer_y_div8 = layer->y >> 3;
-    uint16_t layer_x_div8 = layer->x >> 3;
-    uint16_t layer_h_div8 = layer->h >> 3;
-    uint16_t layer_w_div8 = layer->w >> 3;
-
-    for (int dy = 0; dy < layer_h_div8; dy++) {
-        uint8_t* map_row = &ss_layer_mgr->map[(layer_y_div8 + dy) * map_width + layer_x_div8];
-        for (int dx = 0; dx < layer_w_div8; dx++) {
-            map_row[dx] = lid;
-        }
-    }
+    ss_layer_rebuild_z_map();
 }
 
 void ss_all_layer_draw() {
     for (int i = 0; i < ss_layer_mgr->topLayerIdx; i++) {
         Layer* layer = ss_layer_mgr->zLayers[i];
         ss_layer_draw_rect_layer_bounds(layer, 0, 0, WIDTH, HEIGHT);
+    }
+}
+
+static void ss_layer_fill_map_for_layer(const Layer* layer) {
+    if (!layer || !(layer->attr & LAYER_ATTR_VISIBLE)) {
+        return;
+    }
+
+    uint16_t blocks_w = (layer->w + 7) >> 3;
+    uint16_t blocks_h = (layer->h + 7) >> 3;
+    uint16_t map_width = WIDTH >> 3;
+    uint16_t map_height = HEIGHT >> 3;
+    uint16_t start_x = layer->x >> 3;
+    uint16_t start_y = layer->y >> 3;
+
+    for (uint16_t by = 0; by < blocks_h; by++) {
+        uint16_t map_y = start_y + by;
+        if (map_y >= map_height) {
+            break;
+        }
+        uint8_t* row = &ss_layer_mgr->map[map_y * map_width];
+        for (uint16_t bx = 0; bx < blocks_w; bx++) {
+            uint16_t map_x = start_x + bx;
+            if (map_x >= map_width) {
+                break;
+            }
+            row[map_x] = layer->z;
+        }
+    }
+}
+
+void ss_layer_rebuild_z_map(void) {
+    if (!ss_layer_mgr || !ss_layer_mgr->map) {
+        return;
+    }
+
+    uint32_t map_bytes = (WIDTH >> 3) * (HEIGHT >> 3);
+    memset(ss_layer_mgr->map, 0, map_bytes);
+
+    for (int i = 0; i < ss_layer_mgr->topLayerIdx; i++) {
+        ss_layer_fill_map_for_layer(ss_layer_mgr->zLayers[i]);
     }
 }
 
@@ -208,7 +233,6 @@ void ss_layer_mark_clean(Layer* layer) {
 void ss_layer_draw_rect_layer_bounds(Layer* l, uint16_t dx0, uint16_t dy0, uint16_t dx1, uint16_t dy1) {
     if (0 == (l->attr & LAYER_ATTR_VISIBLE))
         return;
-    uint8_t lid = l - ss_layer_mgr->layers;
 
     // Clamp bounds to layer size
     if (dx1 > l->w) dx1 = l->w;
@@ -387,7 +411,7 @@ void ss_layer_bring_to_front(Layer* layer) {
     layer->z = ss_layer_mgr->topLayerIdx - 1;
 
     // Update z-order map to reflect the new layer order
-    ss_layer_update_z_map(layer);
+    ss_layer_rebuild_z_map();
 
     // Mark the affected area as dirty for redraw
     ss_layer_mark_dirty(layer, 0, 0, layer->w, layer->h);
@@ -429,54 +453,8 @@ void ss_layer_set_z_order(Layer* layer, uint16_t new_z) {
     ss_layer_mgr->zLayers[new_z] = layer;
     layer->z = new_z;
 
+    ss_layer_rebuild_z_map();
+
     // Mark affected areas as dirty for redraw
     ss_layer_mark_dirty(layer, 0, 0, layer->w, layer->h);
-}
-
-// Update z-order map to reflect layer ordering changes
-void ss_layer_update_z_map(Layer* modified_layer) {
-    if (!modified_layer || !modified_layer->vram) {
-        return;
-    }
-
-    // Calculate layer boundaries in 8-pixel blocks
-    uint16_t layer_x_blocks = (modified_layer->w + 7) >> 3;  // Round up
-    uint16_t layer_y_blocks = (modified_layer->h + 7) >> 3;
-    uint16_t map_width = WIDTH >> 3;  // WIDTH / 8
-    uint16_t layer_x_div8 = modified_layer->x >> 3;
-    uint16_t layer_y_div8 = modified_layer->y >> 3;
-    uint8_t layer_z = modified_layer->z;
-    uint8_t layer_id = modified_layer - ss_layer_mgr->layers;
-
-    // Update z-order map for this layer's area
-    for (uint16_t block_y = 0; block_y < layer_y_blocks; block_y++) {
-        uint16_t actual_y = modified_layer->y + (block_y << 3);
-        if (actual_y >= HEIGHT) break;
-
-        uint16_t vy_div8 = actual_y >> 3;
-        for (uint16_t block_x = 0; block_x < layer_x_blocks; block_x++) {
-            uint16_t actual_x = modified_layer->x + (block_x << 3);
-            if (actual_x >= WIDTH) break;
-
-            uint16_t block_map_x = actual_x >> 3;
-            uint16_t block_map_y = actual_y >> 3;
-
-            // Check if this block belongs to our layer
-            if (block_map_x >= layer_x_div8 &&
-                block_map_x < layer_x_div8 + layer_x_blocks &&
-                block_map_y >= layer_y_div8 &&
-                block_map_y < layer_y_div8 + layer_y_blocks) {
-
-                // Calculate layer-local coordinates for this block
-                uint16_t local_block_x = block_map_x - layer_x_div8;
-                uint16_t local_block_y = block_map_y - layer_y_div8;
-                uint16_t layer_map_w = modified_layer->w >> 3;
-
-                if (local_block_x < layer_map_w) {
-                    // Update the z-order map with the layer's z value
-                    ss_layer_mgr->map[block_map_y * map_width + block_map_x] = layer_z;
-                }
-            }
-        }
-    }
 }

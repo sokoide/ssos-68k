@@ -46,4 +46,4 @@ void ss_layer_draw_rect_layer_bounds(Layer* l, uint16_t dx0, uint16_t dy0, uint1
 Layer* ss_layer_find_at_position(uint16_t x, uint16_t y);
 void ss_layer_bring_to_front(Layer* layer);
 void ss_layer_set_z_order(Layer* layer, uint16_t new_z);
-void ss_layer_update_z_map(Layer* modified_layer);
+void ss_layer_rebuild_z_map(void);
