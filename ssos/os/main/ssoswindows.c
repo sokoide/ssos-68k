@@ -329,13 +329,37 @@ void update_layer_3(Layer* l) {
         if (aligned_x != dragged_layer->x || aligned_y != dragged_layer->y) {
             uint16_t old_x = dragged_layer->x;
             uint16_t old_y = dragged_layer->y;
-
-            ss_damage_add_rect(old_x, old_y, dragged_layer->w, dragged_layer->h);
-
             dragged_layer->x = aligned_x;
             dragged_layer->y = aligned_y;
 
-            ss_damage_add_rect(aligned_x, aligned_y, dragged_layer->w, dragged_layer->h);
+            uint32_t old_right = (uint32_t)old_x + dragged_layer->w;
+            uint32_t old_bottom = (uint32_t)old_y + dragged_layer->h;
+            uint32_t new_right = (uint32_t)aligned_x + dragged_layer->w;
+            uint32_t new_bottom = (uint32_t)aligned_y + dragged_layer->h;
+
+            uint16_t min_x = (old_x < aligned_x) ? old_x : aligned_x;
+            uint16_t min_y = (old_y < aligned_y) ? old_y : aligned_y;
+            uint16_t max_right = (old_right > new_right) ? (uint16_t)old_right : (uint16_t)new_right;
+            uint16_t max_bottom = (old_bottom > new_bottom) ? (uint16_t)old_bottom : (uint16_t)new_bottom;
+
+            if (min_x >= 8) {
+                min_x -= 8;
+            }
+            if (min_y >= 8) {
+                min_y -= 8;
+            }
+            if (max_right + 8 <= WIDTH) {
+                max_right += 8;
+            } else {
+                max_right = WIDTH;
+            }
+            if (max_bottom + 8 <= HEIGHT) {
+                max_bottom += 8;
+            } else {
+                max_bottom = HEIGHT;
+            }
+
+            ss_damage_add_rect(min_x, min_y, max_right - min_x, max_bottom - min_y);
 
             ss_layer_rebuild_z_map();
 
