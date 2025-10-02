@@ -83,73 +83,13 @@ void ss_all_layer_draw_rect(uint16_t x0, uint16_t y0, uint16_t x1,
                             uint16_t y1) {
     for (int i = 0; i < ss_layer_mgr->topLayerIdx; i++) {
         Layer* layer = ss_layer_mgr->zLayers[i];
-        ss_layer_draw_rect_layer(layer);
+        ss_layer_draw_rect_layer_bounds(layer, x0, y0, x1, y1);
     }
 }
 
 // Draw the rectangle area (x0, y0) - (x1, y1)
 // in vram coordinates for the layer id
-void ss_layer_draw_rect_layer(Layer* l) {
-    uint16_t x0 = l->x;
-    uint16_t y0 = l->y;
-    uint16_t x1 = l->x + l->w;
-    uint16_t y1 = l->y + l->h;
 
-    if (0 == (l->attr & LAYER_ATTR_VISIBLE))
-        return;
-    uint8_t lid = l - ss_layer_mgr->layers;
-
-    // (dx0, dy0) - (dx1, dy1) is the intersection of the layer and the
-    // rectangle (x0, y0) - (x1, y1).
-    // l->x+dx0, l->y+dy0 - l->x+dx1, l->y+dy1 will be
-    // redrawn.
-    int16_t dx0 = x0 - l->x;
-    int16_t dy0 = y0 - l->y;
-    int16_t dx1 = x1 - l->x;
-    int16_t dy1 = y1 - l->y;
-    if (dx0 < 0)
-        dx0 = 0;
-    if (dy0 < 0)
-        dy0 = 0;
-    if (dx1 > l->w)
-        dx1 = l->w;
-    if (dy1 > l->h)
-        dy1 = l->h;
-    for (int16_t dy = dy0; dy < dy1; dy++) {
-        int16_t vy = l->y + dy;
-        if (vy < 0 || vy >= HEIGHT)
-            continue;
-        // Optimized DMA transfer using bit shifts
-        uint16_t map_width = WIDTH >> 3;  // WIDTH / 8
-        uint16_t vy_div8 = vy >> 3;
-        uint16_t l_x_div8 = l->x >> 3;
-
-        int16_t startdx = -1;
-        for (int16_t dx = dx0; dx < dx1; dx += 8) {
-            if (ss_layer_mgr->map[vy_div8 * map_width + ((l->x + dx) >> 3)] == l->z) {
-                // set the first addr to transfer -> startdx
-                if (startdx == -1)
-                    startdx = dx;
-            } else if (startdx >= 0) {
-                // transfer between startdx and dx
-                int16_t vx = l->x + startdx;
-                ss_layer_draw_rect_layer_dma(
-                    l, &l->vram[dy * l->w + startdx],
-                    ((uint8_t*)&vram_start[vy * VRAMWIDTH + vx]) + 1,
-                    dx - startdx);
-                startdx = -1;
-            }
-        }
-        // DMA if the last block is not transferred yet
-        if (startdx >= 0) {
-            int16_t vx = l->x + startdx;
-            ss_layer_draw_rect_layer_dma(
-                l, &l->vram[dy * l->w + startdx],
-                ((uint8_t*)&vram_start[vy * VRAMWIDTH + vx]) + 1,
-                dx1 - startdx);
-        }
-    }
-}
 
 // Performance monitoring variables for adaptive DMA thresholds
 static uint32_t ss_cpu_idle_time = 0;
@@ -340,7 +280,7 @@ void ss_layer_draw_dirty_only() {
                 // Performance monitoring: Start full layer drawing
                 SS_PERF_START_MEASUREMENT(SS_PERF_FULL_LAYER);
                 // If no specific dirty rectangle, draw entire layer (for initial draw)
-                ss_layer_draw_rect_layer(layer);
+                ss_layer_draw_rect_layer_bounds(layer, layer->x, layer->y, layer->x + layer->w, layer->y + layer->h);
                 SS_PERF_END_MEASUREMENT(SS_PERF_FULL_LAYER);
             }
             ss_layer_mark_clean(layer);
@@ -359,4 +299,3 @@ void ss_layer_invalidate(Layer* layer) {
     layer->dirty_h = layer->h;
     layer->needs_redraw = 1;
 }
-
