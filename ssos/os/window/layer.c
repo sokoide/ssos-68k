@@ -74,22 +74,12 @@ void ss_layer_set(Layer* layer, uint8_t* vram, uint16_t x, uint16_t y,
     }
 }
 
-
-void ss_all_layer_draw() { ss_all_layer_draw_rect(0, 0, WIDTH, HEIGHT); }
-
-// Draw the rectangle area (x0, y0) - (x1, y1)
-// in vram coordinates
-void ss_all_layer_draw_rect(uint16_t x0, uint16_t y0, uint16_t x1,
-                            uint16_t y1) {
+void ss_all_layer_draw() {
     for (int i = 0; i < ss_layer_mgr->topLayerIdx; i++) {
         Layer* layer = ss_layer_mgr->zLayers[i];
-        ss_layer_draw_rect_layer_bounds(layer, x0, y0, x1, y1);
+        ss_layer_draw_rect_layer_bounds(layer, 0, 0, WIDTH, HEIGHT);
     }
 }
-
-// Draw the rectangle area (x0, y0) - (x1, y1)
-// in vram coordinates for the layer id
-
 
 // Performance monitoring variables for adaptive DMA thresholds
 static uint32_t ss_cpu_idle_time = 0;
