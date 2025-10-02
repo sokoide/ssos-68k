@@ -264,11 +264,144 @@ void ss_damage_draw_regions() {
 }
 
 // Optimize damage regions by removing occluded areas
+// Hybrid scanline-based occlusion optimization
 void ss_damage_optimize_for_occlusion() {
-    // DISABLED: The occlusion optimization is too complex and risky
-    // For now, we'll just return and let all damage regions be processed
-    // TODO: Implement a proper occlusion system in a future phase
-    return;
+    // SAFETY FIRST: Only optimize clearly occluded regions to avoid blocking updates
+    // This implementation uses the same hybrid approach as the layer drawing optimization
+    
+    for (int region_idx = 0; region_idx < g_damage_buffer.region_count; region_idx++) {
+        DamageRect* region = &g_damage_buffer.regions[region_idx];
+        
+        if (!region->needs_redraw || region->w == 0 || region->h == 0) {
+            continue;
+        }
+        
+        // Skip optimization for small regions (overhead outweighs benefits)
+        if (region->w < 16 || region->h < 16) {
+            continue;
+        }
+        
+        // Calculate region boundaries in 8-pixel blocks
+        uint16_t region_x_blocks = (region->w + 7) >> 3;  // Round up
+        uint16_t region_y_blocks = (region->h + 7) >> 3;
+        
+        // Track visible area using scanline approach
+        uint32_t total_visible_pixels = 0;
+        uint32_t total_region_pixels = (uint32_t)region->w * (uint32_t)region->h;
+        
+        // Pre-calculate frequently used values
+        uint16_t map_width = WIDTH >> 3;  // WIDTH / 8
+        uint16_t region_map_x = region->x >> 3;
+        uint16_t region_map_y = region->y >> 3;
+        
+        // Process each scanline in 8-pixel blocks
+        for (uint16_t block_y = 0; block_y < region_y_blocks; block_y++) {
+            int16_t actual_y = region->y + (block_y << 3);
+            if (actual_y >= HEIGHT) break;
+            
+            uint16_t vy_div8 = actual_y >> 3;
+            bool has_visible_pixels = false;
+            uint16_t consecutive_visible_blocks = 0;
+            
+            // Scan through 8-pixel blocks horizontally
+            for (uint16_t block_x = 0; block_x < region_x_blocks; block_x++) {
+                int16_t actual_x = region->x + (block_x << 3);
+                if (actual_x >= WIDTH) break;
+                
+                // Find the topmost visible layer at this block
+                bool block_is_visible = false;
+                
+                // Check layers from top to bottom (reverse z-order)
+                for (int layer_idx = ss_layer_mgr->topLayerIdx - 1; layer_idx >= 0; layer_idx--) {
+                    Layer* layer = ss_layer_mgr->zLayers[layer_idx];
+                    
+                    if (!(layer->attr & LAYER_ATTR_VISIBLE)) continue;
+                    
+                    // Quick bounds check
+                    if (actual_x < layer->x || actual_x + 8 > layer->x + layer->w ||
+                        actual_y < layer->y || actual_y + 8 > layer->y + layer->h) {
+                        continue;
+                    }
+                    
+                    // Check if this layer covers this 8-pixel block
+                    uint16_t layer_map_x = layer->x >> 3;
+                    uint16_t layer_map_y = layer->y >> 3;
+                    uint16_t layer_map_w = layer->w >> 3;
+                    
+                    // Check if this block belongs to the current top layer
+                    uint16_t block_map_x = actual_x >> 3;
+                    uint16_t block_map_y = actual_y >> 3;
+                    
+                    // Calculate layer-local coordinates for the block
+                    uint16_t local_block_x = block_map_x - layer_map_x;
+                    uint16_t local_block_y = block_map_y - layer_map_y;
+                    
+                    if (local_block_x < layer_map_w && 
+                        ss_layer_mgr->map[block_map_y * map_width + block_map_x] == layer->z) {
+                        
+                        // Found the topmost layer covering this block
+                        block_is_visible = true;
+                        has_visible_pixels = true;
+                        consecutive_visible_blocks++;
+                        
+                        // Add visible pixels to our count (clamp to region bounds)
+                        uint16_t visible_x_start = (actual_x < region->x) ? region->x : actual_x;
+                        uint16_t visible_x_end = (actual_x + 8 > region->x + region->w) ? 
+                                                  (region->x + region->w) : (actual_x + 8);
+                        uint16_t visible_y_start = (actual_y < region->y) ? region->y : actual_y;
+                        uint16_t visible_y_end = (actual_y + 8 > region->y + region->h) ? 
+                                                  (region->y + region->h) : (actual_y + 8);
+                        
+                        if (visible_x_end > visible_x_start && visible_y_end > visible_y_start) {
+                            total_visible_pixels += 
+                                (uint32_t)(visible_x_end - visible_x_start) * 
+                                (uint32_t)(visible_y_end - visible_y_start);
+                        }
+                        
+                        break; // Found topmost layer, no need to check lower layers
+                    }
+                }
+                
+                if (!block_is_visible) {
+                    consecutive_visible_blocks = 0;
+                }
+            }
+            
+            // If entire scanline has no visible pixels, it's fully occluded
+            if (!has_visible_pixels) {
+                // This entire scanline is occluded, add full line width to visible count
+                // (we'll check percentage later, for now track what's actually visible)
+                // No action needed - just continue to next scanline
+            }
+        }
+        
+        // Calculate visibility percentage
+        uint32_t visibility_percentage = total_region_pixels > 0 ? 
+            (total_visible_pixels * 100) / total_region_pixels : 0;
+        
+        // CONSERVATIVE APPROACH: Only skip regions that are truly invisible
+        // This prevents the optimization from blocking legitimate updates
+        if (visibility_percentage == 0) {
+            // Region is completely occluded - skip drawing
+            region->needs_redraw = false;
+            
+            // Update performance statistics
+            g_damage_perf.total_regions_processed++;  // Count as processed
+            // Note: We don't increment pixels_drawn since nothing was drawn
+            
+            // Optional: Track occlusion effectiveness for tuning
+            static uint32_t occluded_regions = 0;
+            occluded_regions++;
+            
+            // Report occasional occlusion stats for debugging
+            if (occluded_regions % 10 == 0) {
+                // Could log: "Occluded %d regions so far"
+                // This helps tune the optimization without being too verbose
+            }
+        }
+        // For regions with any visibility (even 1%), we draw them normally
+        // This ensures correctness even if it means less aggressive optimization
+    }
 }
 
 // Check if two damage rectangles overlap
