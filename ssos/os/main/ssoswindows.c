@@ -323,23 +323,30 @@ void update_layer_3(Layer* l) {
         if (target_x > max_x) target_x = max_x;
         if (target_y > max_y) target_y = max_y;
 
-        uint16_t new_x = (uint16_t)target_x;
-        uint16_t new_y = (uint16_t)target_y;
+        uint16_t aligned_x = (uint16_t)(target_x & ~0x7);
+        uint16_t aligned_y = (uint16_t)(target_y & ~0x7);
 
-        if (new_x != dragged_layer->x || new_y != dragged_layer->y) {
+        if (aligned_x != dragged_layer->x || aligned_y != dragged_layer->y) {
             uint16_t old_x = dragged_layer->x;
             uint16_t old_y = dragged_layer->y;
 
-            dragged_layer->x = new_x;
-            dragged_layer->y = new_y;
-
             ss_damage_add_rect(old_x, old_y, dragged_layer->w, dragged_layer->h);
-            ss_damage_add_rect(new_x, new_y, dragged_layer->w, dragged_layer->h);
+
+            dragged_layer->x = aligned_x;
+            dragged_layer->y = aligned_y;
+
+            ss_damage_add_rect(aligned_x, aligned_y, dragged_layer->w, dragged_layer->h);
 
             ss_layer_rebuild_z_map();
 
+            // Keep cursor anchored to the same spot on the title bar
+            drag_offset_x = mouse_x - dragged_layer->x;
+            drag_offset_y = mouse_y - dragged_layer->y;
+
+            ss_layer_mark_dirty(dragged_layer, 0, 0, dragged_layer->w, dragged_layer->h);
+
             sprintf(g_click_debug_msg, "DRAG: L%d (%d,%d)",
-                    dragged_layer - ss_layer_mgr->layers, new_x, new_y);
+                    dragged_layer - ss_layer_mgr->layers, aligned_x, aligned_y);
         }
     }
 
