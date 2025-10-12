@@ -51,6 +51,8 @@ extern volatile DMA_REG* dma;
 
 void dma_init(uint8_t* dst, uint16_t block_count);
 
+void dma_prepare_x68k_16color(void);
+void dma_setup_span(uint8_t* dst, uint8_t* src, uint16_t count);
 void dma_init_x68k_16color(uint8_t* dst, uint8_t* src, uint16_t count);
 
 void dma_clear();

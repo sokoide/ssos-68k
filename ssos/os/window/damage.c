@@ -236,6 +236,11 @@ void ss_damage_draw_regions() {
                                                             &overlap_w, &overlap_h);
                     
                     if (overlap_w > 0 && overlap_h > 0) {
+                        if (!ss_layer_region_visible(layer, overlap_x, overlap_y, overlap_w, overlap_h)) {
+                            g_damage_perf.occlusion_culled_regions++;
+                            continue;
+                        }
+
                         // Draw the overlapped portion of this layer
                         ss_damage_draw_layer_region(layer, overlap_x, overlap_y, overlap_w, overlap_h);
                         
@@ -309,6 +314,7 @@ void ss_damage_perf_reset() {
     g_damage_perf.dma_transfers_count = 0;
     g_damage_perf.cpu_transfers_count = 0;
     g_damage_perf.last_report_time = ss_timerd_counter;
+    g_damage_perf.occlusion_culled_regions = 0;
 }
 
 // Report performance statistics
@@ -324,9 +330,10 @@ void ss_damage_perf_report() {
         uint32_t total_transfers = g_damage_perf.dma_transfers_count + g_damage_perf.cpu_transfers_count;
         uint32_t dma_percent = total_transfers > 0 ? 
             (g_damage_perf.dma_transfers_count * 100) / total_transfers : 0;
+        uint32_t culled_regions = g_damage_perf.occlusion_culled_regions;
         
         // Simple performance output (can be enhanced with proper printf)
-        // Performance: %d regions, %d avg pixels, DMA: %d%%
+        // Performance: %d regions, %d avg pixels, DMA: %d%%, culled: %d
         // This would need proper string output implementation
     }
 }

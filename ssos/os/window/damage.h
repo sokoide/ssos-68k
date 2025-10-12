@@ -79,6 +79,7 @@ typedef struct {
     uint32_t dma_transfers_count;
     uint32_t cpu_transfers_count;
     uint32_t last_report_time;
+    uint32_t occlusion_culled_regions;
 } DamagePerfStats;
 
 extern DamagePerfStats g_damage_perf;

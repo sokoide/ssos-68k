@@ -1,11 +1,44 @@
 #include "layer.h"
 #include "dma.h"
+#include "damage.h"
 #include "kernel.h"
 #include "memory.h"
 #include "vram.h"
 #include "ss_perf.h"
 #include <stddef.h>
+#include <stdint.h>
 #include <string.h>
+
+static void ss_layer_cpu_copy(uint8_t* dst, uint8_t* src, uint16_t count) {
+    if (count >= 4 && ((uintptr_t)src & 3) == 0 && ((uintptr_t)dst & 3) == 0) {
+        uint32_t* src32 = (uint32_t*)src;
+        uint32_t* dst32 = (uint32_t*)dst;
+        uint16_t blocks = count >> 2;
+        for (uint16_t i = 0; i < blocks; i++) {
+            *dst32++ = *src32++;
+        }
+        uint8_t* src8 = (uint8_t*)src32;
+        uint8_t* dst8 = (uint8_t*)dst32;
+        for (uint16_t i = 0; i < (count & 3); i++) {
+            *dst8++ = *src8++;
+        }
+    } else {
+        for (uint16_t i = 0; i < count; i++) {
+            dst[i] = src[i];
+        }
+    }
+    g_damage_perf.cpu_transfers_count++;
+}
+
+static void ss_layer_dma_copy(uint8_t* dst, uint8_t* src, uint16_t count) {
+    dma_prepare_x68k_16color();
+    dma_clear();
+    dma_setup_span(dst, src, count);
+    dma_start();
+    dma_wait_completion();
+    dma_clear();
+    g_damage_perf.dma_transfers_count++;
+}
 
 LayerMgr* ss_layer_mgr;
 
@@ -139,46 +172,63 @@ void ss_update_performance_metrics() {
     }
 }
 
-void ss_layer_draw_rect_layer_dma(Layer* l, uint8_t* src, uint8_t* dst,
-                                  uint16_t block_count) {
-    // Ensure alignment for optimal DMA performance
-    if (block_count == 0) return;
-
-    // Update performance metrics for adaptive behavior
-    ss_update_performance_metrics();
-
-    // OPTIMIZED: Use X68000 16-color mode specific DMA for better performance
-    if (block_count <= ss_adaptive_dma_threshold) {
-        // Use CPU transfer for small blocks
-        if (block_count >= 4 && ((uintptr_t)src & 3) == 0 && ((uintptr_t)dst & 3) == 0) {
-            // 32-bit aligned transfer for optimal CPU performance
-            uint32_t* src32 = (uint32_t*)src;
-            uint32_t* dst32 = (uint32_t*)dst;
-            int blocks = block_count >> 2;
-            for (int i = 0; i < blocks; i++) {
-                *dst32++ = *src32++;
-            }
-            // Handle remaining bytes
-            uint8_t* src8 = (uint8_t*)src32;
-            uint8_t* dst8 = (uint8_t*)dst32;
-            for (int i = 0; i < (block_count & 3); i++) {
-                *dst8++ = *src8++;
-            }
-        } else {
-            // Byte-by-byte transfer for unaligned data
-            for (int i = 0; i < block_count; i++) {
-                dst[i] = src[i];
-            }
-        }
-        return;
+// Fast visibility probe using the 8x8 ownership map.
+bool ss_layer_region_visible(const Layer* layer, uint16_t local_x, uint16_t local_y,
+                             uint16_t width, uint16_t height) {
+    if (!layer || !(layer->attr & LAYER_ATTR_USED) || !(layer->attr & LAYER_ATTR_VISIBLE)) {
+        return false;
+    }
+    if (g_damage_perf.total_regions_processed < 10) {
+        // Allow early frames to draw without occlusion pruning to avoid startup artifacts
+        return true;
+    }
+    if (layer->z == 0) {
+        // Always render the background layer to avoid missed redraws
+        return true;
+    }
+    if (!ss_layer_mgr || !ss_layer_mgr->map || width == 0 || height == 0) {
+        return true;
     }
 
-    // Use optimized X68000 16-color mode DMA for larger transfers
-        dma_clear();
-        dma_init_x68k_16color(dst, src, block_count);
-        dma_start();
-        dma_wait_completion();
-        dma_clear();
+    uint32_t global_x0 = (uint32_t)layer->x + (uint32_t)local_x;
+    uint32_t global_y0 = (uint32_t)layer->y + (uint32_t)local_y;
+    uint32_t global_x1 = global_x0 + (uint32_t)width;
+    uint32_t global_y1 = global_y0 + (uint32_t)height;
+
+    if (global_x0 >= WIDTH || global_y0 >= HEIGHT) {
+        return true;
+    }
+    if (global_x1 > WIDTH) global_x1 = WIDTH;
+    if (global_y1 > HEIGHT) global_y1 = HEIGHT;
+
+    uint16_t map_width = WIDTH >> 3;
+    uint16_t map_height = HEIGHT >> 3;
+
+    uint16_t block_x0 = global_x0 >> 3;
+    uint16_t block_y0 = global_y0 >> 3;
+    uint16_t block_x1 = (global_x1 + 7) >> 3; // exclusive upper bound
+    uint16_t block_y1 = (global_y1 + 7) >> 3;
+
+    if (block_x0 >= map_width || block_y0 >= map_height) {
+        return true;
+    }
+    if (block_x1 > map_width) block_x1 = map_width;
+    if (block_y1 > map_height) block_y1 = map_height;
+    if (block_x1 <= block_x0 || block_y1 <= block_y0) {
+        return true;
+    }
+
+    uint8_t layer_z = layer->z;
+    for (uint16_t by = block_y0; by < block_y1; ++by) {
+        uint32_t row_base = (uint32_t)by * map_width;
+        for (uint16_t bx = block_x0; bx < block_x1; ++bx) {
+            if (ss_layer_mgr->map[row_base + bx] == layer_z) {
+                return true;
+            }
+        }
+    }
+
+    return false;
 }
 
 
@@ -247,6 +297,7 @@ void ss_layer_draw_rect_layer_bounds(Layer* l, uint16_t dx0, uint16_t dy0, uint1
         int16_t vy = l->y + dy;
         if (vy < 0 || vy >= HEIGHT)
             continue;
+        ss_update_performance_metrics();
             
         // Pre-calculate values for this scanline
         uint16_t map_width = WIDTH >> 3;  // WIDTH / 8
@@ -280,9 +331,13 @@ void ss_layer_draw_rect_layer_bounds(Layer* l, uint16_t dx0, uint16_t dy0, uint1
                 uint16_t transfer_width = actual_end - actual_start;
                 
                 if (transfer_width > 0) {
-                    void* src = &l->vram[dy * l->w + actual_start];
-                    void* dst = ((uint8_t*)&vram_start[vy * VRAMWIDTH + transfer_x]) + 1 + (actual_start - startdx);
-                    ss_layer_draw_rect_layer_dma(l, src, dst, transfer_width);
+                    uint8_t* src = &l->vram[dy * l->w + actual_start];
+                    uint8_t* dst = ((uint8_t*)&vram_start[vy * VRAMWIDTH + transfer_x]) + 1 + (actual_start - startdx);
+                    if (transfer_width <= ss_adaptive_dma_threshold) {
+                        ss_layer_cpu_copy(dst, src, transfer_width);
+                    } else {
+                        ss_layer_dma_copy(dst, src, transfer_width);
+                    }
                 }
                 
                 startdx = -1;
@@ -298,9 +353,13 @@ void ss_layer_draw_rect_layer_bounds(Layer* l, uint16_t dx0, uint16_t dy0, uint1
             uint16_t transfer_width = actual_end - actual_start;
             
             if (transfer_width > 0) {
-                void* src = &l->vram[dy * l->w + actual_start];
-                void* dst = ((uint8_t*)&vram_start[vy * VRAMWIDTH + transfer_x]) + 1 + (actual_start - startdx);
-                ss_layer_draw_rect_layer_dma(l, src, dst, transfer_width);
+                uint8_t* src = &l->vram[dy * l->w + actual_start];
+                uint8_t* dst = ((uint8_t*)&vram_start[vy * VRAMWIDTH + transfer_x]) + 1 + (actual_start - startdx);
+                if (transfer_width <= ss_adaptive_dma_threshold) {
+                    ss_layer_cpu_copy(dst, src, transfer_width);
+                } else {
+                    ss_layer_dma_copy(dst, src, transfer_width);
+                }
             }
         }
     }

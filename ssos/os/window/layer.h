@@ -33,14 +33,13 @@ void ss_layer_set(Layer* layer, uint8_t* vram, uint16_t x, uint16_t y,
                   uint16_t w, uint16_t h);
 void ss_all_layer_draw();
 
-void ss_layer_draw_rect_layer_dma(Layer* l, uint8_t* src, uint8_t* dst,
-                                  uint16_t block_count);
-
 void ss_layer_invalidate(Layer* layer);
 void ss_layer_mark_dirty(Layer* layer, uint16_t x, uint16_t y, uint16_t w, uint16_t h);
 void ss_layer_mark_clean(Layer* layer);
 void ss_layer_draw_dirty_only();
 void ss_layer_draw_rect_layer_bounds(Layer* l, uint16_t dx0, uint16_t dy0, uint16_t dx1, uint16_t dy1);
+bool ss_layer_region_visible(const Layer* layer, uint16_t local_x, uint16_t local_y,
+                             uint16_t width, uint16_t height);
 
 // Window management functions
 Layer* ss_layer_find_at_position(uint16_t x, uint16_t y);
