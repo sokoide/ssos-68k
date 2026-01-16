@@ -151,7 +151,7 @@ void update_layer_2(Layer* l) {
 
     void* base;
     uint32_t sz;
-    ss_get_text(&base, &sz);
+    ss_mem_get_text(&base, &sz);
     sprintf(szMessage, ".text   addr: 0x%08x-0x%08x, size: %d", base, base + sz - 1, sz);
     if (ss_print_v_smart(l->vram, l->w, l->h, fg, bg, x, y, szMessage, prev_text)) {
         strcpy(prev_text, szMessage);
@@ -160,7 +160,7 @@ void update_layer_2(Layer* l) {
     }
     y += 16;
 
-    ss_get_data(&base, &sz);
+    ss_mem_get_data(&base, &sz);
     sprintf(szMessage, ".data   addr: 0x%08x-0x%08x, size: %d", base, base + sz - 1, sz);
     if (ss_print_v_smart(l->vram, l->w, l->h, fg, bg, x, y, szMessage, prev_data)) {
         strcpy(prev_data, szMessage);
@@ -169,7 +169,7 @@ void update_layer_2(Layer* l) {
     }
     y += 16;
 
-    ss_get_bss(&base, &sz);
+    ss_mem_get_bss(&base, &sz);
     sprintf(szMessage, ".bss    addr: 0x%08x-0x%08x, size: %d", base, base + sz - 1, sz);
     if (ss_print_v_smart(l->vram, l->w, l->h, fg, bg, x, y, szMessage, prev_bss)) {
         strcpy(prev_bss, szMessage);
@@ -211,9 +211,9 @@ void update_layer_2(Layer* l) {
     }
     y += 16;
 
-    for (int i = 0; i < ss_mem_mgr.num_free_blocks && i < 10; i++) {
+    for (int i = 0; i < ss_mem_mgr.free_block_count && i < 10; i++) {
         sprintf(szMessage, "memory mgr: block: %d, addr: 0x%x, sz:%d", i,
-                ss_mem_mgr.free_blocks[i].addr, ss_mem_mgr.free_blocks[i].sz);
+                ss_mem_mgr.free_blocks[i].start_address, ss_mem_mgr.free_blocks[i].size_in_bytes);
         if (ss_print_v_smart(l->vram, l->w, l->h, fg, bg, x, y, szMessage, prev_blocks[i])) {
             strcpy(prev_blocks[i], szMessage);
             ss_damage_add_rect(l->x + x, l->y + y, mystrlen(szMessage) * 8, 16);

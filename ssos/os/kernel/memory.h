@@ -55,21 +55,21 @@ extern uint8_t* ss_task_stack_base;
 /**
  * @brief Initializes the global memory manager state with system RAM information.
  */
-void ss_init_memory_info();
+void ss_mem_init_info();
 
 /**
  * @brief Retrieves the boundaries of the primary SSOS RAM region.
  */
-void ss_get_ssos_memory(void** base, uint32_t* sz);
+void ss_mem_get_ssos_memory(void** base, uint32_t* sz);
 
 /** @brief Retrieves the boundaries of the code (.text) section. */
-void ss_get_text(void** base, uint32_t* sz);
+void ss_mem_get_text(void** base, uint32_t* sz);
 
 /** @brief Retrieves the boundaries of the initialized data (.data) section. */
-void ss_get_data(void** base, uint32_t* sz);
+void ss_mem_get_data(void** base, uint32_t* sz);
 
 /** @brief Retrieves the boundaries of the zero-initialized data (.bss) section. */
-void ss_get_bss(void** base, uint32_t* sz);
+void ss_mem_get_bss(void** base, uint32_t* sz);
 
 /**
  * @brief Performs the initial setup of the memory pool.

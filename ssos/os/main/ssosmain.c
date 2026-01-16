@@ -34,7 +34,7 @@ void ssosmain() {
     ss_clear_vram_fast();
     ss_wait_for_clear_vram_completion();
 
-    ss_init_memory_info();
+    ss_mem_init_info();
     ss_mem_init();
 
     // Initialize performance monitoring system

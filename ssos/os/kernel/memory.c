@@ -42,8 +42,8 @@ uint32_t ss_ssos_memory_size;
 SsMemoryManager ss_mem_mgr;
 uint8_t* ss_task_stack_base;
 
-void ss_init_memory_info() {
-    ss_get_ssos_memory(&ss_ssos_memory_base, &ss_ssos_memory_size);
+void ss_mem_init_info() {
+    ss_mem_get_ssos_memory(&ss_ssos_memory_base, &ss_ssos_memory_size);
 }
 
 /**
@@ -60,7 +60,7 @@ void ss_init_memory_info() {
  * @note This function does not perform allocation - it only provides
  * information about the available memory region for the memory manager.
  */
-void ss_get_ssos_memory(void** base, uint32_t* sz) {
+void ss_mem_get_ssos_memory(void** base, uint32_t* sz) {
     if (base == NULL || sz == NULL)
         return;
 
@@ -86,7 +86,7 @@ void ss_get_ssos_memory(void** base, uint32_t* sz) {
  * @note The text section contains executable code and is typically
  * read-only during normal operation.
  */
-void ss_get_text(void** base, uint32_t* sz) {
+void ss_mem_get_text(void** base, uint32_t* sz) {
     if (base == NULL || sz == NULL)
         return;
 
@@ -110,7 +110,7 @@ void ss_get_text(void** base, uint32_t* sz) {
  *
  * @note In LOCAL_MODE, returns zero address since data is handled differently.
  */
-void ss_get_data(void** base, uint32_t* sz) {
+void ss_mem_get_data(void** base, uint32_t* sz) {
     if (base == NULL || sz == NULL)
         return;
 
@@ -135,7 +135,7 @@ void ss_get_data(void** base, uint32_t* sz) {
  * @note The BSS section must be zero-initialized before use.
  * In LOCAL_MODE, returns zero address since BSS is handled differently.
  */
-void ss_get_bss(void** base, uint32_t* sz) {
+void ss_mem_get_bss(void** base, uint32_t* sz) {
     if (base == NULL || sz == NULL)
         return;
 
@@ -202,87 +202,89 @@ __attribute__((weak)) void ss_mem_init() {
 int ss_mem_free(uint32_t block_address, uint32_t block_size) {
     int block_index;
 
-    // 1. Validate Input
-    // We cannot free a null address or a zero-sized block.
+    // 1. Input Validation
+    // We cannot free a null address or a zero-sized block fragment.
     if (block_address == 0 || block_size == 0) {
         return -1;
     }
 
-    // 2. Find the Insertion Point
-    // The memory manager maintains free blocks in a sorted list by their start address.
-    // We use a linear search to find where our freed block fits in this sorted list.
+    // 2. Locate Insertion Point
+    // The memory manager keeps the list sorted by memory address to allow
+    // for efficient merging (coalescing) of adjacent free fragments.
     for (block_index = 0; block_index < ss_mem_mgr.free_block_count; block_index++) {
-        // If the current free block's address is higher than ours, we found the spot.
+        // If the current list entry starts after our freed block, we've found the spot.
         if (ss_mem_mgr.free_blocks[block_index].start_address > block_address) {
             break;
         }
     }
 
-    // 3. Attempt Coalescing with the PREVIOUS block
-    // Coalescing merges adjacent free blocks into one larger block to reduce fragmentation.
+    // 3. Backward Coalescing
+    // Attempt to merge the freed block with the fragment immediately preceding it.
     if (block_index > 0) {
-        SsMemoryFreeBlock* previous_block = &ss_mem_mgr.free_blocks[block_index - 1];
-        uint32_t previous_block_end = previous_block->start_address + previous_block->size_in_bytes;
+        SsMemoryFreeBlock* previous_fragment = &ss_mem_mgr.free_blocks[block_index - 1];
+        uint32_t previous_fragment_end = previous_fragment->start_address + previous_fragment->size_in_bytes;
 
-        // Check if the previous block ends exactly where our freed block starts.
-        if (previous_block_end == block_address) {
-            // Found a match! Extend the previous block's size.
-            previous_block->size_in_bytes += block_size;
+        // If the previous block ends exactly where our freed block begins:
+        if (previous_fragment_end == block_address) {
+            // MERGE: Absorb our block into the previous fragment.
+            previous_fragment->size_in_bytes += block_size;
 
-            // 3.1. Check for a "Triple Merge"
-            // If the freed block also connects to the NEXT block, we can merge all three!
+            // 3.1. Triple Coalescing Check
+            // Now check if our merged block is also adjacent to the NEXT fragment.
             if (block_index < ss_mem_mgr.free_block_count) {
-                SsMemoryFreeBlock* next_block = &ss_mem_mgr.free_blocks[block_index];
-                uint32_t freed_block_end = block_address + block_size;
+                SsMemoryFreeBlock* next_fragment = &ss_mem_mgr.free_blocks[block_index];
+                uint32_t current_block_end = block_address + block_size;
 
-                if (next_block->start_address == freed_block_end) {
-                    // Triple merge: Previous + Freed + Next become one giant block.
-                    previous_block->size_in_bytes += next_block->size_in_bytes;
+                if (next_fragment->start_address == current_block_end) {
+                    // TRIPLE MERGE: Prev + Ours + Next become one single fragment.
+                    previous_fragment->size_in_bytes += next_fragment->size_in_bytes;
                     
-                    // Since the 'next_block' is now merged into 'previous_block', we must remove it from the list.
+                    // Remove the redundant 'next' entry and shift the list left.
                     ss_mem_mgr.free_block_count--;
-                    for (int shift_index = block_index; shift_index < ss_mem_mgr.free_block_count; shift_index++) {
-                        ss_mem_mgr.free_blocks[shift_index] = ss_mem_mgr.free_blocks[shift_index + 1];
+                    for (int i = block_index; i < ss_mem_mgr.free_block_count; i++) {
+                        ss_mem_mgr.free_blocks[i] = ss_mem_mgr.free_blocks[i + 1];
                     }
                 }
             }
-            return 0; // Successfully merged (backwards)
+            return 0; // Backward merge successful.
         }
     }
 
-    // 4. Attempt Coalescing with the NEXT block (if backward merge didn't happen)
+    // 4. Forward Coalescing
+    // If we couldn't merge backwards, check if we can merge with the next fragment.
     if (block_index < ss_mem_mgr.free_block_count) {
-        SsMemoryFreeBlock* next_block = &ss_mem_mgr.free_blocks[block_index];
-        uint32_t freed_block_end = block_address + block_size;
+        SsMemoryFreeBlock* next_fragment = &ss_mem_mgr.free_blocks[block_index];
+        uint32_t current_block_end = block_address + block_size;
 
-        // Check if our freed block ends exactly where the next block starts.
-        if (next_block->start_address == freed_block_end) {
-            // Found a match! Move the next block's start back and increase its size.
-            next_block->start_address = block_address;
-            next_block->size_in_bytes += block_size;
-            return 0; // Successfully merged (forwards)
+        // If our block ends exactly where the next fragment starts:
+        if (next_fragment->start_address == current_block_end) {
+            // MERGE: Extend the start of the next fragment backwards.
+            next_fragment->start_address = block_address;
+            next_fragment->size_in_bytes += block_size;
+            return 0; // Forward merge successful.
         }
     }
 
-    // 5. No Coalescing Possible - Insert as a new Free Block
-    // If we reach here, our block is isolated (not adjacent to any other free block).
+    // 5. Array Insertion
+    // No neighbors found. Insert this block as a new isolated free fragment.
     if (ss_mem_mgr.free_block_count < MEM_FREE_BLOCKS) {
-        // Shift existing blocks to the right to make a "hole" for our new block.
-        for (int shift_index = ss_mem_mgr.free_block_count; shift_index > block_index; shift_index--) {
-            ss_mem_mgr.free_blocks[shift_index] = ss_mem_mgr.free_blocks[shift_index - 1];
+        // Shift following entries to the right to create an insertion gap.
+        for (int i = ss_mem_mgr.free_block_count; i > block_index; i--) {
+            ss_mem_mgr.free_blocks[i] = ss_mem_mgr.free_blocks[i - 1];
         }
 
-        // Insert the new block into the list.
+        // Fill the gap with our new fragment data.
         ss_mem_mgr.free_blocks[block_index].start_address = block_address;
         ss_mem_mgr.free_blocks[block_index].size_in_bytes = block_size;
         ss_mem_mgr.free_block_count++;
         return 0;
     }
 
-    // 6. Handle Error: Free block table overflow
-    // This is a critical failure. We've run out of slots to track free memory regions.
+    // 6. Critical Error: Resource Exhaustion
+    // The fixed-size free block table is full. Fragmentation has reached an
+    // unrecoverable state, or MEM_FREE_BLOCKS is too small for the workload.
     ss_set_error(SS_ERROR_OUT_OF_RESOURCES, SS_SEVERITY_ERROR,
-                __func__, __FILE__, __LINE__, "Free block table is full - cannot track more fragments");
+                __func__, __FILE__, __LINE__, "Memory fragmentation limit: Free block table full.");
     return -1;
 }
 
@@ -339,47 +341,51 @@ __attribute__((weak)) uint32_t ss_mem_alloc(uint32_t requested_size) {
     int block_index;
     uint32_t allocated_address;
 
+    // 1. Input Validation
+    // Zero-sized allocation is an invalid request.
     if (requested_size == 0) {
         return 0;
     }
 
-    // 1. First-Fit Search
-    // We iterate through our sorted list of free blocks and pick the FIRST block
-    // that is large enough to satisfy the request. This is the "First-Fit" strategy.
+    // 2. First-Fit Search Strategy
+    // We iterate through our address-sorted list of free memory fragments.
+    // The "First-Fit" algorithm selects the first fragment that can satisfy the request.
     for (block_index = 0; block_index < ss_mem_mgr.free_block_count; block_index++) {
         SsMemoryFreeBlock* current_block = &ss_mem_mgr.free_blocks[block_index];
 
         if (current_block->size_in_bytes >= requested_size) {
-            // We found a suitable block!
+            // MATCH FOUND: Satisfy the request from this block.
             allocated_address = current_block->start_address;
 
-            // Update the block's state by "shrinking" it from the front.
+            // Reduce the free block's size and advance its start address.
             current_block->start_address += requested_size;
             current_block->size_in_bytes -= requested_size;
 
-            // 2. Remove Empty Blocks
-            // If the block was exactly the size we needed, it's now empty (size 0).
+            // 3. Post-Allocation Cleanup
+            // If the block was fully consumed (size is now zero), remove it from the list.
             if (current_block->size_in_bytes == 0) {
                 ss_mem_mgr.free_block_count--;
 
-                // To remove a block from our array-based list, we must shift all subsequent blocks left.
-                int remaining_blocks = ss_mem_mgr.free_block_count - block_index;
-                if (remaining_blocks > 0) {
-                    // EDUCATIONAL NOTE: Performance Optimization for the Motorola 68000
-                    // On the 68000, 32-bit (Long) moves are very efficient. 
-                    // Instead of copying the struct element by element, we cast the pointers 
-                    // to 32-bit integers to move the data in bulk.
-                    SsMemoryFreeBlock* source = &ss_mem_mgr.free_blocks[block_index + 1];
-                    SsMemoryFreeBlock* destination = &ss_mem_mgr.free_blocks[block_index];
+                // Shift subsequent blocks to maintain a contiguous array list.
+                int blocks_to_shift = ss_mem_mgr.free_block_count - block_index;
+                if (blocks_to_shift > 0) {
+                    /**
+                     * MOTOROLA 68000 OPTIMIZATION:
+                     * On the 68k, 32-bit (Long) operations are significantly faster than
+                     * series of 8-bit or 16-bit operations. Since our block structure
+                     * is exactly 8 bytes (2x 32-bit uint32_t), we use 32-bit bulk moves.
+                     */
+                    SsMemoryFreeBlock* source_ptr = &ss_mem_mgr.free_blocks[block_index + 1];
+                    SsMemoryFreeBlock* destination_ptr = &ss_mem_mgr.free_blocks[block_index];
 
-                    uint32_t* source_32 = (uint32_t*)source;
-                    uint32_t* destination_32 = (uint32_t*)destination;
+                    uint32_t* src_u32 = (uint32_t*)source_ptr;
+                    uint32_t* dst_u32 = (uint32_t*)destination_ptr;
                     
-                    // Each SsMemoryFreeBlock is 8 bytes, which is exactly two 32-bit Longs.
-                    int long_words_to_copy = remaining_blocks * (sizeof(SsMemoryFreeBlock) / sizeof(uint32_t));
+                    // Each block contains 2 uint32_t elements.
+                    int words_to_copy = blocks_to_shift * (sizeof(SsMemoryFreeBlock) / sizeof(uint32_t));
 
-                    for (int copy_index = 0; copy_index < long_words_to_copy; copy_index++) {
-                        *destination_32++ = *source_32++;
+                    for (int i = 0; i < words_to_copy; i++) {
+                        *dst_u32++ = *src_u32++;
                     }
                 }
             }
@@ -387,8 +393,8 @@ __attribute__((weak)) uint32_t ss_mem_alloc(uint32_t requested_size) {
         }
     }
 
-    // 3. Allocation Failed
-    // No block was large enough to satisfy the request (Out of Memory).
+    // 4. Out of Memory
+    // No free block was found that could accommodate the requested size.
     return 0;
 }
 

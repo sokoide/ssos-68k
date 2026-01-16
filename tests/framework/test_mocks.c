@@ -144,6 +144,13 @@ void ss_mem_init(void) {
     ss_mem_mgr.free_blocks[0].size_in_bytes = 0x100000;  // 1MB for testing
 }
 
+/*
+void ss_mem_init_info(void) {
+    // Mock implementation for testing
+}
+*/
+
+/*
 uint32_t ss_mem_total_bytes(void) {
     return 0x1000000; // 16MB
 }
@@ -155,6 +162,7 @@ uint32_t ss_mem_free_bytes(void) {
     }
     return free_bytes;
 }
+*/
 
 // Initialize scheduler state
 void reset_scheduler_state(void) {

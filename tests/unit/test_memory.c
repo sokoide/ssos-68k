@@ -7,7 +7,7 @@
 // Test helper: Initialize memory system for testing
 static void setup_memory_system(void) {
     // Initialize memory region information first
-    ss_init_memory_info();
+    ss_mem_init_info();
     // Then initialize memory manager with that information
     ss_mem_init();
 }
