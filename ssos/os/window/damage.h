@@ -31,6 +31,7 @@ typedef struct {
     int region_count;                   // Current number of active regions
     uint16_t buffer_width, buffer_height; // Buffer dimensions
     bool buffer_allocated;              // Whether buffer is allocated
+    bool frame_batching;                // If true, defer all draws until frame end
 } DamageBuffer;
 
 // Global damage buffer instance
@@ -91,6 +92,10 @@ void ss_damage_perf_update(uint32_t pixels_drawn, bool used_dma);
 
 // Occlusion performance reporting
 void ss_damage_occlusion_report();
+
+// Frame batching for VSync-optimized drawing
+void ss_damage_frame_begin(void);   // Start batching - defer draws
+void ss_damage_frame_end(void);     // End batching - execute all draws
 
 // Alignment helpers for 8-pixel boundaries (X68000 optimal)
 static inline uint16_t ss_damage_align8(uint16_t value) {

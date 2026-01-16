@@ -46,6 +46,7 @@ void ss_damage_init() {
 
     // Initialize damage regions
     g_damage_buffer.region_count = 0;
+    g_damage_buffer.frame_batching = false;  // No batching by default
     for (int i = 0; i < MAX_DAMAGE_REGIONS; i++) {
         g_damage_buffer.regions[i].needs_redraw = false;
         g_damage_buffer.regions[i].w = 0;
@@ -483,4 +484,19 @@ bool ss_damage_is_region_fully_occluded(const DamageRect* region) {
 static void ss_damage_draw_layer_region(const Layer* layer, uint16_t x, uint16_t y, uint16_t w, uint16_t h) {
     // Use the existing layer drawing system with the optimized DMA functions
     ss_layer_draw_rect_layer_bounds((Layer*)layer, x, y, x + w, y + h);
+}
+
+// Frame batching for VSync-optimized drawing
+// Start batching mode - damage regions will be accumulated but not drawn
+void ss_damage_frame_begin(void) {
+    g_damage_buffer.frame_batching = true;
+}
+
+// End batching mode and execute all accumulated draws
+void ss_damage_frame_end(void) {
+    if (g_damage_buffer.frame_batching) {
+        g_damage_buffer.frame_batching = false;
+        // Draw all accumulated damage regions at once
+        ss_damage_draw_regions();
+    }
 }
