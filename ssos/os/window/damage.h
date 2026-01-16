@@ -4,7 +4,8 @@
 #include "ss_config.h"
 
 // Maximum number of damage regions to track (X11 DamageExt compatible)
-#define MAX_DAMAGE_REGIONS 32
+// Increased from 32 to 64 for finer-grained dirty region tracking
+#define MAX_DAMAGE_REGIONS 64
 
 // Damage rectangle structure - X11 DamageExt compatible
 typedef struct {
