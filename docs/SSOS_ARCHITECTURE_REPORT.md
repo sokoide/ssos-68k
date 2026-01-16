@@ -244,6 +244,25 @@ While full runtime configurability is not possible due to C language constraints
 -   ✅ **Resource Limits**: ✅ **ADDRESSED** - Technical analysis revealed C language constraints prevent full runtime configurability
 -   ✅ **Testing**: ✅ **COMPLETED** - Comprehensive test coverage with 114 test functions across 6 test suites, 100% pass rate achieved
 
+## Bug Fixes (2026-01 Update)
+
+### Fixed Issues
+
+1. **Keyboard Ring Buffer Bug** (`kernel.c`)
+
+    - **Problem**: In `ss_kb_read()`, the read index wrap-around incorrectly reset `idxw` instead of `idxr`
+    - **Impact**: Buffer corruption after reading KEY_BUFFER_SIZE keys
+    - **Fix**: Corrected to reset `idxr` for proper circular buffer behavior
+
+2. **Duplicate Include** (`task_manager.c`)
+
+    - **Problem**: `#include "task_manager.h"` was duplicated at file start
+    - **Fix**: Removed redundant include
+
+3. **Redundant Code** (`layer.c`)
+    - **Problem**: `ss_layer_set_z_order()` contained identical code in both `if` and `else` branches
+    - **Fix**: Consolidated into single loop
+
 ## Technical Innovation
 
 ### Advanced Features
@@ -261,12 +280,14 @@ While full runtime configurability is not possible due to C language constraints
 The most significant architectural advancement is the implementation of a **X11 DamageExt-compatible dirty region system** that represents a fundamental leap in graphics rendering optimization:
 
 **Damage System Architecture:**
-- **Advanced Occlusion Tracking**: Real-time calculation of occluded screen regions with percentage-based optimization
-- **Enhanced Damage Rectangles**: Multi-layer occlusion tracking with up to 32 concurrent damage regions
-- **Adaptive Performance Optimization**: Dynamic threshold adjustment based on system performance metrics
-- **Hardware-Accelerated Alignment**: 8-pixel boundary alignment optimized for X68000 VRAM architecture
+
+-   **Advanced Occlusion Tracking**: Real-time calculation of occluded screen regions with percentage-based optimization
+-   **Enhanced Damage Rectangles**: Multi-layer occlusion tracking with up to 32 concurrent damage regions
+-   **Adaptive Performance Optimization**: Dynamic threshold adjustment based on system performance metrics
+-   **Hardware-Accelerated Alignment**: 8-pixel boundary alignment optimized for X68000 VRAM architecture
 
 **Key Innovation - Occlusion-Aware Rendering:**
+
 ```c
 // Enhanced damage rectangle with occlusion intelligence
 typedef struct {
@@ -279,20 +300,23 @@ typedef struct {
 ```
 
 **Performance Impact:**
-- **Intelligent Region Splitting**: Automatically splits partially occluded regions for optimal rendering
-- **DMA Transfer Optimization**: Prioritizes DMA transfers for fully visible regions
-- **CPU Offload Reduction**: Minimizes CPU-based rendering for occluded areas
-- **Real-time Performance Monitoring**: Built-in statistics for adaptive optimization
+
+-   **Intelligent Region Splitting**: Automatically splits partially occluded regions for optimal rendering
+-   **DMA Transfer Optimization**: Prioritizes DMA transfers for fully visible regions
+-   **CPU Offload Reduction**: Minimizes CPU-based rendering for occluded areas
+-   **Real-time Performance Monitoring**: Built-in statistics for adaptive optimization
 
 ### Enhanced Error Handling Framework
 
 **Sophisticated Error Management System:**
-- **15+ Categorized Error Codes**: Comprehensive error taxonomy with severity classification
-- **Context Preservation**: Complete debugging context with function, file, line, and timestamp tracking
-- **Legacy Compatibility**: Seamless integration with uT-Kernel error code standards
-- **Debug Integration**: Conditional assertion system for development builds
+
+-   **15+ Categorized Error Codes**: Comprehensive error taxonomy with severity classification
+-   **Context Preservation**: Complete debugging context with function, file, line, and timestamp tracking
+-   **Legacy Compatibility**: Seamless integration with uT-Kernel error code standards
+-   **Debug Integration**: Conditional assertion system for development builds
 
 **Error Context Architecture:**
+
 ```c
 typedef struct {
     SsError error_code;
@@ -308,18 +332,20 @@ typedef struct {
 ### Advanced Performance Monitoring System
 
 **Real-time Performance Intelligence:**
-- **7 Performance Metrics**: Comprehensive system monitoring with 100-sample history
-- **Adaptive Sampling**: Configurable sampling intervals based on system load
-- **Hardware Integration**: Direct integration with X68000 timing and interrupt systems
-- **Data-Driven Optimization**: Performance measurements guide architectural decisions
+
+-   **7 Performance Metrics**: Comprehensive system monitoring with 100-sample history
+-   **Adaptive Sampling**: Configurable sampling intervals based on system load
+-   **Hardware Integration**: Direct integration with X68000 timing and interrupt systems
+-   **Data-Driven Optimization**: Performance measurements guide architectural decisions
 
 ### Configuration Management Evolution
 
 **Intelligent Configuration Architecture:**
-- **96+ Centralized Parameters**: Complete elimination of magic numbers
-- **Compile-time vs Runtime Segregation**: Clear distinction between what can and cannot be configured
-- **Debug/Release Profiles**: Environment-specific optimization settings
-- **Cross-Platform Compatibility**: Unified configuration for OS and Local modes
+
+-   **96+ Centralized Parameters**: Complete elimination of magic numbers
+-   **Compile-time vs Runtime Segregation**: Clear distinction between what can and cannot be configured
+-   **Debug/Release Profiles**: Environment-specific optimization settings
+-   **Cross-Platform Compatibility**: Unified configuration for OS and Local modes
 
 ## Conclusion
 
@@ -328,11 +354,12 @@ SSOS-68K demonstrates sophisticated embedded operating system design with modern
 The dual-compilation approach (OS/Local modes) provides an excellent development workflow, while the comprehensive performance monitoring system enables data-driven optimization decisions.
 
 **All architecture enhancement areas have been successfully addressed:**
-- ✅ **Documentation Enhancement**: Complex algorithms now have comprehensive inline documentation
-- ✅ **Resource Limits Analysis**: Technical constraints identified and documented
-- ✅ **Testing Enhancement**: Comprehensive test coverage with 100% pass rate achieved
+
+-   ✅ **Documentation Enhancement**: Complex algorithms now have comprehensive inline documentation
+-   ✅ **Resource Limits Analysis**: Technical constraints identified and documented
+-   ✅ **Testing Enhancement**: Comprehensive test coverage with 100% pass rate achieved
 
 ---
 
 _Enhanced analysis performed using comprehensive codebase review and semantic analysis tools_
-_Report generated: 2025-10-02_
+_Report updated: 2026-01-17_

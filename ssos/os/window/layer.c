@@ -292,27 +292,27 @@ void ss_layer_draw_rect_layer_bounds(Layer* l, uint16_t dx0, uint16_t dy0, uint1
     // Optimize: Use 8-pixel alignment for faster processing but with improved merging
     uint16_t aligned_dx0 = dx0 & ~0x7;  // Round down to 8-pixel boundary
     uint16_t aligned_dx1 = (dx1 + 7) & ~0x7;  // Round up to 8-pixel boundary
-    
+
     for (int16_t dy = dy0; dy < dy1; dy++) {
         int16_t vy = l->y + dy;
         if (vy < 0 || vy >= HEIGHT)
             continue;
         ss_update_performance_metrics();
-            
+
         // Pre-calculate values for this scanline
         uint16_t map_width = WIDTH >> 3;  // WIDTH / 8
         uint16_t vy_div8 = vy >> 3;
         uint16_t l_x_div8 = l->x >> 3;
         uint8_t layer_z = l->z;
-        
+
         int16_t startdx = -1;
         uint16_t consecutive_count = 0;
-        
+
         // Process in 8-pixel blocks for efficiency, but merge consecutive blocks
         for (int16_t dx = aligned_dx0; dx < aligned_dx1; dx += 8) {
             uint16_t vx = l->x + dx;
             if (vx >= WIDTH) break;
-            
+
             // Check 8-pixel block visibility (faster than per-pixel check)
             if (ss_layer_mgr->map[vy_div8 * map_width + (vx >> 3)] == layer_z) {
                 if (startdx == -1) {
@@ -329,7 +329,7 @@ void ss_layer_draw_rect_layer_bounds(Layer* l, uint16_t dx0, uint16_t dy0, uint1
                 uint16_t actual_start = (startdx < dx0) ? dx0 : startdx;
                 uint16_t actual_end = ((startdx + consecutive_count) > dx1) ? dx1 : (startdx + consecutive_count);
                 uint16_t transfer_width = actual_end - actual_start;
-                
+
                 if (transfer_width > 0) {
                     uint8_t* src = &l->vram[dy * l->w + actual_start];
                     uint8_t* dst = ((uint8_t*)&vram_start[vy * VRAMWIDTH + transfer_x]) + 1 + (actual_start - startdx);
@@ -339,19 +339,19 @@ void ss_layer_draw_rect_layer_bounds(Layer* l, uint16_t dx0, uint16_t dy0, uint1
                         ss_layer_dma_copy(dst, src, transfer_width);
                     }
                 }
-                
+
                 startdx = -1;
                 consecutive_count = 0;
             }
         }
-        
+
         // Handle final merged region if it extends to the end
         if (startdx >= 0) {
             uint16_t transfer_x = l->x + startdx;
             uint16_t actual_start = (startdx < dx0) ? dx0 : startdx;
             uint16_t actual_end = ((startdx + consecutive_count) > dx1) ? dx1 : (startdx + consecutive_count);
             uint16_t transfer_width = actual_end - actual_start;
-            
+
             if (transfer_width > 0) {
                 uint8_t* src = &l->vram[dy * l->w + actual_start];
                 uint8_t* dst = ((uint8_t*)&vram_start[vy * VRAMWIDTH + transfer_x]) + 1 + (actual_start - startdx);
@@ -377,21 +377,21 @@ void ss_layer_draw_dirty_only() {
             if (layer->dirty_w > 0 && layer->dirty_h > 0) {
                 // Performance monitoring: Start dirty rectangle drawing
                 SS_PERF_START_MEASUREMENT(SS_PERF_DIRTY_RECT);
-                
+
                 // Draw the dirty rectangle using the new optimized scanline-based method
                 ss_layer_draw_rect_layer_bounds(layer,
                     layer->dirty_x, layer->dirty_y,
                     layer->dirty_x + layer->dirty_w,
                     layer->dirty_y + layer->dirty_h);
-                    
+
                 SS_PERF_END_MEASUREMENT(SS_PERF_DIRTY_RECT);
             } else {
                 // Performance monitoring: Start full layer drawing
                 SS_PERF_START_MEASUREMENT(SS_PERF_FULL_LAYER);
-                
+
                 // For initial draw or full layer invalidation, use optimized method too
                 ss_layer_draw_rect_layer_bounds(layer, 0, 0, layer->w, layer->h);
-                
+
                 SS_PERF_END_MEASUREMENT(SS_PERF_FULL_LAYER);
             }
             ss_layer_mark_clean(layer);
@@ -493,19 +493,10 @@ void ss_layer_set_z_order(Layer* layer, uint16_t new_z) {
         ss_layer_mgr->zLayers[i]->z = i;
     }
 
-    // Insert layer at new position
-    if (new_z < old_z) {
-        // Moving up: shift layers down to make space
-        for (int i = ss_layer_mgr->topLayerIdx - 1; i > new_z; i--) {
-            ss_layer_mgr->zLayers[i] = ss_layer_mgr->zLayers[i - 1];
-            ss_layer_mgr->zLayers[i]->z = i;
-        }
-    } else {
-        // Moving down: shift layers up to make space
-        for (int i = ss_layer_mgr->topLayerIdx - 1; i > new_z; i--) {
-            ss_layer_mgr->zLayers[i] = ss_layer_mgr->zLayers[i - 1];
-            ss_layer_mgr->zLayers[i]->z = i;
-        }
+    // レイヤーを新しい位置に挿入するためにシフト
+    for (int i = ss_layer_mgr->topLayerIdx - 1; i > new_z; i--) {
+        ss_layer_mgr->zLayers[i] = ss_layer_mgr->zLayers[i - 1];
+        ss_layer_mgr->zLayers[i]->z = i;
     }
 
     // Place layer at new position

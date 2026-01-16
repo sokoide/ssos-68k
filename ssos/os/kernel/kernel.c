@@ -110,7 +110,7 @@ int ss_kb_read() {
 
     // Wrap around buffer index
     if (ss_kb.idxr >= KEY_BUFFER_SIZE) {
-        ss_kb.idxw = 0;
+        ss_kb.idxr = 0;  // 修正: idxwではなくidxrをリセット
     }
 
     return key;
