@@ -6,6 +6,7 @@
 enum LayerAttr {
     LAYER_ATTR_USED = 0x01,
     LAYER_ATTR_VISIBLE = 0x02,
+    LAYER_ATTR_DIRECT = 0x04,  // Direct VRAM rendering - skip offscreen transfer
 };
 
 typedef struct {

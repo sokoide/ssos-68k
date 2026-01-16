@@ -61,11 +61,11 @@ static void ss_layer_cpu_copy(uint8_t* dst, uint8_t* src, uint16_t count) {
 
 static void ss_layer_dma_copy(uint8_t* dst, uint8_t* src, uint16_t count) {
     dma_prepare_x68k_16color();
-    dma_clear();
+    dma_clear();  // Clear status before transfer
     dma_setup_span(dst, src, count);
     dma_start();
     dma_wait_completion();
-    dma_clear();
+    // Note: No dma_clear() here - next transfer will clear before setup
     g_damage_perf.dma_transfers_count++;
 }
 
@@ -311,6 +311,10 @@ void ss_layer_mark_clean(Layer* layer) {
 // Hybrid approach: 8-pixel blocks with optimized merging for better balance
 void ss_layer_draw_rect_layer_bounds(Layer* l, uint16_t dx0, uint16_t dy0, uint16_t dx1, uint16_t dy1) {
     if (0 == (l->attr & LAYER_ATTR_VISIBLE))
+        return;
+
+    // Skip transfer for DIRECT layers - they render directly to VRAM
+    if (l->attr & LAYER_ATTR_DIRECT)
         return;
 
     // Clamp bounds to layer size

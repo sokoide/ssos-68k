@@ -63,7 +63,7 @@ void ss_memcpy_32(uint32_t* dst, const uint32_t* src, size_t count);
 void ss_memset_32(uint32_t* dst, uint32_t value, size_t count);
 
 // Optimized rectangle fill using word-alignment
-void ss_fill_rect_v_fast(uint8_t* offscreen, uint16_t w, uint16_t h, 
+void ss_fill_rect_v_fast(uint8_t* offscreen, uint16_t w, uint16_t h,
                          uint16_t color, int x0, int y0, int x1, int y1);
 
 // globals
@@ -76,3 +76,10 @@ extern volatile uint16_t* crtc_execution_port;
 // vram address
 extern uint16_t* vram_start;
 extern uint16_t* vram_end;
+
+// VRAM address helper for direct rendering
+// Returns pointer to VRAM at given coordinates (for 16-color mode)
+// Note: Each pixel is 2 bytes in VRAM, color data is in lower byte (+1 offset)
+static inline uint8_t* ss_vram_get_ptr(uint16_t x, uint16_t y) {
+    return ((uint8_t*)&vram_start[y * 1024 + x]) + 1;
+}
