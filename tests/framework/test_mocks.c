@@ -76,10 +76,10 @@ uint16_t main_task_id = 0;
 
 // Memory manager structure
 typedef struct {
-    int num_free_blocks;
+    int free_block_count;
     struct {
-        uint32_t addr;
-        uint32_t sz;
+        uint32_t start_address;
+        uint32_t size_in_bytes;
     } free_blocks[100];
 } MemoryManager;
 
@@ -108,15 +108,15 @@ uint32_t ss_mem_alloc(uint32_t size) {
     }
 
     // Update memory manager state for consistency with tests
-    if (ss_mem_mgr.num_free_blocks > 0) {
-        if (ss_mem_mgr.free_blocks[0].sz >= size) {
-            if (ss_mem_mgr.free_blocks[0].sz == size) {
+    if (ss_mem_mgr.free_block_count > 0) {
+        if (ss_mem_mgr.free_blocks[0].size_in_bytes >= size) {
+            if (ss_mem_mgr.free_blocks[0].size_in_bytes == size) {
                 // Complete consumption - remove free block
-                ss_mem_mgr.num_free_blocks = 0;
+                ss_mem_mgr.free_block_count = 0;
             } else {
                 // Partial allocation - update free block
-                ss_mem_mgr.free_blocks[0].addr += size;
-                ss_mem_mgr.free_blocks[0].sz -= size;
+                ss_mem_mgr.free_blocks[0].start_address += size;
+                ss_mem_mgr.free_blocks[0].size_in_bytes -= size;
             }
         }
     }
@@ -139,19 +139,19 @@ uint32_t ss_mem_alloc4k(uint32_t size) {
 }
 
 void ss_mem_init(void) {
-    ss_mem_mgr.num_free_blocks = 1;
-    ss_mem_mgr.free_blocks[0].addr = 0x100000;
-    ss_mem_mgr.free_blocks[0].sz = 0x100000;  // 1MB for testing
+    ss_mem_mgr.free_block_count = 1;
+    ss_mem_mgr.free_blocks[0].start_address = 0x100000;
+    ss_mem_mgr.free_blocks[0].size_in_bytes = 0x100000;  // 1MB for testing
 }
 
 uint32_t ss_mem_total_bytes(void) {
-    return 0x100000;  // 1MB total for testing
+    return 0x1000000; // 16MB
 }
 
 uint32_t ss_mem_free_bytes(void) {
     uint32_t free_bytes = 0;
-    for (int i = 0; i < ss_mem_mgr.num_free_blocks; i++) {
-        free_bytes += ss_mem_mgr.free_blocks[i].sz;
+    for (int i = 0; i < ss_mem_mgr.free_block_count; i++) {
+        free_bytes += ss_mem_mgr.free_blocks[i].size_in_bytes;
     }
     return free_bytes;
 }

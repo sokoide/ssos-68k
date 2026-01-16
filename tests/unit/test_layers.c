@@ -143,7 +143,7 @@ TEST(layers_z_order_management) {
     ASSERT_EQ(ss_layer_mgr->zLayers[2], layer3);
 
     // Change z-order of middle layer
-    ss_layer_set_z(layer2, 5);
+    ss_layer_set_z_order(layer2, 5);
     ASSERT_EQ(layer2->z, 5);
 }
 
