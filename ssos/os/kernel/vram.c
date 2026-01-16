@@ -114,7 +114,7 @@ void ss_draw_rect_v(uint8_t* offscreen, uint16_t w, uint16_t h, uint16_t color,
 
 void ss_put_char_v(uint8_t* offscreen, uint16_t w, uint16_t h,
                     uint16_t fg_color, uint16_t bg_color, int x, int y, char c) {
-    // 8x16 font - CORRECT implementation matching original behavior
+    // 8x16 font - OPTIMIZED: batch 8-pixel writes
     uint8_t* font_base_8_16 = (uint8_t*)0xf3a800;
     uint16_t font_height = 16;
     uint8_t* font_addr = (uint8_t*)(font_base_8_16 + font_height * c);
@@ -122,18 +122,23 @@ void ss_put_char_v(uint8_t* offscreen, uint16_t w, uint16_t h,
     if (x > w - 8)
         return;
 
-    // Simple, correct implementation: process each font row
+    // Pre-compute color lookup table for faster bit->color conversion
+    uint8_t colors[2] = { (uint8_t)bg_color, (uint8_t)fg_color };
+
+    // Process each font row
     for (int ty = 0; ty < font_height; ty++) {
         uint8_t font_byte = font_addr[ty];  // Get single byte for this row
         uint8_t* dst = &offscreen[(y + ty) * w + x];
 
-        // Process 8 pixels: each bit in font_byte corresponds to one pixel
-        // Bit 7 (MSB) = leftmost pixel, Bit 0 (LSB) = rightmost pixel
-        for (int px = 0; px < 8; px++) {
-            // Extract bit from font data (MSB first)
-            uint16_t color = ((font_byte >> (7 - px)) & 1) ? fg_color : bg_color;
-            dst[px] = color;
-        }
+        // Optimized: unroll 8 pixels with lookup table (no conditional per pixel)
+        dst[0] = colors[(font_byte >> 7) & 1];
+        dst[1] = colors[(font_byte >> 6) & 1];
+        dst[2] = colors[(font_byte >> 5) & 1];
+        dst[3] = colors[(font_byte >> 4) & 1];
+        dst[4] = colors[(font_byte >> 3) & 1];
+        dst[5] = colors[(font_byte >> 2) & 1];
+        dst[6] = colors[(font_byte >> 1) & 1];
+        dst[7] = colors[font_byte & 1];
     }
 }
 
