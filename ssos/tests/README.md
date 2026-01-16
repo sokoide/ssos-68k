@@ -37,35 +37,35 @@ tests/
 
 ### Memory Management Tests
 
--   Basic allocation and deallocation
--   4K-aligned allocation (`ss_mem_alloc4k`)
--   Fragmentation handling
--   Out-of-memory scenarios
--   Memory statistics validation
+- Basic allocation and deallocation
+- 4K-aligned allocation (`ss_mem_alloc4k`)
+- Fragmentation handling
+- Out-of-memory scenarios
+- Memory statistics validation
 
 ### Task Scheduler Tests
 
--   Task creation with various priorities
--   Priority-based scheduling logic
--   Task state transitions (DORMANT → READY)
--   Resource exhaustion handling
--   Multiple tasks with same priority
+- Task creation with various priorities
+- Priority-based scheduling logic
+- Task state transitions (DORMANT → READY)
+- Resource exhaustion handling
+- Multiple tasks with same priority
 
 ### Layer Management Tests
 
--   Layer allocation from pool
--   Z-order management
--   Dirty rectangle tracking
--   Layer configuration and properties
--   Memory management for VRAM buffers
+- Layer allocation from pool
+- Z-order management
+- Dirty rectangle tracking
+- Layer configuration and properties
+- Memory management for VRAM buffers
 
 ### Error Handling Tests
 
--   Error reporting and context tracking
--   Severity level handling
--   Error code validation
--   Compatibility with legacy error codes
--   Boundary condition testing
+- Error reporting and context tracking
+- Severity level handling
+- Error code validation
+- Compatibility with legacy error codes
+- Boundary condition testing
 
 ## Writing New Tests
 
@@ -93,31 +93,31 @@ void run_your_tests(void) {
 
 ### Available Assertions
 
--   `ASSERT_EQ(a, b)` - Values are equal
--   `ASSERT_NEQ(a, b)` - Values are not equal
--   `ASSERT_NOT_NULL(ptr)` - Pointer is not NULL
--   `ASSERT_NULL(ptr)` - Pointer is NULL
--   `ASSERT_TRUE(condition)` - Condition is true
--   `ASSERT_FALSE(condition)` - Condition is false
--   `ASSERT_ALIGNED_4K(ptr)` - Address is 4K-aligned
--   `ASSERT_IN_RANGE(val, min, max)` - Value is in range
+- `ASSERT_EQ(a, b)` - Values are equal
+- `ASSERT_NEQ(a, b)` - Values are not equal
+- `ASSERT_NOT_NULL(ptr)` - Pointer is not NULL
+- `ASSERT_NULL(ptr)` - Pointer is NULL
+- `ASSERT_TRUE(condition)` - Condition is true
+- `ASSERT_FALSE(condition)` - Condition is false
+- `ASSERT_ALIGNED_4K(ptr)` - Address is 4K-aligned
+- `ASSERT_IN_RANGE(val, min, max)` - Value is in range
 
 ## Build Configuration
 
 The test framework compiles with:
 
--   `LOCAL_MODE` - Enables local execution without hardware dependencies
--   `TESTING` - Enables testing-specific code paths
--   Cross-compilation for m68k-xelf-gcc
--   Optimized builds (-O2) for performance
+- `LOCAL_MODE` - Enables local execution without hardware dependencies
+- `TESTING` - Enables testing-specific code paths
+- Cross-compilation for m68k-xelf-gcc
+- Optimized builds (-O2) for performance
 
 ## Benefits
 
--   **Fast Feedback**: Tests run in milliseconds, not minutes
--   **No Emulator Required**: 90% coverage without X68000 setup
--   **Regression Detection**: Catch bugs before they reach integration
--   **CI/CD Ready**: Lightweight enough for automated testing
--   **Development Friendly**: Easy to add new tests and modify existing ones
+- **Fast Feedback**: Tests run in milliseconds, not minutes
+- **No Emulator Required**: 90% coverage without X68000 setup
+- **Regression Detection**: Catch bugs before they reach integration
+- **CI/CD Ready**: Lightweight enough for automated testing
+- **Development Friendly**: Easy to add new tests and modify existing ones
 
 ## Troubleshooting
 

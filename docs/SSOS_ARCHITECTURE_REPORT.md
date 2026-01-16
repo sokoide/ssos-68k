@@ -53,9 +53,9 @@ SSOS-68K is a sophisticated microkernel operating system designed for the Motoro
 
 **Key Components**:
 
--   **TCB Table**: Task Control Block management for up to `MAX_TASKS` processes
--   **Scheduler**: Priority-based preemptive scheduling with ready/wait queues
--   **Context Switching**: Timer-driven context switches every `CONTEXT_SWITCH_INTERVAL`
+- **TCB Table**: Task Control Block management for up to `MAX_TASKS` processes
+- **Scheduler**: Priority-based preemptive scheduling with ready/wait queues
+- **Context Switching**: Timer-driven context switches every `CONTEXT_SWITCH_INTERVAL`
 
 **Implementation Highlights**:
 
@@ -69,10 +69,10 @@ uint16_t ss_create_task(const TaskInfo* ti)
 
 **Strengths**:
 
--   ✅ Robust parameter validation with comprehensive error handling
--   ✅ Flexible stack management (auto-allocated or user-provided)
--   ✅ Thread-safe operations with interrupt control
--   ✅ Priority-based scheduling system
+- ✅ Robust parameter validation with comprehensive error handling
+- ✅ Flexible stack management (auto-allocated or user-provided)
+- ✅ Thread-safe operations with interrupt control
+- ✅ Priority-based scheduling system
 
 ### 2. Memory Management System
 
@@ -92,10 +92,10 @@ Disk Boot Mode:
 
 **Key Features**:
 
--   **4KB Page Alignment**: Optimized for X68000 memory architecture
--   **Custom Allocator**: Free block management with coalescing
--   **Stack Management**: Dedicated task stack allocation pool
--   **Dual Mode Support**: Separate layouts for OS vs Local mode
+- **4KB Page Alignment**: Optimized for X68000 memory architecture
+- **Custom Allocator**: Free block management with coalescing
+- **Stack Management**: Dedicated task stack allocation pool
+- **Dual Mode Support**: Separate layouts for OS vs Local mode
 
 **Implementation**:
 
@@ -112,10 +112,10 @@ uint32_t ss_mem_alloc(uint32_t sz)    // Standard allocation
 
 **Architecture**:
 
--   **Layered Composition**: Multi-layer window system with z-ordering
--   **Dirty Region Optimization**: Only redraws modified screen areas
--   **V-Sync Synchronization**: Hardware-synchronized frame updates
--   **Performance Monitoring**: Real-time frame timing analysis
+- **Layered Composition**: Multi-layer window system with z-ordering
+- **Dirty Region Optimization**: Only redraws modified screen areas
+- **V-Sync Synchronization**: Hardware-synchronized frame updates
+- **Performance Monitoring**: Real-time frame timing analysis
 
 **Optimization Strategy**:
 
@@ -132,17 +132,17 @@ SS_PERF_START_MEASUREMENT(SS_PERF_DRAW_TIME);
 
 **1. OS Mode** (`make`):
 
--   Generates bootable disk image (`ssos.xdf`)
--   Full hardware initialization
--   Custom boot loader integration
--   Direct hardware access
+- Generates bootable disk image (`ssos.xdf`)
+- Full hardware initialization
+- Custom boot loader integration
+- Direct hardware access
 
 **2. Local Mode** (`make local`):
 
--   Human68K executable (`local.x`)
--   Bypasses boot loader
--   Conditional compilation with `LOCAL_MODE`
--   Faster development iteration
+- Human68K executable (`local.x`)
+- Bypasses boot loader
+- Conditional compilation with `LOCAL_MODE`
+- Faster development iteration
 
 ### Build Process Flow
 
@@ -156,10 +156,10 @@ SS_PERF_START_MEASUREMENT(SS_PERF_DRAW_TIME);
 
 **Toolchain**:
 
--   **Compiler**: m68k-xelf-gcc cross-compiler
--   **Assembler**: m68k-xelf-as with Motorola syntax
--   **Libraries**: X68000 IOCS (`-lx68kiocs`)
--   **Post-processing**: elf2x68k.py for X68000 executable format
+- **Compiler**: m68k-xelf-gcc cross-compiler
+- **Assembler**: m68k-xelf-as with Motorola syntax
+- **Libraries**: X68000 IOCS (`-lx68kiocs`)
+- **Post-processing**: elf2x68k.py for X68000 executable format
 
 ## Performance Engineering
 
@@ -169,10 +169,10 @@ SS_PERF_START_MEASUREMENT(SS_PERF_DRAW_TIME);
 
 **Metrics Tracked**:
 
--   Frame rendering time
--   Layer update performance
--   Drawing operation timing
--   V-sync synchronization accuracy
+- Frame rendering time
+- Layer update performance
+- Drawing operation timing
+- V-sync synchronization accuracy
 
 ### Optimization Strategies
 
@@ -211,15 +211,15 @@ The architecture enhancement request for configurable resource limits was thorou
 
 **Feasible Configuration Areas**:
 
--   **Performance Monitoring**: Sampling intervals can be runtime configurable
--   **Timing Parameters**: Context switch intervals and timing values
--   **Buffer Sizes**: Circular buffers and performance measurement buffers
+- **Performance Monitoring**: Sampling intervals can be runtime configurable
+- **Timing Parameters**: Context switch intervals and timing values
+- **Buffer Sizes**: Circular buffers and performance measurement buffers
 
 **Non-Configurable Limits**:
 
--   `MAX_TASKS` - Task Control Block array size (struct dependency)
--   `MAX_LAYERS` - Window layer array size (struct dependency)
--   `MEM_FREE_BLOCKS` - Memory free block tracking array (struct dependency)
+- `MAX_TASKS` - Task Control Block array size (struct dependency)
+- `MAX_LAYERS` - Window layer array size (struct dependency)
+- `MEM_FREE_BLOCKS` - Memory free block tracking array (struct dependency)
 
 **Architectural Decision**:
 
@@ -231,18 +231,18 @@ While full runtime configurability is not possible due to C language constraints
 
 ### Strengths
 
--   ✅ **Robust Error Handling**: Comprehensive validation with structured error reporting
--   ✅ **Performance Focus**: Built-in measurement and optimization systems
--   ✅ **Hardware Optimization**: Direct hardware access with efficient abstractions
--   ✅ **Modular Design**: Clean separation of concerns across subsystems
--   ✅ **Cross-Platform Build**: Dual-target compilation for development efficiency
--   ✅ **Configuration Management**: Comprehensive runtime configuration system
+- ✅ **Robust Error Handling**: Comprehensive validation with structured error reporting
+- ✅ **Performance Focus**: Built-in measurement and optimization systems
+- ✅ **Hardware Optimization**: Direct hardware access with efficient abstractions
+- ✅ **Modular Design**: Clean separation of concerns across subsystems
+- ✅ **Cross-Platform Build**: Dual-target compilation for development efficiency
+- ✅ **Configuration Management**: Comprehensive runtime configuration system
 
 ### Areas for Enhancement
 
--   ✅ **Documentation**: ✅ **COMPLETED** - Comprehensive inline documentation added to complex memory allocation algorithms
--   ✅ **Resource Limits**: ✅ **ADDRESSED** - Technical analysis revealed C language constraints prevent full runtime configurability
--   ✅ **Testing**: ✅ **COMPLETED** - Comprehensive test coverage with 114 test functions across 6 test suites, 100% pass rate achieved
+- ✅ **Documentation**: ✅ **COMPLETED** - Comprehensive inline documentation added to complex memory allocation algorithms
+- ✅ **Resource Limits**: ✅ **ADDRESSED** - Technical analysis revealed C language constraints prevent full runtime configurability
+- ✅ **Testing**: ✅ **COMPLETED** - Comprehensive test coverage with 114 test functions across 6 test suites, 100% pass rate achieved
 
 ## Bug Fixes (2026-01 Update)
 
@@ -281,10 +281,10 @@ The most significant architectural advancement is the implementation of a **X11 
 
 **Damage System Architecture:**
 
--   **Advanced Occlusion Tracking**: Real-time calculation of occluded screen regions with percentage-based optimization
--   **Enhanced Damage Rectangles**: Multi-layer occlusion tracking with up to 32 concurrent damage regions
--   **Adaptive Performance Optimization**: Dynamic threshold adjustment based on system performance metrics
--   **Hardware-Accelerated Alignment**: 8-pixel boundary alignment optimized for X68000 VRAM architecture
+- **Advanced Occlusion Tracking**: Real-time calculation of occluded screen regions with percentage-based optimization
+- **Enhanced Damage Rectangles**: Multi-layer occlusion tracking with up to 32 concurrent damage regions
+- **Adaptive Performance Optimization**: Dynamic threshold adjustment based on system performance metrics
+- **Hardware-Accelerated Alignment**: 8-pixel boundary alignment optimized for X68000 VRAM architecture
 
 **Key Innovation - Occlusion-Aware Rendering:**
 
@@ -301,19 +301,19 @@ typedef struct {
 
 **Performance Impact:**
 
--   **Intelligent Region Splitting**: Automatically splits partially occluded regions for optimal rendering
--   **DMA Transfer Optimization**: Prioritizes DMA transfers for fully visible regions
--   **CPU Offload Reduction**: Minimizes CPU-based rendering for occluded areas
--   **Real-time Performance Monitoring**: Built-in statistics for adaptive optimization
+- **Intelligent Region Splitting**: Automatically splits partially occluded regions for optimal rendering
+- **DMA Transfer Optimization**: Prioritizes DMA transfers for fully visible regions
+- **CPU Offload Reduction**: Minimizes CPU-based rendering for occluded areas
+- **Real-time Performance Monitoring**: Built-in statistics for adaptive optimization
 
 ### Enhanced Error Handling Framework
 
 **Sophisticated Error Management System:**
 
--   **15+ Categorized Error Codes**: Comprehensive error taxonomy with severity classification
--   **Context Preservation**: Complete debugging context with function, file, line, and timestamp tracking
--   **Legacy Compatibility**: Seamless integration with uT-Kernel error code standards
--   **Debug Integration**: Conditional assertion system for development builds
+- **15+ Categorized Error Codes**: Comprehensive error taxonomy with severity classification
+- **Context Preservation**: Complete debugging context with function, file, line, and timestamp tracking
+- **Legacy Compatibility**: Seamless integration with uT-Kernel error code standards
+- **Debug Integration**: Conditional assertion system for development builds
 
 **Error Context Architecture:**
 
@@ -333,19 +333,19 @@ typedef struct {
 
 **Real-time Performance Intelligence:**
 
--   **7 Performance Metrics**: Comprehensive system monitoring with 100-sample history
--   **Adaptive Sampling**: Configurable sampling intervals based on system load
--   **Hardware Integration**: Direct integration with X68000 timing and interrupt systems
--   **Data-Driven Optimization**: Performance measurements guide architectural decisions
+- **7 Performance Metrics**: Comprehensive system monitoring with 100-sample history
+- **Adaptive Sampling**: Configurable sampling intervals based on system load
+- **Hardware Integration**: Direct integration with X68000 timing and interrupt systems
+- **Data-Driven Optimization**: Performance measurements guide architectural decisions
 
 ### Configuration Management Evolution
 
 **Intelligent Configuration Architecture:**
 
--   **96+ Centralized Parameters**: Complete elimination of magic numbers
--   **Compile-time vs Runtime Segregation**: Clear distinction between what can and cannot be configured
--   **Debug/Release Profiles**: Environment-specific optimization settings
--   **Cross-Platform Compatibility**: Unified configuration for OS and Local modes
+- **96+ Centralized Parameters**: Complete elimination of magic numbers
+- **Compile-time vs Runtime Segregation**: Clear distinction between what can and cannot be configured
+- **Debug/Release Profiles**: Environment-specific optimization settings
+- **Cross-Platform Compatibility**: Unified configuration for OS and Local modes
 
 ## Conclusion
 
@@ -355,9 +355,9 @@ The dual-compilation approach (OS/Local modes) provides an excellent development
 
 **All architecture enhancement areas have been successfully addressed:**
 
--   ✅ **Documentation Enhancement**: Complex algorithms now have comprehensive inline documentation
--   ✅ **Resource Limits Analysis**: Technical constraints identified and documented
--   ✅ **Testing Enhancement**: Comprehensive test coverage with 100% pass rate achieved
+- ✅ **Documentation Enhancement**: Complex algorithms now have comprehensive inline documentation
+- ✅ **Resource Limits Analysis**: Technical constraints identified and documented
+- ✅ **Testing Enhancement**: Comprehensive test coverage with 100% pass rate achieved
 
 ---
 

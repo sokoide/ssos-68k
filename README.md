@@ -10,22 +10,22 @@
 ![Platform](https://img.shields.io/badge/Platform-X68000-blue)
 ![Quality Status](https://img.shields.io/badge/Quality%20Status-World--Class-gold)
 
--   **Test Coverage**: 98.2% with advanced host-based validation logic
--   **Test Suite**: 125+ test functions across 6 major subsystems
--   **Code Quality**: Refactored for 64-bit host compatibility using `uintptr_t`
--   **Performance**: 80% CPU overhead reduction through intelligent interrupt batching
--   **Test Ratio**: 62.4% test-to-production code ratio (sets new industry benchmarks)
+- **Test Coverage**: 98.2% with advanced host-based validation logic
+- **Test Suite**: 125+ test functions across 6 major subsystems
+- **Code Quality**: Refactored for 64-bit host compatibility using `uintptr_t`
+- **Performance**: 80% CPU overhead reduction through intelligent interrupt batching
+- **Test Ratio**: 62.4% test-to-production code ratio (sets new industry benchmarks)
 
 ## Prerequisites
 
--   Set up and build a cross compile toolset written in <https://github.com/yunkya2/elf2x68k>
--   Make the following changes to compile elf2x68k before `make all` on macos 15 Sequoia
+- Set up and build a cross compile toolset written in <https://github.com/yunkya2/elf2x68k>
+- Make the following changes to compile elf2x68k before `make all` on macos 15 Sequoia
 
 ```sh
 brew install texinfo gmp mpfr libmpc
 ```
 
--   modify scripts/binutils.sh
+- modify scripts/binutils.sh
 
 ```
  41 ${SRC_DIR}/${BINUTILS_DIR}/configure \
@@ -39,7 +39,7 @@ brew install texinfo gmp mpfr libmpc
  49 ▸   --with-mpc=/opt/homebrew/Cellar/libmpc/1.3.1
 ```
 
--   Please refer to <https://github.com/sokoide/x68k-cross-compile> for more info
+- Please refer to <https://github.com/sokoide/x68k-cross-compile> for more info
 
 ## Build
 
@@ -96,12 +96,12 @@ make clean          # Clean all build artifacts
 
 ### Test Coverage Excellence
 
--   **Memory Management**: 95.3% coverage with allocation, fragmentation, and boundary testing
--   **Task Scheduler**: 93.7% coverage with priority scheduling and state validation
--   **Graphics Layers**: 96.1% coverage with z-order and dirty rectangle optimization
--   **Error Handling**: 98.2% coverage with severity levels and context preservation
--   **Performance Monitoring**: 94.8% coverage with metrics collection and validation
--   **Kernel Functions**: 91.5% coverage with hardware integration testing
+- **Memory Management**: 95.3% coverage with allocation, fragmentation, and boundary testing
+- **Task Scheduler**: 93.7% coverage with priority scheduling and state validation
+- **Graphics Layers**: 96.1% coverage with z-order and dirty rectangle optimization
+- **Error Handling**: 98.2% coverage with severity levels and context preservation
+- **Performance Monitoring**: 94.8% coverage with metrics collection and validation
+- **Kernel Functions**: 91.5% coverage with hardware integration testing
 
 ### Quick Start
 
@@ -113,11 +113,11 @@ make test
 
 ### Framework Capabilities
 
--   **Native Execution**: Tests run as native host executables (~100x faster than emulation)
--   **Professional Assertions**: Rich assertion library with type-aware printing and detailed failure reporting
--   **Mock Hardware**: Sophisticated hardware abstraction layer mocking (565+ lines of advanced mocks)
--   **Cross-Platform**: Supports both native (development) and cross-compiled (target) execution
--   **World-Class Coverage**: 58.1% test-to-production code ratio exceeding industry standards
+- **Native Execution**: Tests run as native host executables (~100x faster than emulation)
+- **Professional Assertions**: Rich assertion library with type-aware printing and detailed failure reporting
+- **Mock Hardware**: Sophisticated hardware abstraction layer mocking (565+ lines of advanced mocks)
+- **Cross-Platform**: Supports both native (development) and cross-compiled (target) execution
+- **World-Class Coverage**: 58.1% test-to-production code ratio exceeding industry standards
 
 ### Test Suites Overview
 
@@ -194,68 +194,72 @@ SSOS is architected as a modular operating system with clear separation of conce
 
 ### Core Components
 
--   **Build Tools** (`tools/`): Utilities for creating bootable disk images
--   **Boot Loader** (`ssos/boot/`): Assembly-based boot sector for system initialization
--   **OS Kernel** (`ssos/os/kernel/`): Core OS functionality with advanced features:
-    -   **Memory Management**: Custom allocator with 4KB alignment and coalescing
-    -   **Task Management**: Preemptive multitasking with 16-level priority scheduling
-    -   **Interrupt Handling**: Optimized batching (80% CPU overhead reduction)
-    -   **Hardware Abstraction**: Clean separation for testability
--   **Graphics System** (`ssos/os/window/`): Revolutionary X11 DamageExt-compatible dirty region system with advanced occlusion tracking
--   **Applications** (`ssos/os/main/`): Main application logic and window system
+- **Build Tools** (`tools/`): Utilities for creating bootable disk images
+- **Boot Loader** (`ssos/boot/`): Assembly-based boot sector for system initialization
+- **OS Kernel** (`ssos/os/kernel/`): Core OS functionality with advanced features:
+  - **Memory Management**: Custom allocator with 4KB alignment and coalescing
+  - **Task Management**: Preemptive multitasking with 16-level priority scheduling
+  - **Interrupt Handling**: Optimized batching (80% CPU overhead reduction)
+  - **Hardware Abstraction**: Clean separation for testability
+- **Graphics System** (`ssos/os/window/`): Revolutionary X11 DamageExt-compatible dirty region system with advanced occlusion tracking
+- **Applications** (`ssos/os/main/`): Main application logic and window system
 
 ### Key Features
 
--   **Advanced Multitasking**: Preemptive scheduling with 16-level priority system
--   **Performance Optimized**: 80% CPU overhead reduction through intelligent interrupt batching
--   **Memory Efficient**: 4KB-aligned allocation with sophisticated coalescing algorithms
--   **Graphics Management**: Revolutionary damage system with X11 DamageExt-compatible occlusion tracking and intelligent region optimization
--   **Professional Error Handling**: Comprehensive error framework with context preservation (15+ error codes)
--   **Configuration Excellence**: Zero magic numbers with centralized configuration system (96+ parameters)
--   **World-Class Testing**: Revolutionary native testing framework with 95.7% coverage
--   **Dual-Mode Development**: Bootable OS and native executable for rapid iteration
+- **Advanced Multitasking**: Preemptive scheduling with 16-level priority system
+- **Performance Optimized**: 80% CPU overhead reduction through intelligent interrupt batching
+- **Memory Efficient**: 4KB-aligned allocation with sophisticated coalescing algorithms
+- **Graphics Management**: Revolutionary damage system with X11 DamageExt-compatible occlusion tracking and intelligent region optimization
+- **Professional Error Handling**: Comprehensive error framework with context preservation (15+ error codes)
+- **Configuration Excellence**: Zero magic numbers with centralized configuration system (96+ parameters)
+- **World-Class Testing**: Revolutionary native testing framework with 95.7% coverage
+- **Dual-Mode Development**: Bootable OS and native executable for rapid iteration
 
 ### Development Mode Support
 
--   **OS Mode**: Full bootable system with custom boot loader
--   **Standalone Mode**: Compiles as Human68K executable for faster development cycles
--   **Native Testing**: Host-system compilation for rapid test execution
+- **OS Mode**: Full bootable system with custom boot loader
+- **Standalone Mode**: Compiles as Human68K executable for faster development cycles
+- **Native Testing**: Host-system compilation for rapid test execution
 
 ## Project Status
 
 **Current Status**: **World-Class Quality - Production Ready** ✅
 
--   **Quality Score**: 9.56/10 (World-Class Quality)
--   **Test Coverage**: 95.7% with comprehensive edge case validation and 114 test functions
--   **Architecture**: Exceptional modular design with professional documentation standards
--   **Performance**: 80% CPU overhead reduction with built-in monitoring and quantified optimizations
--   **Testing Excellence**: 58.1% test-to-production code ratio exceeding industry gold standards
--   **Build System**: Multi-target compilation with comprehensive testing integration
--   **Industry Leadership**: Reference implementation for embedded systems development
+- **Quality Score**: 9.56/10 (World-Class Quality)
+- **Test Coverage**: 95.7% with comprehensive edge case validation and 114 test functions
+- **Architecture**: Exceptional modular design with professional documentation standards
+- **Performance**: 80% CPU overhead reduction with built-in monitoring and quantified optimizations
+- **Testing Excellence**: 58.1% test-to-production code ratio exceeding industry gold standards
+- **Build System**: Multi-target compilation with comprehensive testing integration
+- **Industry Leadership**: Reference implementation for embedded systems development
 
 ## Recent Quality Achievements
 
 **SSOS has achieved world-class quality through systematic engineering excellence:**
 
 ### 🏆 **Testing Framework Innovation**
+
 - **Revolutionary Native Testing**: First-of-its-kind testing framework enabling ~100x faster development iteration
 - **Exceptional Coverage**: 98.2% test coverage across 125+ comprehensive test functions
 - **64-bit Portability**: Full support for Apple Silicon/macOS host testing via `uintptr_t` refactoring
 - **Sophisticated Mocking**: 565+ lines of advanced hardware abstraction layer mocking
 
 ### 🚀 **Performance Engineering Excellence**
+
 - **Quantified Optimizations**: 80% CPU overhead reduction through intelligent interrupt batching
 - **Built-in Monitoring**: Real-time performance metrics with 7 performance indicators
 - **Memory Efficiency**: 4KB-aligned allocation with sophisticated coalescing algorithms
 - **Graphics Optimization**: Revolutionary damage system with occlusion-aware rendering and intelligent region splitting
 
 ### 🏗️ **Professional Architecture Standards**
+
 - **Zero Magic Numbers**: All 96+ configuration parameters centralized in professional configuration system
 - **Comprehensive Error Handling**: 15+ categorized error codes with context preservation and severity classification
 - **Modular Design**: Clean separation of concerns with clear architectural boundaries
 - **Documentation Excellence**: Professional-grade commenting with 94% documentation coverage
 
 ### 🔬 **Quality Leadership Indicators**
+
 - **World-Class Quality Score**: 9.56/10 representing exceptional embedded systems engineering
 - **100% Test Pass Rate**: All 114 test functions consistently passing with comprehensive edge case coverage
 - **Professional Development Practices**: Multi-target compilation with dual-mode development support
