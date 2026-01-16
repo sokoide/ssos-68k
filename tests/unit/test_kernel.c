@@ -123,11 +123,13 @@ bool ss_kb_is_empty(void) {
     return mock_kb.len == 0;
 }
 
+/*
 // Mock implementations for hardware constants
 const int VRAMWIDTH = SS_CONFIG_VRAM_WIDTH;
 const int VRAMHEIGHT = SS_CONFIG_VRAM_HEIGHT;
 const int WIDTH = SS_CONFIG_DISPLAY_WIDTH;
 const int HEIGHT = SS_CONFIG_DISPLAY_HEIGHT;
+*/
 
 // Mock implementation for keyboard handling
 int ss_handle_keys(void) {

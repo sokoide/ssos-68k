@@ -67,7 +67,6 @@ TEST(performance_sampling_basic) {
     ss_perf_init();
 
     // Set up timer state for sampling to work in test environment
-    // Advance the timer counter past the sample interval
     advance_timer_counter(SS_PERF_SAMPLE_INTERVAL + 100);
 
     // Take initial sample

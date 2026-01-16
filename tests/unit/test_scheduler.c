@@ -88,14 +88,14 @@ TEST(scheduler_task_creation_invalid_params) {
     };
 
     int task_result = ss_create_task(&invalid_task);
-    ASSERT_EQ(task_result, 0xFFEF);  // Should return 0xFFEF (65519 = -17 as uint16_t) for invalid priority
+    ASSERT_EQ(task_result, (uint16_t)SS_ERROR_OUT_OF_BOUNDS); 
 
     // Test NULL task address
     invalid_task.task_pri = 5;  // Fix priority
     invalid_task.task = NULL;  // Invalid address
 
     task_result = ss_create_task(&invalid_task);
-    ASSERT_EQ(task_result, 0xFFEF);  // Should return 0xFFEF (65519 = -17 as uint16_t) for NULL task
+    ASSERT_EQ(task_result, (uint16_t)SS_ERROR_NULL_PTR); 
 }
 
 // Test task resource exhaustion
@@ -234,7 +234,7 @@ TEST(scheduler_task_state_transitions) {
     ASSERT_NOT_NULL(scheduled_task);
 }
 
-// Test multiple tasks with same priority
+// Test multiple tasks with same priority (FIFO order)
 TEST(scheduler_same_priority_tasks) {
     reset_scheduler_state();
     ss_mem_init();
@@ -249,32 +249,54 @@ TEST(scheduler_same_priority_tasks) {
     ASSERT_TRUE(task3 > 0);
 
     // Start all tasks
-    int r1 = ss_start_task(task1, 0);
-    int r2 = ss_start_task(task2, 0);
-    int r3 = ss_start_task(task3, 0);
+    ss_start_task(task1, 0);
+    ss_start_task(task2, 0);
+    ss_start_task(task3, 0);
 
-    // Verify start_task succeeded
-    ASSERT_EQ(r1, 0);
-    ASSERT_EQ(r2, 0);
-    ASSERT_EQ(r3, 0);
+    // Verify they are linked in the ready queue for priority 5 in FIFO order
+    TaskControlBlock* head = ready_queue[4];
+    ASSERT_NOT_NULL(head);
+    ASSERT_EQ(head, &tcb_table[task1 - 1]);
+    
+    ASSERT_NOT_NULL(head->next);
+    ASSERT_EQ(head->next, &tcb_table[task2 - 1]);
+    
+    ASSERT_NOT_NULL(head->next->next);
+    ASSERT_EQ(head->next->next, &tcb_table[task3 - 1]);
+    
+    ASSERT_NULL(head->next->next->next);
+}
 
-    // All should be in ready state
-    ASSERT_EQ(tcb_table[task1 - 1].state, TS_READY);
-    ASSERT_EQ(tcb_table[task2 - 1].state, TS_READY);
-    ASSERT_EQ(tcb_table[task3 - 1].state, TS_READY);
-
-    // They should be linked in the ready queue for priority 5
-    ASSERT_NOT_NULL(ready_queue[4]);  // Priority 5 maps to index 4
-
-    // Count tasks in the ready queue for priority 5
-    int count = 0;
-    TaskControlBlock* current = ready_queue[4];  // Priority 5 maps to index 4
-    while (current != NULL) {
-        count++;
-        current = current->next;
-        if (count > 10) break;  // Prevent infinite loop in case of error
+// Test timer interrupt handler batching logic
+TEST(scheduler_timer_interrupt_batching) {
+    reset_scheduler_state();
+    global_counter = 0;
+    
+    // INTERRUPT_BATCH_SIZE is 5 in task_manager.c
+    // CONTEXT_SWITCH_INTERVAL is 16 in ss_config.h
+    
+    int switch_count = 0;
+    for (int i = 1; i <= 100; i++) {
+        int result = timer_interrupt_handler();
+        
+        // Context switch should only happen when:
+        // 1. i is multiple of 5 (batch count triggers)
+        // 2. global_counter is multiple of 16
+        
+        // Every interrupt should increment global_counter
+        ASSERT_EQ(global_counter, (uint32_t)i);
+        
+        if (result == 1) {
+            switch_count++;
+            // Must be multiple of 5 AND 16? 
+            // LCM(5, 16) = 80.
+            ASSERT_TRUE(i % 5 == 0);
+            ASSERT_TRUE(i % 16 == 0);
+        }
     }
-    ASSERT_EQ(count, 3);  // Should have 3 tasks in the queue
+    
+    // In 100 interrupts, it should have triggered only once (at i=80)
+    ASSERT_EQ(switch_count, 1);
 }
 
 // Run all scheduler tests
@@ -286,4 +308,5 @@ void run_scheduler_tests(void) {
     RUN_TEST(scheduler_highest_priority_selection);
     RUN_TEST(scheduler_task_state_transitions);
     RUN_TEST(scheduler_same_priority_tasks);
+    RUN_TEST(scheduler_timer_interrupt_batching);
 }

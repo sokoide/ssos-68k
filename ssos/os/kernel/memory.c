@@ -157,7 +157,7 @@ void ss_mem_get_bss(void** base, uint32_t* sz) {
  */
 __attribute__((weak)) void ss_mem_init() {
     ss_mem_mgr.free_block_count = 0;
-    ss_mem_free((uint32_t)ss_ssos_memory_base, ss_ssos_memory_size);
+    ss_mem_free((uintptr_t)ss_ssos_memory_base, ss_ssos_memory_size);
 }
 
 /**
@@ -199,7 +199,7 @@ __attribute__((weak)) void ss_mem_init() {
  * @note This function is critical for memory management performance and
  * should be called with interrupts disabled to ensure consistency.
  */
-int ss_mem_free(uint32_t block_address, uint32_t block_size) {
+int ss_mem_free(uintptr_t block_address, uint32_t block_size) {
     int block_index;
 
     // 1. Input Validation
@@ -293,7 +293,7 @@ int ss_mem_free(uint32_t block_address, uint32_t block_size) {
  *
  * This is useful for memory regions that were allocated using ss_mem_alloc4k.
  */
-int ss_mem_free4k(uint32_t addr, uint32_t sz) {
+int ss_mem_free4k(uintptr_t addr, uint32_t sz) {
     if (sz == 0) {
         return -1;
     }
@@ -337,9 +337,9 @@ int ss_mem_free4k(uint32_t addr, uint32_t sz) {
  *
  * @note Allocation failures are silent - returns 0 without error reporting
  */
-__attribute__((weak)) uint32_t ss_mem_alloc(uint32_t requested_size) {
+__attribute__((weak)) uintptr_t ss_mem_alloc(uint32_t requested_size) {
     int block_index;
-    uint32_t allocated_address;
+    uintptr_t allocated_address;
 
     // 1. Input Validation
     // Zero-sized allocation is an invalid request.
@@ -404,7 +404,7 @@ __attribute__((weak)) uint32_t ss_mem_alloc(uint32_t requested_size) {
  * Aligned allocation is critical for hardware features like DMA or 
  * memory-mapped I/O, which often require page-aligned buffers.
  */
-__attribute__((weak)) uint32_t ss_mem_alloc4k(uint32_t requested_size) {
+__attribute__((weak)) uintptr_t ss_mem_alloc4k(uint32_t requested_size) {
     if (requested_size == 0) {
         return 0;
     }

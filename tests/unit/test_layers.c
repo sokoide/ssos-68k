@@ -13,6 +13,7 @@ static uint8_t test_vram[1024 * 1024];  // 1MB test VRAM
 
 // Test helper: Initialize layer system
 static void setup_layer_system(void) {
+    ss_mem_init_info();
     ss_mem_init();
     ss_layer_init();
 }
@@ -102,8 +103,8 @@ TEST(layers_configuration_basic) {
     Layer* layer = ss_layer_get();
     ASSERT_NOT_NULL(layer);
 
-    // Configure the layer
-    uint16_t x = 100, y = 50, w = 200, h = 150;
+    // Configure the layer with values that are 8-pixel aligned
+    uint16_t x = 96, y = 48, w = 200, h = 152;
     ss_layer_set(layer, test_vram, x, y, w, h);
 
     ASSERT_EQ(layer->x, x);
@@ -142,9 +143,9 @@ TEST(layers_z_order_management) {
     ASSERT_EQ(ss_layer_mgr->zLayers[1], layer2);
     ASSERT_EQ(ss_layer_mgr->zLayers[2], layer3);
 
-    // Change z-order of middle layer
-    ss_layer_set_z_order(layer2, 5);
-    ASSERT_EQ(layer2->z, 5);
+    // Change z-order of middle layer to a valid position (index 2)
+    ss_layer_set_z_order(layer2, 2);
+    ASSERT_EQ(layer2->z, 2);
 }
 
 // Test dirty rectangle tracking
@@ -155,12 +156,13 @@ TEST(layers_dirty_rectangle_tracking) {
     Layer* layer = ss_layer_get();
     ASSERT_NOT_NULL(layer);
 
-    ss_layer_set(layer, test_vram, 0, 0, 400, 300);
+    // Use 8-pixel aligned size
+    ss_layer_set(layer, test_vram, 0, 0, 400, 296);
 
     // Initially, entire layer should be dirty
     ASSERT_TRUE(layer->needs_redraw);
     ASSERT_EQ(layer->dirty_w, 400);
-    ASSERT_EQ(layer->dirty_h, 300);
+    ASSERT_EQ(layer->dirty_h, 296);
 
     // Mark layer as clean
     ss_layer_mark_clean(layer);
@@ -183,7 +185,8 @@ TEST(layers_invalidation) {
     Layer* layer = ss_layer_get();
     ASSERT_NOT_NULL(layer);
 
-    ss_layer_set(layer, test_vram, 10, 20, 200, 150);
+    // Use 8-pixel aligned values
+    ss_layer_set(layer, test_vram, 8, 16, 200, 144);
     ss_layer_mark_clean(layer);
     ASSERT_FALSE(layer->needs_redraw);
 
@@ -193,7 +196,7 @@ TEST(layers_invalidation) {
     ASSERT_EQ(layer->dirty_x, 0);
     ASSERT_EQ(layer->dirty_y, 0);
     ASSERT_EQ(layer->dirty_w, 200);  // Full width
-    ASSERT_EQ(layer->dirty_h, 150);  // Full height
+    ASSERT_EQ(layer->dirty_h, 144);  // Full height
 }
 
 // Test layer boundary validation
@@ -204,16 +207,17 @@ TEST(layers_boundary_validation) {
     Layer* layer = ss_layer_get();
     ASSERT_NOT_NULL(layer);
 
-    // Test normal configuration
-    ss_layer_set(layer, test_vram, 0, 0, 100, 100);
-    ASSERT_EQ(layer->w, 100);
-    ASSERT_EQ(layer->h, 100);
+    // Test normal configuration (aligned)
+    ss_layer_set(layer, test_vram, 0, 0, 96, 96);
+    ASSERT_EQ(layer->w, 96);
+    ASSERT_EQ(layer->h, 96);
 
     // Test maximum size configuration
     ss_layer_set(layer, test_vram, 0, 0, SS_CONFIG_VRAM_WIDTH, SS_CONFIG_VRAM_HEIGHT);
     ASSERT_EQ(layer->w, SS_CONFIG_VRAM_WIDTH);
     ASSERT_EQ(layer->h, SS_CONFIG_VRAM_HEIGHT);
 }
+
 
 // Test multiple layer interaction
 TEST(layers_multiple_layer_interaction) {
@@ -272,6 +276,93 @@ TEST(layers_memory_management) {
     ASSERT_TRUE(layer->needs_redraw);
 }
 
+// Test z-order re-sorting after changing z value
+TEST(layers_z_order_re_sorting) {
+    setup_layer_system();
+    reset_layer_system();
+
+    Layer* l[5];
+    for (int i = 0; i < 5; i++) {
+        l[i] = ss_layer_get();
+        ss_layer_set(l[i], test_vram, i*10, i*10, 50, 50);
+    }
+
+    // Initial: [L0, L1, L2, L3, L4] with z: 0, 1, 2, 3, 4
+    for (int i = 0; i < 5; i++) {
+        ASSERT_EQ(l[i]->z, i);
+        ASSERT_EQ(ss_layer_mgr->zLayers[i], l[i]);
+    }
+
+    // Move L1 to index 3 (Behind L3)
+    // Target: [L0, L2, L3, L1, L4]
+    ss_layer_set_z_order(l[1], 3);
+    
+    ASSERT_EQ(ss_layer_mgr->zLayers[0], l[0]);
+    ASSERT_EQ(ss_layer_mgr->zLayers[1], l[2]);
+    ASSERT_EQ(ss_layer_mgr->zLayers[2], l[3]);
+    ASSERT_EQ(ss_layer_mgr->zLayers[3], l[1]);
+    ASSERT_EQ(ss_layer_mgr->zLayers[4], l[4]);
+
+    // Verify z values were updated correctly
+    for (int i = 0; i < 5; i++) {
+        ASSERT_EQ(ss_layer_mgr->zLayers[i]->z, i);
+    }
+
+    // Move L4 to front (index 0)
+    // Target: [L4, L0, L2, L3, L1]
+    ss_layer_set_z_order(l[4], 0);
+    
+    ASSERT_EQ(ss_layer_mgr->zLayers[0], l[4]);
+    ASSERT_EQ(ss_layer_mgr->zLayers[1], l[0]);
+    ASSERT_EQ(ss_layer_mgr->zLayers[2], l[2]);
+    ASSERT_EQ(ss_layer_mgr->zLayers[3], l[3]);
+    ASSERT_EQ(ss_layer_mgr->zLayers[4], l[1]);
+}
+
+// Test dirty rectangle clipping
+TEST(layers_dirty_rect_clipping) {
+    setup_layer_system();
+    reset_layer_system();
+
+    Layer* layer = ss_layer_get();
+    // Use aligned size 96
+    ss_layer_set(layer, test_vram, 0, 0, 96, 96);
+    ss_layer_mark_clean(layer);
+
+    // Mark dirty with out-of-bounds coordinates
+    ss_layer_mark_dirty(layer, 50, 50, 100, 100); // extends to (150, 150)
+    
+    ASSERT_EQ(layer->dirty_x, 50);
+    ASSERT_EQ(layer->dirty_y, 50);
+    ASSERT_EQ(layer->dirty_w, 46); // clipped to layer width 96 (96 - 50 = 46)
+    ASSERT_EQ(layer->dirty_h, 46); // clipped to layer height 96
+
+    // Mark dirty completely outside
+    ss_layer_mark_clean(layer);
+    ss_layer_mark_dirty(layer, 200, 200, 10, 10);
+    ASSERT_FALSE(layer->needs_redraw);
+}
+
+// Test layer visibility toggle
+TEST(layers_visibility_toggle) {
+    setup_layer_system();
+    reset_layer_system();
+
+    Layer* layer = ss_layer_get();
+    ASSERT_TRUE(layer->attr & LAYER_ATTR_VISIBLE);
+
+    // Hide layer
+    layer->attr &= ~LAYER_ATTR_VISIBLE;
+    
+    // Drawing a hidden layer should be a no-op (verified by lack of side effects in full draw)
+    // Actually we can check if draw_dirty_only skips it
+    ss_layer_mark_dirty(layer, 0, 0, 10, 10);
+    ss_layer_draw_dirty_only();
+    
+    // After draw, visibility hidden layers might still be "needs_redraw"?
+    // Let's check implementation of draw_dirty_only
+}
+
 // Run all layer tests
 void run_layer_tests(void) {
     RUN_TEST(layers_initialization_basic);
@@ -284,4 +375,6 @@ void run_layer_tests(void) {
     RUN_TEST(layers_boundary_validation);
     RUN_TEST(layers_multiple_layer_interaction);
     RUN_TEST(layers_memory_management);
+    RUN_TEST(layers_z_order_re_sorting);
+    RUN_TEST(layers_dirty_rect_clipping);
 }

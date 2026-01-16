@@ -13,7 +13,7 @@ INCLUDE = -I$(SSOS_ROOT)/os/kernel \
           -Iframework
 
 # Compiler flags for native testing
-CFLAGS = $(INCLUDE) -O2 -g -DLOCAL_MODE -DTESTING -DNATIVE_TEST
+CFLAGS = $(INCLUDE) -O2 -g -DLOCAL_MODE -DTESTING -DNATIVE_TEST -DSS_DEBUG=1 -DSS_CONFIG_ENABLE_PERFORMANCE_MONITORING=1 -DSS_CONFIG_PERF_SAMPLE_INTERVAL=1
 LDFLAGS = -lm
 
 # Test framework sources
@@ -24,10 +24,17 @@ FRAMEWORK_SRCS = framework/test_runner.c \
 UNIT_TEST_SRCS = unit/test_memory.c \
                  unit/test_scheduler.c \
                  unit/test_layers.c \
-                 unit/test_errors.c
+                 unit/test_errors.c \
+                 unit/test_performance.c \
+                 unit/test_kernel.c
 
 # All sources for native testing
-ALL_SRCS = $(FRAMEWORK_SRCS) $(UNIT_TEST_SRCS)
+ALL_SRCS = $(FRAMEWORK_SRCS) $(UNIT_TEST_SRCS) \
+           $(SSOS_ROOT)/os/kernel/memory.c \
+           $(SSOS_ROOT)/os/kernel/task_manager.c \
+           $(SSOS_ROOT)/os/kernel/ss_errors.c \
+           $(SSOS_ROOT)/os/kernel/ss_perf.c \
+           $(SSOS_ROOT)/os/window/layer.c
 
 .PHONY: all test clean
 

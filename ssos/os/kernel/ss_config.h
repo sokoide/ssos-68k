@@ -49,18 +49,34 @@
 
 // Debug Configuration
 #ifdef SS_DEBUG
+#ifndef SS_CONFIG_ENABLE_ASSERTIONS
 #define SS_CONFIG_ENABLE_ASSERTIONS       1
+#endif
+#ifndef SS_CONFIG_ENABLE_ERROR_LOGGING
 #define SS_CONFIG_ENABLE_ERROR_LOGGING    1
+#endif
+#ifndef SS_CONFIG_ENABLE_PERFORMANCE_MONITORING
 #define SS_CONFIG_ENABLE_PERFORMANCE_MONITORING 1
+#endif
 #else
+#ifndef SS_CONFIG_ENABLE_ASSERTIONS
 #define SS_CONFIG_ENABLE_ASSERTIONS       0
+#endif
+#ifndef SS_CONFIG_ENABLE_ERROR_LOGGING
 #define SS_CONFIG_ENABLE_ERROR_LOGGING    0
+#endif
+#ifndef SS_CONFIG_ENABLE_PERFORMANCE_MONITORING
 #define SS_CONFIG_ENABLE_PERFORMANCE_MONITORING 0
+#endif
 #endif
 
 // Performance Monitoring Configuration
+#ifndef SS_CONFIG_PERF_SAMPLE_INTERVAL
 #define SS_CONFIG_PERF_SAMPLE_INTERVAL    1000  // Sample every 1000 timer ticks
+#endif
+#ifndef SS_CONFIG_PERF_MAX_SAMPLES
 #define SS_CONFIG_PERF_MAX_SAMPLES        100   // Keep last 100 samples
+#endif
 #define SS_CONFIG_PERF_MAX_METRICS        7     // Maximum number of performance metrics
 
 // Compatibility macros for existing code

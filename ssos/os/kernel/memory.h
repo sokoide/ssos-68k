@@ -30,7 +30,7 @@
  * It stores the location and size of an unallocated memory block.
  */
 typedef struct {
-    uint32_t start_address;  /**< Starting memory address of the free block */
+    uintptr_t start_address;  /**< Starting memory address of the free block */
     uint32_t size_in_bytes;  /**< Size of the free region in bytes */
 } SsMemoryFreeBlock;
 
@@ -84,12 +84,12 @@ void ss_mem_init();
  * @param sz The size of the block in bytes.
  * @return 0 on success, -1 on error.
  */
-int ss_mem_free(uint32_t addr, uint32_t sz);
+int ss_mem_free(uintptr_t addr, uint32_t sz);
 
 /**
  * @brief Releases a memory block, ensuring it is treated as 4KB aligned.
  */
-int ss_mem_free4k(uint32_t addr, uint32_t sz);
+int ss_mem_free4k(uintptr_t addr, uint32_t sz);
 
 /**
  * @brief Allocates a block of memory from the system pool.
@@ -98,12 +98,12 @@ int ss_mem_free4k(uint32_t addr, uint32_t sz);
  * @param sz The requested size in bytes.
  * @return The start address of the allocated block, or 0 if allocation failed.
  */
-uint32_t ss_mem_alloc(uint32_t sz);
+uintptr_t ss_mem_alloc(uint32_t sz);
 
 /**
  * @brief Allocates 4KB-aligned memory, rounding up the requested size if necessary.
  */
-uint32_t ss_mem_alloc4k(uint32_t sz);
+uintptr_t ss_mem_alloc4k(uint32_t sz);
 
 /** @brief Returns the total size of managed system RAM. */
 uint32_t ss_mem_total_bytes();
