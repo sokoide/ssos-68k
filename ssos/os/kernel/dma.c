@@ -66,3 +66,51 @@ void dma_wait_completion() {
     while (!(dma->csr & 0x90))
         ;
 }
+
+// Batch DMA transfer implementation
+// Reduces DMA setup overhead by batching multiple spans into a single transfer
+
+static uint16_t dma_batch_count = 0;
+static uint8_t* dma_batch_dst_base = 0;
+
+void dma_batch_begin(void) {
+    dma_batch_count = 0;
+    dma_batch_dst_base = 0;
+    dma_prepare_x68k_16color();
+}
+
+// Add a span to the batch. Returns the span index or 0xFFFF if batch is full.
+uint16_t dma_batch_add_span(uint8_t* dst, uint8_t* src, uint16_t count) {
+    if (dma_batch_count >= SS_CONFIG_DMA_MAX_TRANSFERS) {
+        return 0xFFFF;  // Batch full
+    }
+
+    if (dma_batch_count == 0) {
+        dma_batch_dst_base = dst;
+    }
+
+    xfr_inf[dma_batch_count].addr = src;
+    xfr_inf[dma_batch_count].count = count;
+
+    return dma_batch_count++;
+}
+
+// Execute all batched DMA transfers in one operation
+void dma_batch_execute(void) {
+    if (dma_batch_count == 0) {
+        return;
+    }
+
+    dma_clear();
+
+    // Set up DMA for batch transfer
+    dma->dar = dma_batch_dst_base;
+    dma->bar = (uint8_t*)xfr_inf;
+    dma->btc = dma_batch_count;
+
+    dma_start();
+    dma_wait_completion();
+    dma_clear();
+
+    dma_batch_count = 0;
+}

@@ -58,3 +58,8 @@ void dma_init_x68k_16color(uint8_t* dst, uint8_t* src, uint16_t count);
 void dma_clear();
 void dma_start();
 void dma_wait_completion();
+
+// Batch DMA transfer API - reduces setup overhead by batching multiple spans
+void dma_batch_begin(void);
+uint16_t dma_batch_add_span(uint8_t* dst, uint8_t* src, uint16_t count);
+void dma_batch_execute(void);

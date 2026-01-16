@@ -10,7 +10,35 @@
 #include <string.h>
 
 static void ss_layer_cpu_copy(uint8_t* dst, uint8_t* src, uint16_t count) {
-    if (count >= 4 && ((uintptr_t)src & 3) == 0 && ((uintptr_t)dst & 3) == 0) {
+    // 16-byte unrolled loop for aligned transfers (4x32-bit per iteration)
+    if (count >= 16 && ((uintptr_t)src & 3) == 0 && ((uintptr_t)dst & 3) == 0) {
+        uint32_t* src32 = (uint32_t*)src;
+        uint32_t* dst32 = (uint32_t*)dst;
+        uint16_t blocks16 = count >> 4;  // count / 16
+
+        // Unrolled loop: 4 x 32-bit = 16 bytes per iteration
+        for (uint16_t i = 0; i < blocks16; i++) {
+            *dst32++ = *src32++;
+            *dst32++ = *src32++;
+            *dst32++ = *src32++;
+            *dst32++ = *src32++;
+        }
+
+        // Handle remaining 4-15 bytes in 4-byte chunks
+        uint16_t remaining = count & 15;  // count % 16
+        uint16_t blocks4 = remaining >> 2;
+        for (uint16_t i = 0; i < blocks4; i++) {
+            *dst32++ = *src32++;
+        }
+
+        // Handle final 0-3 bytes
+        uint8_t* src8 = (uint8_t*)src32;
+        uint8_t* dst8 = (uint8_t*)dst32;
+        for (uint16_t i = 0; i < (remaining & 3); i++) {
+            *dst8++ = *src8++;
+        }
+    } else if (count >= 4 && ((uintptr_t)src & 3) == 0 && ((uintptr_t)dst & 3) == 0) {
+        // 4-byte aligned but small (4-15 bytes)
         uint32_t* src32 = (uint32_t*)src;
         uint32_t* dst32 = (uint32_t*)dst;
         uint16_t blocks = count >> 2;
@@ -23,6 +51,7 @@ static void ss_layer_cpu_copy(uint8_t* dst, uint8_t* src, uint16_t count) {
             *dst8++ = *src8++;
         }
     } else {
+        // Unaligned fallback
         for (uint16_t i = 0; i < count; i++) {
             dst[i] = src[i];
         }
