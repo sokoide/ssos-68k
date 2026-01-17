@@ -513,7 +513,7 @@ if (pixel_count < 16 || width < 4 || height < 4) {
 
 ### 新しいファイル構造
 
-```
+```text
 os/window/damage.h     - ダーティリージョン管理インターフェース
 os/window/damage.c     - X11 DamageExt互換実装
 ```

@@ -10,9 +10,13 @@ SSOS-68K is a sophisticated microkernel operating system designed for the Motoro
 
 ### System Architecture Layers
 
-```
+```text
+
 ┌─────────────────────────────────────────────────────┐
-│                Application Layer                    │
+
+│                  Application Layer                  │
+
+
 │  ┌─────────────────┐  ┌─────────────────────────┐   │
 │  │ ssosmain.c      │  │ ssoswindows.c           │   │
 │  │ • Main loop     │  │ • Window management     │   │
@@ -80,14 +84,14 @@ uint16_t ss_create_task(const TaskInfo* ti)
 
 **Memory Layout**:
 
-```
+```text
 Disk Boot Mode:
-0x000000-0x001FFF: Interrupt vectors & IOCS work (8KiB)
-0x002000-0x0023FF: Boot sector (1KiB)
-0x0023FF-0x00FFFF: SSOS supervisor stack (55KiB)
+0x000000-0x001FFF: Interrupt Vectors & IOCS Work (8KiB)
+0x002000-0x0023FF: Boot Sector (1KiB)
+0x0023FF-0x00FFFF: SSOS Supervisor Stack (55KiB)
 0x010000-0x02FFFF: SSOS .text section (128KiB)
 0x030000-0x03FFFF: SSOS .data section (64KiB)
-0x150000-0xBFFFFF: SSOS heap (.ssos section, 10MiB)
+0x150000-0xBFFFFF: SSOS Heap (.ssos section, 10MiB)
 ```
 
 **Key Features**:
@@ -146,11 +150,11 @@ SS_PERF_START_MEASUREMENT(SS_PERF_DRAW_TIME);
 
 ### Build Process Flow
 
-```
+```text
 ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
-│Boot Loader  │───▶│OS Kernel    │───▶│Disk Image   │
-│(main.s)     │    │(kernel/*.c) │    │(makedisk)   │
-│BOOT.X.bin   │    │SSOS.X.bin   │    │ssos.xdf     │
+│ Bootloader  │───▶│ OS Kernel   │───▶│ Disk Image  │
+│ (main.s)    │    │ (kernel/*.c)│    │ (makedisk)  │
+│ BOOT.X.bin  │    │ SSOS.X.bin  │    │ ssos.xdf    │
 └─────────────┘    └─────────────┘    └─────────────┘
 ```
 

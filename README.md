@@ -27,17 +27,13 @@ brew install texinfo gmp mpfr libmpc
 
 - modify scripts/binutils.sh
 
-```
+```bash
  41 ${SRC_DIR}/${BINUTILS_DIR}/configure \
  42     --prefix=${INSTALL_DIR} \
  43     --program-prefix=${PROGRAM_PREFIX} \
  44     --target=${TARGET} \
  45     --enable-lto \
- 46     --enable-multilib \
- 47 ▸   --with-gmp=/opt/homebrew/Cellar/gmp/6.3.0 \
- 48 ▸   --with-mpfr=/opt/homebrew/Cellar/mpfr/4.2.1 \
- 49 ▸   --with-mpc=/opt/homebrew/Cellar/libmpc/1.3.1
-```
+
 
 - Please refer to <https://github.com/sokoide/x68k-cross-compile> for more info
 
@@ -121,14 +117,14 @@ make test
 
 ### Test Suites Overview
 
-| Test Suite      | Files                | Test Cases | Focus Area                               |
-| --------------- | -------------------- | ---------- | ---------------------------------------- |
-| **Memory**      | `test_memory.c`      | 15 tests   | Coalescing, table limits, first-fit logic |
+| Test Suite      | Files                | Test Cases | Focus Area                                 |
+| --------------- | -------------------- | ---------- | ------------------------------------------ |
+| **Memory**      | `test_memory.c`      | 15 tests   | Coalescing, table limits, first-fit logic  |
 | **Scheduler**   | `test_scheduler.c`   | 8 tests    | Batching, FIFO priority, state transitions |
-| **Layers**      | `test_layers.c`      | 12 tests   | Z-order sorting, dirty rect clipping     |
-| **Errors**      | `test_errors.c`      | 9 tests    | Context preservation, severity levels    |
-| **Performance** | `test_performance.c` | 10 tests   | Metrics collection, timing validation    |
-| **Kernel**      | `test_kernel.c`      | 13 tests   | Hardware abstraction, keyboard buffers   |
+| **Layers**      | `test_layers.c`      | 12 tests   | Z-order sorting, dirty rect clipping       |
+| **Errors**      | `test_errors.c`      | 9 tests    | Context preservation, severity levels      |
+| **Performance** | `test_performance.c` | 10 tests   | Metrics collection, timing validation      |
+| **Kernel**      | `test_kernel.c`      | 13 tests   | Hardware abstraction, keyboard buffers     |
 
 ### Native Host Testing (Recommended)
 
@@ -171,19 +167,13 @@ make debug
 
 ### Framework Architecture
 
-```
+```text
 tests/
 ├── framework/           # World-class test infrastructure
 │   ├── ssos_test.h     # Rich assertion macros with type-aware printing
 │   ├── test_runner.c   # Orchestrated test execution engine
 │   └── test_mocks.c    # Sophisticated hardware abstraction layer mocking (565+ lines)
 └── unit/               # Comprehensive test suites (1,074 lines)
-    ├── test_memory.c   # Memory management validation
-    ├── test_scheduler.c # Task scheduling verification
-    ├── test_layers.c   # Graphics layer testing
-    ├── test_errors.c   # Error handling validation
-    ├── test_performance.c # Performance monitoring validation
-    └── test_kernel.c   # Core kernel function testing
 ```
 
 **Quality Excellence**: The testing framework provides **58.1% test-to-production code ratio** (2,275 lines of testing code vs 3,917 lines of production code), significantly exceeding industry best practices and establishing this as a reference implementation for embedded systems testing.

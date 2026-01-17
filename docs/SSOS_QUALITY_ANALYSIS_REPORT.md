@@ -19,9 +19,9 @@ SSOS-68K has achieved **world-class embedded systems engineering standards** thr
 - **Coverage Ratio**: ~58.1% test-to-production code ratio (exceeds industry gold standard)
 - **Test Execution**: 100% pass rate with sophisticated edge case coverage
 
-**Testing Framework Technical Excellence:**
+**Test Framework Technical Excellence:**
 
-```
+```text
 tests/
 ├── framework/              # Professional test infrastructure
 │   ├── ssos_test.h        # Rich assertion macros with type-aware printing
@@ -135,9 +135,9 @@ uint32_t ss_mem_alloc(uint32_t size) {
 
 **Project Structure Quality (9.6/10):**
 
-```
+```text
 ssos/
-├── boot/                   # Clean boot loader separation
+├── boot/                   # Clean bootloader separation
 ├── os/
 │   ├── kernel/            # Core OS functionality (18 files)
 │   │   ├── ss_config.h    # Centralized configuration system

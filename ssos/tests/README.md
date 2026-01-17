@@ -18,17 +18,17 @@ make all
 
 ## Framework Structure
 
-```
+```text
 tests/
 ├── framework/
-│   ├── ssos_test.h         # Test macros and assertions
-│   └── test_runner.c       # Main test execution engine
-├── unit/
-│   ├── test_memory.c       # Memory allocator tests
-│   ├── test_scheduler.c    # Task scheduling tests
-│   ├── test_layers.c       # Layer management tests
-│   └── test_errors.c       # Error handling tests
-├── mocks/                  # Hardware abstraction mocks (future)
+│   ├── ssos_test.h        # Assertions and macros
+│   ├── test_runner.c      # Main test execution engine
+│   └── test_mocks.c       # Hardware mocks
+├── unit/                  # Test suites
+│   ├── test_memory.c      # Memory manager tests
+│   ├── test_scheduler.c   # Task scheduler tests
+│   ├── test_layers.c      # Window layer tests
+│   └── test_errors.c      # Error handler tests
 ├── Makefile               # Build system
 └── README.md              # This file
 ```
@@ -123,7 +123,7 @@ The test framework compiles with:
 
 ### Toolchain Not Found
 
-```
+```text
 Error: Cross-compilation toolchain not found. Please run: . ~/.elf2x68k
 ```
 
@@ -141,7 +141,7 @@ Most build errors are due to missing include paths or function signature mismatc
 
 When tests fail, they show the file, line number, and expected vs actual values:
 
-```
+```text
 FAIL
   test_memory.c:45: Expected 4096, got 0
 ```
