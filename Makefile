@@ -13,5 +13,7 @@ $(SUBDIRS):
 	$(MAKE) -C $@ $(MAKECMDGOALS)
 
 format:
-	markdownlint --fix $(MD_FILES)
+	npx markdownlint "**/*.md" --ignore "conductor/**" --fix
+	npx textlint --fix "**/*.md"
+
 
