@@ -470,7 +470,7 @@ context_switch:
 
 	| Check if curr_task exists (NULL check)
 	move.l	curr_task, d0
-	beq.w	cs_return_to_handler
+	beq.w	cs_no_curr_task		| curr_task is NULL, skip context save
 
 	| Calculate SP to save: skip return address, point to saved registers
 	| This is the SP that will be restored when switching back to this task
@@ -481,6 +481,7 @@ context_switch:
 	move.l	curr_task, a1
 	move.l	a0, TCB_CONTEXT(a1)	| curr_task->context = SP (to saved regs)
 
+cs_call_scheduler:
 	| Call scheduler to determine next task
 	jsr	ss_scheduler
 
@@ -520,6 +521,10 @@ context_switch:
 	| Restore all registers and return to the interrupted task
 	movem.l	(sp)+, d0-d7/a0-a6	| restore 60 bytes of registers
 	rte				| pop PC+SR and return
+
+cs_no_curr_task:
+	| curr_task is NULL - no context to save, but try to start a new task
+	bra.w	cs_call_scheduler
 
 	| --------------------------------------------------------
 	| New task - set up initial stack frame and start

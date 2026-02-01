@@ -15,6 +15,51 @@
 
 #include "damage.h"
 
+// ============================================================
+// Preemptive multitasking demo task functions
+// Each task displays a counter at a different screen position
+// ============================================================
+
+// Task 1: Simple infinite loop (no IOCS to avoid interrupt-context issues)
+void task1_func(int16_t stacd, void* exinf) {
+    (void)stacd;
+    (void)exinf;
+    volatile uint32_t counter = 0;
+    while (1) {
+        counter++;
+        // Just increment - no IOCS calls from interrupt-started task
+    }
+}
+
+// Task 2: Displays counter at Y=100
+void task2_func(int16_t stacd, void* exinf) {
+    (void)stacd;
+    (void)exinf;
+    uint32_t counter = 0;
+    while (1) {
+        _iocs_b_locate(0, 4);
+        char buf[32];
+        sprintf(buf, "Task2: %08lx", counter++);
+        _iocs_b_print(buf);
+
+        for (volatile int i = 0; i < 50000; i++) {}
+    }
+}
+
+// Task 3: Displays counter at Y=150
+void task3_func(int16_t stacd, void* exinf) {
+    (void)stacd;
+    (void)exinf;
+    uint32_t counter = 0;
+    while (1) {
+        _iocs_b_locate(0, 5);
+        char buf[32];
+        sprintf(buf, "Task3: %08lx", counter++);
+        _iocs_b_print(buf);
+
+        for (volatile int i = 0; i < 50000; i++) {}
+    }
+}
 
 void ssosmain() {
     int c;
@@ -53,12 +98,25 @@ void ssosmain() {
     main_task.stack = (uint8_t*)(ss_save_data_base * TASK_STACK_SIZE - 1);
     main_task_id = ss_create_task(&main_task);
 
-#if 0  // DISABLED: Multitasking demo causing issues
-    // Set curr_task to the main task that's already running
-    curr_task = &tcb_table[main_task_id - 1];
-    curr_task->state = TS_READY;  // Mark as ready since it's currently running
+    // NOTE: We do NOT set curr_task to main_task here!
+    // The main task (ssosmain) is running on the original stack without
+    // an interrupt frame. Setting it as curr_task would cause context_switch
+    // to corrupt the stack when trying to save its context.
+    // Instead, we leave curr_task as NULL. When timer interrupts occur:
+    // - If curr_task is NULL, context_switch won't save anything
+    // - scheduled_task will be set to the first ready task
+    // - The new task will be started
 
+#if 0  // Preemptive multitasking demo - DISABLED
+    // NOTE: Currently, starting new tasks from context_switch
+    // will never return to ssosmain because:
+    // 1. ssosmain runs as a normal function (not via RTE from interrupt)
+    // 2. context_switch starts new task with RTE
+    // 3. ssosmain's context cannot be saved/restored properly
+    // Full preemptive multitasking requires all tasks to start via interrupt
     // Create demo tasks for multitasking test
+    // Each task will display a counter at different screen positions
+    // These tasks will preemptively switch among themselves via timer interrupt
     TaskInfo task1_info = {
         .task_attr = TA_HLNG,
         .task = task1_func,
@@ -87,11 +145,11 @@ void ssosmain() {
     uint16_t task2_id = ss_create_task(&task2_info);
     uint16_t task3_id = ss_create_task(&task3_info);
 
-    // Start demo tasks - they will run concurrently with main task
-    ss_start_task(task1_id, 0);
-    ss_start_task(task2_id, 0);
-    ss_start_task(task3_id, 0);
-#endif
+    // Start demo tasks - only start task1 for testing
+    if (task1_id > 0) ss_start_task(task1_id, 0);
+    // if (task2_id > 0) ss_start_task(task2_id, 0);  // disabled
+    // if (task3_id > 0) ss_start_task(task3_id, 0);  // disabled
+#endif  // Preemptive multitasking demo
 
 
 #if 1
@@ -108,10 +166,10 @@ void ssosmain() {
 
     // Initial complete draw - use layer system for full screen refresh
     ss_all_layer_draw();
-    
+
     // Reset damage buffer after initial complete draw to clear any accumulated regions
     ss_damage_reset();
-    
+
   while (true) {
     // Performance monitoring: Start frame timing
     SS_PERF_START_MEASUREMENT(SS_PERF_FRAME_TIME);
@@ -160,7 +218,7 @@ void ssosmain() {
     SS_PERF_START_MEASUREMENT(SS_PERF_DRAW_TIME);
     ss_damage_draw_regions();
     SS_PERF_END_MEASUREMENT(SS_PERF_DRAW_TIME);
-    
+
     // Performance monitoring: Display damage statistics every 5 seconds
     static uint32_t last_perf_report = 0;
     if (ss_timerd_counter > last_perf_report + 5000) {
