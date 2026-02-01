@@ -52,7 +52,7 @@ Layer* get_layer_3() {
 
     Layer* l = ss_layer_get();
     const int lw = 544;
-    const int lh = 96;
+    const int lh = 112;  // Increased by 16 pixels (one line) for keyboard display
 
     uint8_t* lbuf = (uint8_t*)ss_mem_alloc4k(lw * lh);
     ss_layer_set(l, lbuf, 192, 24, lw, lh);

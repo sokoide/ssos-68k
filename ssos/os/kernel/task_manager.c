@@ -6,7 +6,7 @@
 
 // Forward declarations for static functions
 static void ss_task_queue_add_entry(TaskControlBlock* tcb);
-static void ss_scheduler(void);
+void ss_scheduler(void);
 
 TaskControlBlock tcb_table[MAX_TASKS];
 TaskControlBlock* ready_queue[MAX_TASK_PRI];
@@ -64,6 +64,9 @@ timer_interrupt_handler() {
     // Only perform full processing on every Nth interrupt
     if (interrupt_batch_count >= INTERRUPT_BATCH_SIZE) {
         interrupt_batch_count = 0;  // Reset batch counter
+
+        // Process delayed task wakeups
+        ss_process_delay_wakeups();
 
         // Perform context switch decision less frequently
         if (current_counter % CONTEXT_SWITCH_INTERVAL == 0) {
@@ -211,9 +214,6 @@ uint16_t ss_start_task(uint16_t id, int16_t stacd /* not used */) {
 
         // Add task to appropriate priority queue
         ss_task_queue_add_entry(tcb);
-
-        // Trigger scheduler to consider new task
-        ss_scheduler();
     } else {
         ss_set_error(SS_ERROR_INVALID_STATE, SS_SEVERITY_ERROR,
                     __func__, __FILE__, __LINE__, "Task not in dormant state");
@@ -267,7 +267,7 @@ static void ss_task_queue_add_entry(TaskControlBlock* tcb) {
  * This is a simplified scheduler suitable for SSOS's cooperative multitasking model.
  * In a full preemptive system, this would include more sophisticated scheduling algorithms.
  */
-static void ss_scheduler(void) {
+void ss_scheduler(void) {
     TaskControlBlock* next_task = NULL;
 
     // Find highest priority ready task
@@ -283,4 +283,375 @@ static void ss_scheduler(void) {
 
     // Note: Actual context switching would occur in the timer interrupt handler
     // For SSOS, this sets up the next task to run when context switching occurs
+}
+
+// ============================================================
+// Wait Queue Management Functions
+// ============================================================
+
+/**
+ * @brief Add a task to the wait queue
+ *
+ * @param tcb Task control block to add to wait queue
+ */
+static void ss_wait_queue_add(TaskControlBlock* tcb) {
+    if (tcb == NULL) {
+        return;
+    }
+
+    tcb->prev = NULL;
+    tcb->next = NULL;
+
+    if (wait_queue == NULL) {
+        wait_queue = tcb;
+    } else {
+        // Add to end of queue (FIFO order)
+        TaskControlBlock* tail = wait_queue;
+        while (tail->next != NULL) {
+            tail = tail->next;
+        }
+        tail->next = tcb;
+        tcb->prev = tail;
+    }
+}
+
+/**
+ * @brief Remove a task from the wait queue
+ *
+ * @param tcb Task control block to remove from wait queue
+ */
+static void ss_wait_queue_remove(TaskControlBlock* tcb) {
+    if (tcb == NULL) {
+        return;
+    }
+
+    if (tcb->prev != NULL) {
+        tcb->prev->next = tcb->next;
+    } else {
+        // Removing from head of queue
+        wait_queue = tcb->next;
+    }
+
+    if (tcb->next != NULL) {
+        tcb->next->prev = tcb->prev;
+    }
+
+    tcb->prev = NULL;
+    tcb->next = NULL;
+}
+
+/**
+ * @brief Remove a task from the ready queue
+ *
+ * @param tcb Task control block to remove from ready queue
+ */
+void ss_remove_from_ready_queue(TaskControlBlock* tcb) {
+    if (tcb == NULL) {
+        return;
+    }
+
+    int8_t pri = tcb->task_pri;
+    if (pri < 1 || pri > MAX_TASK_PRI) {
+        return;
+    }
+
+    TaskControlBlock* current = ready_queue[pri - 1];
+
+    while (current != NULL) {
+        if (current == tcb) {
+            // Found the task, remove it from the linked list
+            if (tcb->prev != NULL) {
+                tcb->prev->next = tcb->next;
+            } else {
+                // Removing from head of queue
+                ready_queue[pri - 1] = tcb->next;
+            }
+            if (tcb->next != NULL) {
+                tcb->next->prev = tcb->prev;
+            }
+            tcb->prev = NULL;
+            tcb->next = NULL;
+            break;
+        }
+        current = current->next;
+    }
+}
+
+/**
+ * @brief Transition a task to wait state
+ *
+ * Removes task from ready queue and adds it to wait queue.
+ *
+ * @param tcb Task control block to transition to wait state
+ * @param factor Wait factor (reason for waiting)
+ */
+static void ss_enter_wait_state(TaskControlBlock* tcb, TaskWaitFactor factor) {
+    if (tcb == NULL) {
+        return;
+    }
+
+    // Change state from TS_READY to TS_WAIT
+    tcb->state = TS_WAIT;
+    tcb->wait_factor = factor;
+
+    // Remove from ready queue
+    ss_remove_from_ready_queue(tcb);
+
+    // Add to wait queue
+    ss_wait_queue_add(tcb);
+}
+
+/**
+ * @brief Transition a task from wait state to ready state
+ *
+ * Removes task from wait queue and adds it back to ready queue.
+ *
+ * @param tcb Task control block to transition to ready state
+ */
+static void ss_exit_wait_state(TaskControlBlock* tcb) {
+    if (tcb == NULL) {
+        return;
+    }
+
+    // Change state from TS_WAIT to TS_READY
+    tcb->state = TS_READY;
+    tcb->wait_factor = TWFCT_NON;
+    tcb->wait_time = 0;
+
+    // Remove from wait queue
+    ss_wait_queue_remove(tcb);
+
+    // Add to ready queue
+    ss_task_queue_add_entry(tcb);
+}
+
+// ============================================================
+// Sleep/Wakeup System Calls
+// ============================================================
+
+/**
+ * @brief Sleep the calling task (slp_tsk)
+ *
+ * Transitions the calling task to wait state. The task will remain
+ * in wait state until woken up by wup_tsk.
+ *
+ * @return E_OK on success
+ * @return E_OBJ if calling task does not exist
+ */
+uint16_t ss_slp_tsk(void) {
+    uint16_t err = E_OK;
+
+    disable_interrupts();
+
+    if (curr_task == NULL || curr_task->state == TS_NONEXIST) {
+        enable_interrupts();
+        return E_OBJ;
+    }
+
+    // Transition to wait state
+    ss_enter_wait_state(curr_task, TWFCT_SLP);
+    curr_task->wakeup_count = 0;
+
+    // Call scheduler to switch to another task
+    ss_scheduler();
+
+    enable_interrupts();
+
+    // Context switch will occur, and we'll return here when woken up
+    return err;
+}
+
+/**
+ * @brief Wake up a specified task (wup_tsk)
+ *
+ * Wakes up a task that is in wait state. If the task is already
+ * ready or running, increments the wakeup count.
+ *
+ * @param id Task ID (1-based index)
+ * @return E_OK on success
+ * @return E_ID invalid task ID
+ * @return E_OBJ task does not exist or is dormant
+ * @return E_QOVR wakeup count overflow
+ */
+uint16_t ss_wup_tsk(uint16_t id) {
+    TaskControlBlock* tcb;
+    uint16_t err = E_OK;
+
+    SS_CHECK_ID(id, MAX_TASKS);
+
+    disable_interrupts();
+
+    tcb = &tcb_table[id - 1];
+
+    if (tcb->state == TS_NONEXIST || tcb->state == TS_DORMANT) {
+        enable_interrupts();
+        return E_OBJ;
+    }
+
+    if (tcb->wait_factor == TWFCT_SLP) {
+        // Task is in sleep wait state - wake it up
+        ss_exit_wait_state(tcb);
+
+        // Call scheduler in case woken task has higher priority
+        ss_scheduler();
+    } else {
+        // Task is not sleeping - increment wakeup count
+        if (tcb->wakeup_count < 255) {
+            tcb->wakeup_count++;
+        } else {
+            err = E_QOVR;
+        }
+    }
+
+    enable_interrupts();
+    return err;
+}
+
+// ============================================================
+// Delay System Calls
+// ============================================================
+
+/**
+ * @brief Delay the calling task for specified milliseconds (dly_tsk)
+ *
+ * Transitions the calling task to wait state for the specified duration.
+ * The task will automatically wake up after the delay period.
+ *
+ * @param dlymili Delay time in milliseconds
+ * @return E_OK on success
+ * @return E_PAR invalid parameter (zero delay)
+ * @return E_OBJ calling task does not exist
+ */
+uint16_t ss_dly_tsk(uint32_t dlymili) {
+    uint16_t err = E_OK;
+
+    if (dlymili == 0) {
+        return E_PAR;
+    }
+
+    disable_interrupts();
+
+    if (curr_task == NULL || curr_task->state == TS_NONEXIST) {
+        enable_interrupts();
+        return E_OBJ;
+    }
+
+    // Transition to wait state with delay factor
+    ss_enter_wait_state(curr_task, TWFCT_DLY);
+
+    // Set wakeup time (current counter + delay in milliseconds)
+    curr_task->wait_time = global_counter + dlymili;
+
+    // Call scheduler to switch to another task
+    ss_scheduler();
+
+    enable_interrupts();
+
+    return err;
+}
+
+/**
+ * @brief Process delayed task wakeups
+ *
+ * Scans the wait queue and wakes up tasks whose delay time has expired.
+ * This function should be called from the timer interrupt handler.
+ */
+void ss_process_delay_wakeups(void) {
+    TaskControlBlock* tcb;
+    TaskControlBlock* next_tcb;
+    uint32_t current_time = global_counter;
+
+    disable_interrupts();
+
+    tcb = wait_queue;
+    while (tcb != NULL) {
+        next_tcb = tcb->next;  // Save next pointer before state change
+
+        if (tcb->wait_factor == TWFCT_DLY && tcb->wait_time <= current_time) {
+            // Delay time has expired - wake up the task
+            ss_exit_wait_state(tcb);
+        }
+
+        tcb = next_tcb;
+    }
+
+    enable_interrupts();
+}
+
+// ============================================================
+// Task Termination System Calls
+// ============================================================
+
+/**
+ * @brief Exit the calling task (ext_tsk)
+ *
+ * Terminates the calling task and transitions it to TS_DORMANT state.
+ * The scheduler will be called to switch to another task.
+ * This function does not return.
+ */
+void ss_ext_tsk(void) {
+    disable_interrupts();
+
+    if (curr_task != NULL && curr_task->state != TS_NONEXIST) {
+        // Transition task to DORMANT state
+        curr_task->state = TS_DORMANT;
+        curr_task->wait_factor = TWFCT_NON;
+
+        // Remove from ready queue
+        ss_remove_from_ready_queue(curr_task);
+    }
+
+    // Call scheduler to determine next task
+    ss_scheduler();
+
+    enable_interrupts();
+
+    // Context switch will occur - this function never returns
+}
+
+/**
+ * @brief Terminate a specified task (ter_tsk)
+ *
+ * Forces termination of the specified task, transitioning it to
+ * TS_DORMANT state.
+ *
+ * @param id Task ID (1-based index)
+ * @return E_OK on success
+ * @return E_ID invalid task ID
+ * @return E_OBJ task does not exist or is already dormant
+ */
+uint16_t ss_ter_tsk(uint16_t id) {
+    TaskControlBlock* tcb;
+
+    SS_CHECK_ID(id, MAX_TASKS);
+
+    disable_interrupts();
+
+    tcb = &tcb_table[id - 1];
+
+    if (tcb->state == TS_NONEXIST || tcb->state == TS_DORMANT) {
+        enable_interrupts();
+        return E_OBJ;
+    }
+
+    // Transition task to DORMANT state
+    tcb->state = TS_DORMANT;
+    tcb->wait_factor = TWFCT_NON;
+
+    // Remove from ready queue or wait queue
+    if (tcb->wait_factor == TWFCT_NON && tcb->prev == NULL && tcb->next == NULL) {
+        // Task not in any queue - already dormant or nonexistent
+    } else {
+        // Remove from appropriate queue
+        ss_remove_from_ready_queue(tcb);
+        ss_wait_queue_remove(tcb);
+    }
+
+    // If terminating the current task, need to switch
+    if (tcb == curr_task) {
+        ss_scheduler();
+    }
+
+    enable_interrupts();
+    return E_OK;
 }

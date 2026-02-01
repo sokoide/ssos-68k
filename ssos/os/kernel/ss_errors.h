@@ -43,7 +43,8 @@ typedef enum {
     SS_E_PAR = -17,
     SS_E_ID = -18,
     SS_E_LIMIT = -34,
-    SS_E_OBJ = -41
+    SS_E_OBJ = -41,
+    SS_E_QOVR = -39  // Queue overflow
 } SsError;
 
 // Error context structure for debugging
@@ -117,5 +118,6 @@ const char* ss_error_to_string(SsError error);
 #define E_ID SS_E_ID
 #define E_LIMIT SS_E_LIMIT
 #define E_OBJ SS_E_OBJ
+#define E_QOVR SS_E_QOVR
 #define E_RSATR SS_E_PAR    // Invalid attributes - map to parameter error
 #define E_SYS SS_ERROR_SYSTEM_ERROR  // System error

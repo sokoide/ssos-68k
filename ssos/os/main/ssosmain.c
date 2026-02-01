@@ -53,12 +53,46 @@ void ssosmain() {
     main_task.stack = (uint8_t*)(ss_save_data_base * TASK_STACK_SIZE - 1);
     main_task_id = ss_create_task(&main_task);
 
-#if 0
-    ss_start_task(main_task_id, 0);
+#if 0  // DISABLED: Multitasking demo causing issues
+    // Set curr_task to the main task that's already running
+    curr_task = &tcb_table[main_task_id - 1];
+    curr_task->state = TS_READY;  // Mark as ready since it's currently running
 
-    while (1)
-        ; // never reaches here
+    // Create demo tasks for multitasking test
+    TaskInfo task1_info = {
+        .task_attr = TA_HLNG,
+        .task = task1_func,
+        .task_pri = 2,
+        .stack_size = TASK_STACK_SIZE,
+        .stack = NULL,
+    };
+
+    TaskInfo task2_info = {
+        .task_attr = TA_HLNG,
+        .task = task2_func,
+        .task_pri = 2,
+        .stack_size = TASK_STACK_SIZE,
+        .stack = NULL,
+    };
+
+    TaskInfo task3_info = {
+        .task_attr = TA_HLNG,
+        .task = task3_func,
+        .task_pri = 2,
+        .stack_size = TASK_STACK_SIZE,
+        .stack = NULL,
+    };
+
+    uint16_t task1_id = ss_create_task(&task1_info);
+    uint16_t task2_id = ss_create_task(&task2_info);
+    uint16_t task3_id = ss_create_task(&task3_info);
+
+    // Start demo tasks - they will run concurrently with main task
+    ss_start_task(task1_id, 0);
+    ss_start_task(task2_id, 0);
+    ss_start_task(task3_id, 0);
 #endif
+
 
 #if 1
     ss_layer_init();

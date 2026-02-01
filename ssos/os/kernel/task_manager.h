@@ -45,3 +45,19 @@ extern TaskInfo main_task;
 int timer_interrupt_handler();
 uint16_t ss_create_task(const TaskInfo* ti);
 uint16_t ss_start_task(uint16_t id, int16_t stacd /* not used */);
+void ss_scheduler(void);
+
+// Wait queue management functions
+void ss_remove_from_ready_queue(TaskControlBlock* tcb);
+void ss_process_delay_wakeups(void);
+
+// Sleep/wakeup system calls
+uint16_t ss_slp_tsk(void);
+uint16_t ss_wup_tsk(uint16_t id);
+
+// Delay system calls
+uint16_t ss_dly_tsk(uint32_t dlymili);
+
+// Task termination system calls
+void ss_ext_tsk(void);
+uint16_t ss_ter_tsk(uint16_t id);
