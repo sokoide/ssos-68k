@@ -20,14 +20,13 @@
 // Each task displays a counter at a different screen position
 // ============================================================
 
-// Task 1: Simple infinite loop (no IOCS to avoid interrupt-context issues)
+// Task 1: Simple counter loop (no IOCS)
 void task1_func(int16_t stacd, void* exinf) {
     (void)stacd;
     (void)exinf;
     volatile uint32_t counter = 0;
     while (1) {
-        counter++;
-        // Just increment - no IOCS calls from interrupt-started task
+        counter++;  // Just increment, no IOCS
     }
 }
 
@@ -98,29 +97,28 @@ void ssosmain() {
     main_task.stack = (uint8_t*)(ss_save_data_base * TASK_STACK_SIZE - 1);
     main_task_id = ss_create_task(&main_task);
 
-    // NOTE: We do NOT set curr_task to main_task here!
-    // The main task (ssosmain) is running on the original stack without
-    // an interrupt frame. Setting it as curr_task would cause context_switch
-    // to corrupt the stack when trying to save its context.
-    // Instead, we leave curr_task as NULL. When timer interrupts occur:
-    // - If curr_task is NULL, context_switch won't save anything
-    // - scheduled_task will be set to the first ready task
-    // - The new task will be started
+    // Set up main task for preemptive context switching
+    // Key: context is set to NULL (not stack_addr) so it's treated as "existing task"
+    // When the first timer interrupt occurs:
+    // 1. timerd_handler saves d0-d7/a0-a6 + PC + SR to ssosmain's stack
+    // 2. context_switch saves current SP to curr_task->context
+    // 3. This allows ssosmain to be restored later
+    curr_task = &tcb_table[main_task_id - 1];
+    curr_task->state = TS_READY;
+    curr_task->context = NULL;  // NULL means "running, context not yet saved"
+                                 // (differs from stack_addr which means "new task")
 
-#if 0  // Preemptive multitasking demo - DISABLED
-    // NOTE: Currently, starting new tasks from context_switch
-    // will never return to ssosmain because:
-    // 1. ssosmain runs as a normal function (not via RTE from interrupt)
-    // 2. context_switch starts new task with RTE
-    // 3. ssosmain's context cannot be saved/restored properly
-    // Full preemptive multitasking requires all tasks to start via interrupt
+    // Add main task to ready queue so scheduler can select it
+    ss_task_queue_add_entry(curr_task);
+
+#if 0  // Preemptive multitasking demo - DISABLED (context switch needs more work)
     // Create demo tasks for multitasking test
-    // Each task will display a counter at different screen positions
-    // These tasks will preemptively switch among themselves via timer interrupt
+    // Each task will run in an infinite loop
+    // Timer interrupt will switch between main task and demo tasks
     TaskInfo task1_info = {
         .task_attr = TA_HLNG,
         .task = task1_func,
-        .task_pri = 2,
+        .task_pri = 1,  // Same priority as main task for round-robin
         .stack_size = TASK_STACK_SIZE,
         .stack = NULL,
     };
@@ -128,7 +126,7 @@ void ssosmain() {
     TaskInfo task2_info = {
         .task_attr = TA_HLNG,
         .task = task2_func,
-        .task_pri = 2,
+        .task_pri = 1,  // Same priority as main task for round-robin
         .stack_size = TASK_STACK_SIZE,
         .stack = NULL,
     };
@@ -136,7 +134,7 @@ void ssosmain() {
     TaskInfo task3_info = {
         .task_attr = TA_HLNG,
         .task = task3_func,
-        .task_pri = 2,
+        .task_pri = 1,  // Same priority as main task for round-robin
         .stack_size = TASK_STACK_SIZE,
         .stack = NULL,
     };
@@ -145,7 +143,7 @@ void ssosmain() {
     uint16_t task2_id = ss_create_task(&task2_info);
     uint16_t task3_id = ss_create_task(&task3_info);
 
-    // Start demo tasks - only start task1 for testing
+    // Start demo tasks - only task1 for testing
     if (task1_id > 0) ss_start_task(task1_id, 0);
     // if (task2_id > 0) ss_start_task(task2_id, 0);  // disabled
     // if (task3_id > 0) ss_start_task(task3_id, 0);  // disabled

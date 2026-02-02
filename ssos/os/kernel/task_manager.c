@@ -5,7 +5,6 @@
 #include <stdio.h>
 
 // Forward declarations for static functions
-static void ss_task_queue_add_entry(TaskControlBlock* tcb);
 void ss_scheduler(void);
 
 TaskControlBlock tcb_table[MAX_TASKS];
@@ -153,7 +152,11 @@ uint16_t ss_create_task(const TaskInfo* ti) {
                             __func__, __FILE__, __LINE__, "Task stack base not initialized");
                 return E_SYS;
             }
-            tcb_table[i].stack_addr = ss_task_stack_base + (i + 1) * TASK_STACK_SIZE - 1;
+            // Stack grows downward, so stack_addr points to the top of the stack area
+            // IMPORTANT: Must be even address for M68000 (odd address causes address error)
+            // Subtract 4 to stay within the allocated area, then align to 4 bytes
+            uint32_t stack_end = (uint32_t)(ss_task_stack_base + (i + 1) * TASK_STACK_SIZE);
+            tcb_table[i].stack_addr = (uint8_t*)((stack_end - 4) & 0xFFFFFFFC);
         }
 
         id = i + 1;
@@ -232,7 +235,7 @@ uint16_t ss_start_task(uint16_t id, int16_t stacd /* not used */) {
  *
  * @param tcb Task control block to add to ready queue
  */
-static void ss_task_queue_add_entry(TaskControlBlock* tcb) {
+void ss_task_queue_add_entry(TaskControlBlock* tcb) {
     if (tcb == NULL || tcb->task_pri < 1 || tcb->task_pri > MAX_TASK_PRI) {
         return;
     }
@@ -259,30 +262,36 @@ static void ss_task_queue_add_entry(TaskControlBlock* tcb) {
 }
 
 /**
- * @brief Simple task scheduler implementation
+ * @brief Simple task scheduler with round-robin
  *
- * Selects the highest priority ready task for execution.
- * Uses round-robin scheduling within the same priority level.
- *
- * This is a simplified scheduler suitable for SSOS's cooperative multitasking model.
- * In a full preemptive system, this would include more sophisticated scheduling algorithms.
+ * Selects the next ready task for execution.
+ * Uses simple round-robin: pick the first task that is not curr_task.
+ * If only curr_task is in the queue, select it again.
  */
 void ss_scheduler(void) {
     TaskControlBlock* next_task = NULL;
 
-    // Find highest priority ready task
+    // Find the next task to run (different from curr_task if possible)
     for (int pri = 0; pri < MAX_TASK_PRI; pri++) {
-        if (ready_queue[pri] != NULL) {
-            next_task = ready_queue[pri];
-            break;
+        TaskControlBlock* tcb = ready_queue[pri];
+        while (tcb != NULL) {
+            if (tcb != curr_task) {
+                // Found a different task - select it
+                next_task = tcb;
+                goto done;
+            }
+            tcb = tcb->next;
         }
     }
 
-    // Update scheduled task - this is the key fix for the test
-    scheduled_task = next_task;
+    // No different task found - just use curr_task (if any)
+    if (next_task == NULL && curr_task != NULL && curr_task->state == TS_READY) {
+        next_task = curr_task;
+    }
 
-    // Note: Actual context switching would occur in the timer interrupt handler
-    // For SSOS, this sets up the next task to run when context switching occurs
+done:
+    // Update scheduled task
+    scheduled_task = next_task;
 }
 
 // ============================================================

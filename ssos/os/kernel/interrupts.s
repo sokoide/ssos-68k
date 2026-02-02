@@ -489,6 +489,10 @@ cs_call_scheduler:
 	move.l	scheduled_task, d0
 	beq.w	cs_no_next_task
 
+	| Check if scheduled_task == curr_task (no switch needed)
+	cmp.l	curr_task, d0
+	beq.w	cs_return_to_handler	| same task, no switch
+
 	| Switch to scheduled_task
 	move.l	d0, a1			| a1 = scheduled_task
 	move.l	a1, curr_task		| update curr_task

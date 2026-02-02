@@ -45,6 +45,7 @@ extern TaskInfo main_task;
 int timer_interrupt_handler();
 uint16_t ss_create_task(const TaskInfo* ti);
 uint16_t ss_start_task(uint16_t id, int16_t stacd /* not used */);
+void ss_task_queue_add_entry(TaskControlBlock* tcb);
 void ss_scheduler(void);
 
 // Wait queue management functions
