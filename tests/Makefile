@@ -41,14 +41,15 @@ UNIT_TEST_SRCS = unit/test_memory.c \
                   unit/test_scheduler.c \
                   unit/test_layers.c \
                   unit/test_errors.c \
-                  unit/test_kernel.c
+                  unit/test_kernel.c \
+                  unit/test_performance.c \
+                  unit/test_render_perf.c
 
 # SSOS kernel sources (subset for testing)
 KERNEL_SRCS = $(SSOS_ROOT)/os/kernel/memory.c \
                $(SSOS_ROOT)/os/kernel/task_manager.c \
                $(SSOS_ROOT)/os/kernel/ss_errors.c \
                $(SSOS_ROOT)/os/kernel/ss_perf.c \
-               $(SSOS_ROOT)/os/kernel/ss_config.c \
                $(SSOS_ROOT)/os/window/layer.c \
                $(SSOS_ROOT)/os/util/printf.c
 

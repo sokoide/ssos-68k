@@ -32,7 +32,7 @@ OBJDUMP=m68k-xelf-objdump
 READELF=m68k-xelf-readelf
 
 INCLUDE=-I$(XELF_BASE)/m68k-elf/include -I./util -I./kernel -I./window -I./main
-LIB=-L$(XELF_BASE)/m68k-elf/lib -L$(XELF_BASE)/lib/gcc/m68k-elf/13.3.0
+LIB=-L$(XELF_BASE)/m68k-elf/lib -L$(shell dirname $(shell m68k-xelf-gcc -print-libgcc-file-name))
 
 CCFLAGS=$(INCLUDE) -g -O2 -Wa,-adhlns="$@.lst"
 #CCFLAGS=$(INCLUDE) -g -Wa,-adhlns="$@.lst"

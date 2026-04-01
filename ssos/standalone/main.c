@@ -34,7 +34,20 @@ int main(int argc, char** argv) {
             local_text_size, local_data_size, local_bss_size);
 
     local_ssos_memory_base = malloc(local_ssos_memory_size);
-    assert(local_ssos_memory_base);
+    if (local_ssos_memory_base == NULL) {
+        printf("Error: Failed to allocate %ld bytes for SSOS memory.\n", local_ssos_memory_size);
+        restore_interrupts();
+        _iocs_b_super(ssp);
+        return 1;
+    }
+
+    // Basic overlap check: ensure heap is not inside the program segment
+    // Human68k typically loads .x programs at a base address (e.g., 0x174a60)
+    // and malloc returns memory above the program's initialized data/bss.
+    if ((uintptr_t)local_ssos_memory_base < (uintptr_t)&main && 
+        (uintptr_t)local_ssos_memory_base + local_ssos_memory_size > (uintptr_t)&main) {
+        printf("Warning: SSOS memory overlaps with program code! This may cause Bus Error.\n");
+    }
 
     ssosmain();
 

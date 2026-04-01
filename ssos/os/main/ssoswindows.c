@@ -52,7 +52,8 @@ Layer* get_layer_3() {
 
     Layer* l = ss_layer_get();
     const int lw = 544;
-    const int lh = 112;  // Increased by 16 pixels (one line) for keyboard display
+    const int lh =
+        112; // Increased by 16 pixels (one line) for keyboard display
 
     uint8_t* lbuf = (uint8_t*)ss_mem_alloc4k(lw * lh);
     ss_layer_set(l, lbuf, 192, 24, lw, lh);
@@ -92,8 +93,10 @@ void update_layer_2(Layer* l) {
     ss_print_v(l->vram, l->w, l->h, fg, bg, x, y, szMessage);
     y += 16;
 
-    sprintf(szMessage, "A: V-DISP counter: %9d (vsync count)", ss_timera_counter);
-    if (ss_print_v_smart(l->vram, l->w, l->h, fg, bg, x, y, szMessage, prev_timera)) {
+    sprintf(szMessage, "A: V-DISP counter: %9d (vsync count)",
+            ss_timera_counter);
+    if (ss_print_v_smart(l->vram, l->w, l->h, fg, bg, x, y, szMessage,
+                         prev_timera)) {
         strcpy(prev_timera, szMessage);
         ss_damage_add_rect(l->x + x, l->y + y, mystrlen(szMessage) * 8, 16);
         dirty_regions++;
@@ -101,7 +104,8 @@ void update_layer_2(Layer* l) {
     y += 16;
 
     sprintf(szMessage, "D: 1000Hz timer:   %9d (every 1ms)", ss_timerd_counter);
-    if (ss_print_v_smart(l->vram, l->w, l->h, fg, bg, x, y, szMessage, prev_timerd)) {
+    if (ss_print_v_smart(l->vram, l->w, l->h, fg, bg, x, y, szMessage,
+                         prev_timerd)) {
         strcpy(prev_timerd, szMessage);
         ss_damage_add_rect(l->x + x, l->y + y, mystrlen(szMessage) * 8, 16);
         dirty_regions++;
@@ -109,15 +113,18 @@ void update_layer_2(Layer* l) {
     y += 16;
 
     sprintf(szMessage, "global_counter:    %9d (every 1ms)", global_counter);
-    if (ss_print_v_smart(l->vram, l->w, l->h, fg, bg, x, y, szMessage, prev_global)) {
+    if (ss_print_v_smart(l->vram, l->w, l->h, fg, bg, x, y, szMessage,
+                         prev_global)) {
         strcpy(prev_global, szMessage);
         ss_damage_add_rect(l->x + x, l->y + y, mystrlen(szMessage) * 8, 16);
         dirty_regions++;
     }
     y += 16;
 
-    sprintf(szMessage, "Context Switch:    %9d (not implemented yet)", ss_context_switch_counter);
-    if (ss_print_v_smart(l->vram, l->w, l->h, fg, bg, x, y, szMessage, prev_context)) {
+    sprintf(szMessage, "Context Switch:    %9d (not implemented yet)",
+            ss_context_switch_counter);
+    if (ss_print_v_smart(l->vram, l->w, l->h, fg, bg, x, y, szMessage,
+                         prev_context)) {
         strcpy(prev_context, szMessage);
         ss_damage_add_rect(l->x + x, l->y + y, mystrlen(szMessage) * 8, 16);
         dirty_regions++;
@@ -142,7 +149,8 @@ void update_layer_2(Layer* l) {
                  : /* destroyed registers */);
 
     sprintf(szMessage, "ssp: 0x%08x, pc: 0x%08x, sr: 0x%04x", ssp, pc, sr);
-    if (ss_print_v_smart(l->vram, l->w, l->h, fg, bg, x, y, szMessage, prev_ssp)) {
+    if (ss_print_v_smart(l->vram, l->w, l->h, fg, bg, x, y, szMessage,
+                         prev_ssp)) {
         strcpy(prev_ssp, szMessage);
         ss_damage_add_rect(l->x + x, l->y + y, mystrlen(szMessage) * 8, 16);
         dirty_regions++;
@@ -152,8 +160,10 @@ void update_layer_2(Layer* l) {
     void* base;
     uint32_t sz;
     ss_mem_get_text(&base, &sz);
-    sprintf(szMessage, ".text   addr: 0x%08x-0x%08x, size: %d", base, base + sz - 1, sz);
-    if (ss_print_v_smart(l->vram, l->w, l->h, fg, bg, x, y, szMessage, prev_text)) {
+    sprintf(szMessage, ".text   addr: 0x%08x-0x%08x, size: %d", base,
+            base + sz - 1, sz);
+    if (ss_print_v_smart(l->vram, l->w, l->h, fg, bg, x, y, szMessage,
+                         prev_text)) {
         strcpy(prev_text, szMessage);
         ss_damage_add_rect(l->x + x, l->y + y, mystrlen(szMessage) * 8, 16);
         dirty_regions++;
@@ -161,8 +171,10 @@ void update_layer_2(Layer* l) {
     y += 16;
 
     ss_mem_get_data(&base, &sz);
-    sprintf(szMessage, ".data   addr: 0x%08x-0x%08x, size: %d", base, base + sz - 1, sz);
-    if (ss_print_v_smart(l->vram, l->w, l->h, fg, bg, x, y, szMessage, prev_data)) {
+    sprintf(szMessage, ".data   addr: 0x%08x-0x%08x, size: %d", base,
+            base + sz - 1, sz);
+    if (ss_print_v_smart(l->vram, l->w, l->h, fg, bg, x, y, szMessage,
+                         prev_data)) {
         strcpy(prev_data, szMessage);
         ss_damage_add_rect(l->x + x, l->y + y, mystrlen(szMessage) * 8, 16);
         dirty_regions++;
@@ -170,8 +182,10 @@ void update_layer_2(Layer* l) {
     y += 16;
 
     ss_mem_get_bss(&base, &sz);
-    sprintf(szMessage, ".bss    addr: 0x%08x-0x%08x, size: %d", base, base + sz - 1, sz);
-    if (ss_print_v_smart(l->vram, l->w, l->h, fg, bg, x, y, szMessage, prev_bss)) {
+    sprintf(szMessage, ".bss    addr: 0x%08x-0x%08x, size: %d", base,
+            base + sz - 1, sz);
+    if (ss_print_v_smart(l->vram, l->w, l->h, fg, bg, x, y, szMessage,
+                         prev_bss)) {
         strcpy(prev_bss, szMessage);
         ss_damage_add_rect(l->x + x, l->y + y, mystrlen(szMessage) * 8, 16);
         dirty_regions++;
@@ -179,8 +193,10 @@ void update_layer_2(Layer* l) {
     y += 16;
 
     sprintf(szMessage, "RAM     addr: 0x%08x-0x%08x, size: %d",
-            ss_ssos_memory_base, ss_ssos_memory_base + ss_ssos_memory_size - 1, ss_ssos_memory_size);
-    if (ss_print_v_smart(l->vram, l->w, l->h, fg, bg, x, y, szMessage, prev_ram)) {
+            ss_ssos_memory_base, ss_ssos_memory_base + ss_ssos_memory_size - 1,
+            ss_ssos_memory_size);
+    if (ss_print_v_smart(l->vram, l->w, l->h, fg, bg, x, y, szMessage,
+                         prev_ram)) {
         strcpy(prev_ram, szMessage);
         ss_damage_add_rect(l->x + x, l->y + y, mystrlen(szMessage) * 8, 16);
         dirty_regions++;
@@ -188,7 +204,8 @@ void update_layer_2(Layer* l) {
     y += 16;
 
     sprintf(szMessage, "ss_timer_counter_base addr: 0x%p", &ss_timera_counter);
-    if (ss_print_v_smart(l->vram, l->w, l->h, fg, bg, x, y, szMessage, prev_timer_addr)) {
+    if (ss_print_v_smart(l->vram, l->w, l->h, fg, bg, x, y, szMessage,
+                         prev_timer_addr)) {
         strcpy(prev_timer_addr, szMessage);
         ss_damage_add_rect(l->x + x, l->y + y, mystrlen(szMessage) * 8, 16);
         dirty_regions++;
@@ -196,15 +213,18 @@ void update_layer_2(Layer* l) {
     y += 16;
 
     sprintf(szMessage, "ss_save_data_base addr: 0x%p", &ss_save_data_base);
-    if (ss_print_v_smart(l->vram, l->w, l->h, fg, bg, x, y, szMessage, prev_save_addr)) {
+    if (ss_print_v_smart(l->vram, l->w, l->h, fg, bg, x, y, szMessage,
+                         prev_save_addr)) {
         strcpy(prev_save_addr, szMessage);
         ss_damage_add_rect(l->x + x, l->y + y, mystrlen(szMessage) * 8, 16);
         dirty_regions++;
     }
     y += 16;
 
-    sprintf(szMessage, "memory total: %d, free: %d", ss_mem_total_bytes(), ss_mem_free_bytes());
-    if (ss_print_v_smart(l->vram, l->w, l->h, fg, bg, x, y, szMessage, prev_memory)) {
+    sprintf(szMessage, "memory total: %d, free: %d", ss_mem_total_bytes(),
+            ss_mem_free_bytes());
+    if (ss_print_v_smart(l->vram, l->w, l->h, fg, bg, x, y, szMessage,
+                         prev_memory)) {
         strcpy(prev_memory, szMessage);
         ss_damage_add_rect(l->x + x, l->y + y, mystrlen(szMessage) * 8, 16);
         dirty_regions++;
@@ -213,8 +233,10 @@ void update_layer_2(Layer* l) {
 
     for (int i = 0; i < ss_mem_mgr.free_block_count && i < 10; i++) {
         sprintf(szMessage, "memory mgr: block: %d, addr: 0x%x, sz:%d", i,
-                ss_mem_mgr.free_blocks[i].start_address, ss_mem_mgr.free_blocks[i].size_in_bytes);
-        if (ss_print_v_smart(l->vram, l->w, l->h, fg, bg, x, y, szMessage, prev_blocks[i])) {
+                ss_mem_mgr.free_blocks[i].start_address,
+                ss_mem_mgr.free_blocks[i].size_in_bytes);
+        if (ss_print_v_smart(l->vram, l->w, l->h, fg, bg, x, y, szMessage,
+                             prev_blocks[i])) {
             strcpy(prev_blocks[i], szMessage);
             ss_damage_add_rect(l->x + x, l->y + y, mystrlen(szMessage) * 8, 16);
             dirty_regions++;
@@ -227,7 +249,8 @@ void update_layer_2(Layer* l) {
 }
 
 void update_layer_3(Layer* l) {
-    // Static variables to track previous values - ELIMINATES REDRAW EVERY FRAME!
+    // Static variables to track previous values - ELIMINATES REDRAW EVERY
+    // FRAME!
     static uint32_t prev_dt = 0;
     static uint32_t prev_pos = 0;
     static char prev_mouse_dt[256] = {0};
@@ -247,11 +270,20 @@ void update_layer_3(Layer* l) {
     int dirty_regions = 0;
 
     uint8_t lid = l - ss_layer_mgr->layers;
-    sprintf(szMessage, "layer id: %d", lid);
-    if (ss_print_v_smart(l->vram, l->w, l->h, fg, bg, x, y, szMessage, prev_layer_id)) {
-        strcpy(prev_layer_id, szMessage);
-        ss_damage_add_rect(l->x + x, l->y + y, mystrlen(szMessage) * 8, 16);
-        dirty_regions++;
+    // A2 OPTIMIZATION: Skip sprintf when layer id hasn't changed
+    {
+        static uint8_t prev_lid = 0xFF; // Initial invalid value
+        if (lid != prev_lid) {
+            prev_lid = lid;
+            sprintf(szMessage, "layer id: %d", lid);
+            if (ss_print_v_smart(l->vram, l->w, l->h, fg, bg, x, y, szMessage,
+                                 prev_layer_id)) {
+                strcpy(prev_layer_id, szMessage);
+                ss_damage_add_rect(l->x + x, l->y + y, mystrlen(szMessage) * 8,
+                                   16);
+                dirty_regions++;
+            }
+        }
     }
     y += 16;
 
@@ -275,8 +307,8 @@ void update_layer_3(Layer* l) {
     // DEBUG: Periodically show current mouse state
     static uint8_t debug_counter = 0;
     if ((debug_counter++ % 30) == 0) {
-        sprintf(g_click_debug_msg, "MOUSE: x=%d y=%d click=%d",
-                mouse_x, mouse_y, current_lclick ? 1 : 0);
+        sprintf(g_click_debug_msg, "MOUSE: x=%d y=%d click=%d", mouse_x,
+                mouse_y, current_lclick ? 1 : 0);
     }
 
     const uint16_t TITLEBAR_HEIGHT = 24;
@@ -288,16 +320,20 @@ void update_layer_3(Layer* l) {
 
             if (clicked_id > 0) {
                 ss_layer_bring_to_front(clicked_layer);
-                ss_damage_add_rect(clicked_layer->x, clicked_layer->y, clicked_layer->w, clicked_layer->h);
+                ss_damage_add_rect(clicked_layer->x, clicked_layer->y,
+                                   clicked_layer->w, clicked_layer->h);
             }
 
-            uint16_t local_y = (mouse_y >= clicked_layer->y) ? (mouse_y - clicked_layer->y) : 0;
+            uint16_t local_y = (mouse_y >= clicked_layer->y)
+                                   ? (mouse_y - clicked_layer->y)
+                                   : 0;
             if (clicked_id > 0 && local_y <= TITLEBAR_HEIGHT) {
                 is_dragging = true;
                 dragged_layer = clicked_layer;
                 drag_offset_x = mouse_x - clicked_layer->x;
                 drag_offset_y = mouse_y - clicked_layer->y;
-                sprintf(g_click_debug_msg, "DRAG START: L%d at (%d,%d)", clicked_id, mouse_x, mouse_y);
+                sprintf(g_click_debug_msg, "DRAG START: L%d at (%d,%d)",
+                        clicked_id, mouse_x, mouse_y);
             } else {
                 is_dragging = false;
                 dragged_layer = NULL;
@@ -315,13 +351,19 @@ void update_layer_3(Layer* l) {
 
         int32_t max_x = (int32_t)WIDTH - dragged_layer->w;
         int32_t max_y = (int32_t)HEIGHT - dragged_layer->h;
-        if (max_x < 0) max_x = 0;
-        if (max_y < 0) max_y = 0;
+        if (max_x < 0)
+            max_x = 0;
+        if (max_y < 0)
+            max_y = 0;
 
-        if (target_x < 0) target_x = 0;
-        if (target_y < 0) target_y = 0;
-        if (target_x > max_x) target_x = max_x;
-        if (target_y > max_y) target_y = max_y;
+        if (target_x < 0)
+            target_x = 0;
+        if (target_y < 0)
+            target_y = 0;
+        if (target_x > max_x)
+            target_x = max_x;
+        if (target_y > max_y)
+            target_y = max_y;
 
         uint16_t aligned_x = (uint16_t)(target_x & ~0x7);
         uint16_t aligned_y = (uint16_t)(target_y & ~0x7);
@@ -339,8 +381,11 @@ void update_layer_3(Layer* l) {
 
             uint16_t min_x = (old_x < aligned_x) ? old_x : aligned_x;
             uint16_t min_y = (old_y < aligned_y) ? old_y : aligned_y;
-            uint16_t max_right = (old_right > new_right) ? (uint16_t)old_right : (uint16_t)new_right;
-            uint16_t max_bottom = (old_bottom > new_bottom) ? (uint16_t)old_bottom : (uint16_t)new_bottom;
+            uint16_t max_right = (old_right > new_right) ? (uint16_t)old_right
+                                                         : (uint16_t)new_right;
+            uint16_t max_bottom = (old_bottom > new_bottom)
+                                      ? (uint16_t)old_bottom
+                                      : (uint16_t)new_bottom;
 
             if (min_x >= 8) {
                 min_x -= 8;
@@ -359,7 +404,8 @@ void update_layer_3(Layer* l) {
                 max_bottom = HEIGHT;
             }
 
-            ss_damage_add_rect(min_x, min_y, max_right - min_x, max_bottom - min_y);
+            ss_damage_add_rect(min_x, min_y, max_right - min_x,
+                               max_bottom - min_y);
 
             ss_layer_rebuild_z_map();
 
@@ -367,7 +413,8 @@ void update_layer_3(Layer* l) {
             drag_offset_x = mouse_x - dragged_layer->x;
             drag_offset_y = mouse_y - dragged_layer->y;
 
-            ss_layer_mark_dirty(dragged_layer, 0, 0, dragged_layer->w, dragged_layer->h);
+            ss_layer_mark_dirty(dragged_layer, 0, 0, dragged_layer->w,
+                                dragged_layer->h);
 
             sprintf(g_click_debug_msg, "DRAG: L%d (%d,%d)",
                     dragged_layer - ss_layer_mgr->layers, aligned_x, aligned_y);
@@ -377,7 +424,8 @@ void update_layer_3(Layer* l) {
     if (!current_lclick && prev_lclick) {
         if (is_dragging && dragged_layer) {
             sprintf(g_click_debug_msg, "DRAG END: L%d (%d,%d)",
-                    dragged_layer - ss_layer_mgr->layers, dragged_layer->x, dragged_layer->y);
+                    dragged_layer - ss_layer_mgr->layers, dragged_layer->x,
+                    dragged_layer->y);
         }
         is_dragging = false;
         dragged_layer = NULL;
@@ -391,7 +439,8 @@ void update_layer_3(Layer* l) {
         int8_t dy = (int8_t)((dt & 0xFF0000) >> 16);
         sprintf(szMessage, "mouse dx:%3d, dy:%3d, l-click:%3d, r-click:%3d", dx,
                 dy, (dt & 0xFF00) >> 8, dt & 0xFF);
-        if (ss_print_v_smart(l->vram, l->w, l->h, fg, bg, x, y, szMessage, prev_mouse_dt)) {
+        if (ss_print_v_smart(l->vram, l->w, l->h, fg, bg, x, y, szMessage,
+                             prev_mouse_dt)) {
             strcpy(prev_mouse_dt, szMessage);
             ss_damage_add_rect(l->x + x, l->y + y, mystrlen(szMessage) * 8, 16);
             dirty_regions++;
@@ -403,7 +452,8 @@ void update_layer_3(Layer* l) {
         prev_pos = pos;
         sprintf(szMessage, "mouse x:%3d, y:%3d", (pos & 0xFFFF0000) >> 16,
                 pos & 0x0000FFFF);
-        if (ss_print_v_smart(l->vram, l->w, l->h, fg, bg, x, y, szMessage, prev_mouse_pos)) {
+        if (ss_print_v_smart(l->vram, l->w, l->h, fg, bg, x, y, szMessage,
+                             prev_mouse_pos)) {
             strcpy(prev_mouse_pos, szMessage);
             ss_damage_add_rect(l->x + x, l->y + y, mystrlen(szMessage) * 8, 16);
             dirty_regions++;
@@ -413,14 +463,17 @@ void update_layer_3(Layer* l) {
 
     // Display click debug message if available
     if (g_click_debug_msg[0] != 0) {
-        if (ss_print_v_smart(l->vram, l->w, l->h, fg, bg, x, y, g_click_debug_msg, prev_click_debug)) {
+        if (ss_print_v_smart(l->vram, l->w, l->h, fg, bg, x, y,
+                             g_click_debug_msg, prev_click_debug)) {
             strcpy(prev_click_debug, g_click_debug_msg);
-            ss_damage_add_rect(l->x + x, l->y + y, mystrlen(g_click_debug_msg) * 8, 16);
+            ss_damage_add_rect(l->x + x, l->y + y,
+                               mystrlen(g_click_debug_msg) * 8, 16);
             dirty_regions++;
             // Clear the message after displaying
             // Keep message for longer - only clear after many frames
             static int debug_msg_counter = 0;
-            if (++debug_msg_counter > 60) {  // Clear after 60 frames (about 1 second)
+            if (++debug_msg_counter >
+                60) { // Clear after 60 frames (about 1 second)
                 g_click_debug_msg[0] = 0;
                 debug_msg_counter = 0;
             }
@@ -441,11 +494,13 @@ void update_layer_3(Layer* l) {
             ss_print_v(l->vram, l->w, l->h, fg, bg, x, y, "Code:");
             x += 8 * 5;
 
-            // Create a temporary copy to avoid modifying the original buffer during display
+            // Create a temporary copy to avoid modifying the original buffer
+            // during display
             int temp_len = ss_kb.len;
             int temp_idxr = ss_kb.idxr;
 
-            for (int i = 0; i < temp_len && i < 6; i++) { // Limit to 6 codes to prevent overflow
+            for (int i = 0; i < temp_len && i < 6;
+                 i++) { // Limit to 6 codes to prevent overflow
                 int scancode = ss_kb.data[temp_idxr];
                 temp_idxr++;
                 if (temp_idxr > 32)
@@ -465,8 +520,9 @@ void update_layer_3(Layer* l) {
         }
     }
 
-    // The old code ALWAYS invalidated the entire layer - terrible for performance!
-    // Now we only mark specific dirty regions when something actually changes
+    // The old code ALWAYS invalidated the entire layer - terrible for
+    // performance! Now we only mark specific dirty regions when something
+    // actually changes
 }
 
 void draw_title(uint8_t* buf) {

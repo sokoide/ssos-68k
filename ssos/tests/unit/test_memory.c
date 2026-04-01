@@ -13,12 +13,12 @@ static void setup_memory_system(void) {
 // Test helper: Reset memory system
 static void teardown_memory_system(void) {
     // Reset memory manager state
-    ss_mem_mgr.num_free_blocks = 0;
+    ss_mem_mgr.free_block_count = 0;
 
     // Add one large free block for fresh start
-    ss_mem_mgr.free_blocks[0].addr = 0x100000;  // Test memory base
-    ss_mem_mgr.free_blocks[0].sz = 0x100000;    // 1MB for testing
-    ss_mem_mgr.num_free_blocks = 1;
+    ss_mem_mgr.free_blocks[0].start_address = 0x100000;  // Test memory base
+    ss_mem_mgr.free_blocks[0].size_in_bytes = 0x100000;    // 1MB for testing
+    ss_mem_mgr.free_block_count = 1;
 }
 
 // Test basic memory allocation
@@ -110,7 +110,7 @@ TEST(memory_manager_state_consistency) {
     setup_memory_system();
     teardown_memory_system();
 
-    int initial_blocks = ss_mem_mgr.num_free_blocks;
+    int initial_blocks = ss_mem_mgr.free_block_count;
     ASSERT_EQ(initial_blocks, 1);  // Should start with one large block
 
     // Allocate some memory
@@ -118,11 +118,11 @@ TEST(memory_manager_state_consistency) {
     ASSERT_NOT_NULL(addr);
 
     // Free block count should remain the same (block shrunk, not removed)
-    ASSERT_EQ(ss_mem_mgr.num_free_blocks, 1);
+    ASSERT_EQ(ss_mem_mgr.free_block_count, 1);
 
     // Remaining free block should have reduced size
-    ASSERT_EQ(ss_mem_mgr.free_blocks[0].sz, 0x100000 - 1024);
-    ASSERT_EQ(ss_mem_mgr.free_blocks[0].addr, 0x100000 + 1024);
+    ASSERT_EQ(ss_mem_mgr.free_blocks[0].size_in_bytes, 0x100000 - 1024);
+    ASSERT_EQ(ss_mem_mgr.free_blocks[0].start_address, 0x100000 + 1024);
 }
 
 // Test exact free block consumption
@@ -130,16 +130,16 @@ TEST(memory_exact_block_consumption) {
     setup_memory_system();
 
     // Set up a specific scenario: one 4K block
-    ss_mem_mgr.num_free_blocks = 1;
-    ss_mem_mgr.free_blocks[0].addr = 0x100000;
-    ss_mem_mgr.free_blocks[0].sz = 4096;
+    ss_mem_mgr.free_block_count = 1;
+    ss_mem_mgr.free_blocks[0].start_address = 0x100000;
+    ss_mem_mgr.free_blocks[0].size_in_bytes = 4096;
 
     // Allocate exactly the size of the free block
     uint32_t addr = ss_mem_alloc(4096);
     ASSERT_EQ(addr, 0x100000);
 
     // Free block should be completely consumed (removed from list)
-    ASSERT_EQ(ss_mem_mgr.num_free_blocks, 0);
+    ASSERT_EQ(ss_mem_mgr.free_block_count, 0);
 }
 
 // Test memory allocation statistics

@@ -1,10 +1,10 @@
 #include "layer.h"
-#include "dma.h"
 #include "damage.h"
+#include "dma.h"
 #include "kernel.h"
 #include "memory.h"
-#include "vram.h"
 #include "ss_perf.h"
+#include "vram.h"
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
@@ -14,7 +14,7 @@ static void ss_layer_cpu_copy(uint8_t* dst, uint8_t* src, uint16_t count) {
     if (count >= 16 && ((uintptr_t)src & 3) == 0 && ((uintptr_t)dst & 3) == 0) {
         uint32_t* src32 = (uint32_t*)src;
         uint32_t* dst32 = (uint32_t*)dst;
-        uint16_t blocks16 = count >> 4;  // count / 16
+        uint16_t blocks16 = count >> 4; // count / 16
 
         // Unrolled loop: 4 x 32-bit = 16 bytes per iteration
         for (uint16_t i = 0; i < blocks16; i++) {
@@ -25,7 +25,7 @@ static void ss_layer_cpu_copy(uint8_t* dst, uint8_t* src, uint16_t count) {
         }
 
         // Handle remaining 4-15 bytes in 4-byte chunks
-        uint16_t remaining = count & 15;  // count % 16
+        uint16_t remaining = count & 15; // count % 16
         uint16_t blocks4 = remaining >> 2;
         for (uint16_t i = 0; i < blocks4; i++) {
             *dst32++ = *src32++;
@@ -37,7 +37,8 @@ static void ss_layer_cpu_copy(uint8_t* dst, uint8_t* src, uint16_t count) {
         for (uint16_t i = 0; i < (remaining & 3); i++) {
             *dst8++ = *src8++;
         }
-    } else if (count >= 4 && ((uintptr_t)src & 3) == 0 && ((uintptr_t)dst & 3) == 0) {
+    } else if (count >= 4 && ((uintptr_t)src & 3) == 0 &&
+               ((uintptr_t)dst & 3) == 0) {
         // 4-byte aligned but small (4-15 bytes)
         uint32_t* src32 = (uint32_t*)src;
         uint32_t* dst32 = (uint32_t*)dst;
@@ -56,17 +57,19 @@ static void ss_layer_cpu_copy(uint8_t* dst, uint8_t* src, uint16_t count) {
             dst[i] = src[i];
         }
     }
-    g_damage_perf.cpu_transfers_count++;
 }
 
-static void ss_layer_dma_copy(uint8_t* dst, uint8_t* src, uint16_t count) {
-    dma_prepare_x68k_16color();
-    dma_clear();  // Clear status before transfer
-    dma_setup_span(dst, src, count);
-    dma_start();
-    dma_wait_completion();
-    // Note: No dma_clear() here - next transfer will clear before setup
-    g_damage_perf.dma_transfers_count++;
+// VRAM blit: transfers pixels from offscreen buffer to X68000 VRAM
+// X68000 16-color mode: each pixel occupies one word (2 bytes) in VRAM,
+// with the pixel value stored in the low byte (+1 offset / odd address).
+// Pixels are NOT contiguous in VRAM - each pixel is 2 bytes apart.
+static void ss_layer_blit_to_vram(volatile uint16_t* vram, uint16_t vram_offset,
+                                  const uint8_t* src, uint16_t count) {
+    volatile uint16_t* dst = vram + vram_offset;
+    for (uint16_t i = 0; i < count; i++) {
+        dst[i] = src[i];
+    }
+    g_damage_perf.cpu_transfers_count++;
 }
 
 LayerMgr* ss_layer_mgr;
@@ -92,7 +95,8 @@ Layer* ss_layer_get() {
             ss_layer_mgr->zLayers[ss_layer_mgr->topLayerIdx] = l;
             ss_layer_mgr->topLayerIdx++;
 
-            // Initialize dirty rectangle tracking - mark entire layer as dirty initially
+            // Initialize dirty rectangle tracking - mark entire layer as dirty
+            // initially
             l->needs_redraw = 1;
             l->dirty_x = 0;
             l->dirty_y = 0;
@@ -168,108 +172,42 @@ void ss_layer_rebuild_z_map(void) {
     }
 }
 
-// Performance monitoring variables for adaptive DMA thresholds
-static uint32_t ss_cpu_idle_time = 0;
-static uint32_t ss_last_performance_check = 0;
-static uint16_t ss_adaptive_dma_threshold = 8;
-
-// Update CPU performance metrics
-void ss_update_performance_metrics() {
-    uint32_t current_time = ss_timerd_counter;
-
-    // Update performance metrics every 100ms
-    if (current_time > ss_last_performance_check + 100) {
-        // Estimate CPU idle time based on system activity
-        // This is a simplified metric - in a real system you'd track actual idle time
-        static uint32_t last_activity = 0;
-        uint32_t activity_delta = current_time - last_activity;
-
-        // Adjust DMA threshold based on recent activity
-        if (activity_delta < 50) {
-            // High activity - prefer DMA for larger blocks
-            ss_adaptive_dma_threshold = 12;
-        } else if (activity_delta > 200) {
-            // Low activity - use DMA even for smaller blocks
-            ss_adaptive_dma_threshold = 4;
-        } else {
-            // Normal activity - use balanced threshold
-            ss_adaptive_dma_threshold = 8;
-        }
-
-        last_activity = current_time;
-        ss_last_performance_check = current_time;
-    }
-}
-
-// Fast visibility probe using the 8x8 ownership map.
-bool ss_layer_region_visible(const Layer* layer, uint16_t local_x, uint16_t local_y,
-                             uint16_t width, uint16_t height) {
-    if (!layer || !(layer->attr & LAYER_ATTR_USED) || !(layer->attr & LAYER_ATTR_VISIBLE)) {
+// Fast visibility probe - B1 Optimization
+// For few layers (≤ 8), Z-map scan overhead is worse than just drawing.
+// Always return true and let the scanline-level 8x8 block check handle it.
+// The Z-map is still used per-scanline in ss_layer_draw_rect_layer_bounds
+// for efficient block merging, but the outer-level visibility check is
+// simplified to avoid double-scanning.
+bool ss_layer_region_visible(const Layer* layer, uint16_t local_x,
+                             uint16_t local_y, uint16_t width,
+                             uint16_t height) {
+    if (!layer || !(layer->attr & LAYER_ATTR_USED) ||
+        !(layer->attr & LAYER_ATTR_VISIBLE)) {
         return false;
     }
-    if (g_damage_perf.total_regions_processed < 10) {
-        // Allow early frames to draw without occlusion pruning to avoid startup artifacts
-        return true;
-    }
-    if (layer->z == 0) {
-        // Always render the background layer to avoid missed redraws
-        return true;
-    }
-    if (!ss_layer_mgr || !ss_layer_mgr->map || width == 0 || height == 0) {
-        return true;
-    }
-
-    uint32_t global_x0 = (uint32_t)layer->x + (uint32_t)local_x;
-    uint32_t global_y0 = (uint32_t)layer->y + (uint32_t)local_y;
-    uint32_t global_x1 = global_x0 + (uint32_t)width;
-    uint32_t global_y1 = global_y0 + (uint32_t)height;
-
-    if (global_x0 >= WIDTH || global_y0 >= HEIGHT) {
-        return true;
-    }
-    if (global_x1 > WIDTH) global_x1 = WIDTH;
-    if (global_y1 > HEIGHT) global_y1 = HEIGHT;
-
-    uint16_t map_width = WIDTH >> 3;
-    uint16_t map_height = HEIGHT >> 3;
-
-    uint16_t block_x0 = global_x0 >> 3;
-    uint16_t block_y0 = global_y0 >> 3;
-    uint16_t block_x1 = (global_x1 + 7) >> 3; // exclusive upper bound
-    uint16_t block_y1 = (global_y1 + 7) >> 3;
-
-    if (block_x0 >= map_width || block_y0 >= map_height) {
-        return true;
-    }
-    if (block_x1 > map_width) block_x1 = map_width;
-    if (block_y1 > map_height) block_y1 = map_height;
-    if (block_x1 <= block_x0 || block_y1 <= block_y0) {
-        return true;
-    }
-
-    uint8_t layer_z = layer->z;
-    for (uint16_t by = block_y0; by < block_y1; ++by) {
-        uint32_t row_base = (uint32_t)by * map_width;
-        for (uint16_t bx = block_x0; bx < block_x1; ++bx) {
-            if (ss_layer_mgr->map[row_base + bx] == layer_z) {
-                return true;
-            }
-        }
-    }
-
-    return false;
+    // B1 OPTIMIZATION: With few layers, always render and let
+    // the scanline-level Z-map check handle occlusion per-block.
+    // This avoids the costly nested loop that scans the Z-map twice.
+    (void)local_x;
+    (void)local_y;
+    (void)width;
+    (void)height;
+    return true;
 }
 
-
-
 // Mark a rectangular region of a layer as dirty (needs redrawing)
-void ss_layer_mark_dirty(Layer* layer, uint16_t x, uint16_t y, uint16_t w, uint16_t h) {
-    if (!layer || w == 0 || h == 0) return;
+void ss_layer_mark_dirty(Layer* layer, uint16_t x, uint16_t y, uint16_t w,
+                         uint16_t h) {
+    if (!layer || w == 0 || h == 0)
+        return;
 
     // Clamp to layer bounds
-    if (x >= layer->w || y >= layer->h) return;
-    if (x + w > layer->w) w = layer->w - x;
-    if (y + h > layer->h) h = layer->h - y;
+    if (x >= layer->w || y >= layer->h)
+        return;
+    if (x + w > layer->w)
+        w = layer->w - x;
+    if (y + h > layer->h)
+        h = layer->h - y;
 
     if (layer->needs_redraw == 0) {
         // First dirty region
@@ -309,7 +247,8 @@ void ss_layer_mark_clean(Layer* layer) {
 // Draw a specific rectangle of a layer
 // Optimized scanline-based dirty region drawing with interval merging
 // Hybrid approach: 8-pixel blocks with optimized merging for better balance
-void ss_layer_draw_rect_layer_bounds(Layer* l, uint16_t dx0, uint16_t dy0, uint16_t dx1, uint16_t dy1) {
+void ss_layer_draw_rect_layer_bounds(Layer* l, uint16_t dx0, uint16_t dy0,
+                                     uint16_t dx1, uint16_t dy1) {
     if (0 == (l->attr & LAYER_ATTR_VISIBLE))
         return;
 
@@ -318,33 +257,37 @@ void ss_layer_draw_rect_layer_bounds(Layer* l, uint16_t dx0, uint16_t dy0, uint1
         return;
 
     // Clamp bounds to layer size
-    if (dx1 > l->w) dx1 = l->w;
-    if (dy1 > l->h) dy1 = l->h;
-    if (dx0 >= dx1 || dy0 >= dy1) return;
+    if (dx1 > l->w)
+        dx1 = l->w;
+    if (dy1 > l->h)
+        dy1 = l->h;
+    if (dx0 >= dx1 || dy0 >= dy1)
+        return;
 
-    // Optimize: Use 8-pixel alignment for faster processing but with improved merging
-    uint16_t aligned_dx0 = dx0 & ~0x7;  // Round down to 8-pixel boundary
-    uint16_t aligned_dx1 = (dx1 + 7) & ~0x7;  // Round up to 8-pixel boundary
+    // Optimize: Use 8-pixel alignment for faster processing but with improved
+    // merging
+    uint16_t aligned_dx0 = dx0 & ~0x7;       // Round down to 8-pixel boundary
+    uint16_t aligned_dx1 = (dx1 + 7) & ~0x7; // Round up to 8-pixel boundary
 
     for (int16_t dy = dy0; dy < dy1; dy++) {
         int16_t vy = l->y + dy;
         if (vy < 0 || vy >= HEIGHT)
             continue;
-        ss_update_performance_metrics();
 
         // Pre-calculate values for this scanline
-        uint16_t map_width = WIDTH >> 3;  // WIDTH / 8
+        uint16_t map_width = WIDTH >> 3; // WIDTH / 8
         uint16_t vy_div8 = vy >> 3;
-        uint16_t l_x_div8 = l->x >> 3;
         uint8_t layer_z = l->z;
 
         int16_t startdx = -1;
         uint16_t consecutive_count = 0;
 
-        // Process in 8-pixel blocks for efficiency, but merge consecutive blocks
+        // Process in 8-pixel blocks for efficiency, but merge consecutive
+        // blocks
         for (int16_t dx = aligned_dx0; dx < aligned_dx1; dx += 8) {
             uint16_t vx = l->x + dx;
-            if (vx >= WIDTH) break;
+            if (vx >= WIDTH)
+                break;
 
             // Check 8-pixel block visibility (faster than per-pixel check)
             if (ss_layer_mgr->map[vy_div8 * map_width + (vx >> 3)] == layer_z) {
@@ -357,20 +300,20 @@ void ss_layer_draw_rect_layer_bounds(Layer* l, uint16_t dx0, uint16_t dy0, uint1
                     consecutive_count += 8;
                 }
             } else if (startdx >= 0) {
-                // End of visible region - perform DMA transfer for merged blocks
+                // End of visible region - perform CPU transfer for merged
+                // blocks
                 uint16_t transfer_x = l->x + startdx;
                 uint16_t actual_start = (startdx < dx0) ? dx0 : startdx;
-                uint16_t actual_end = ((startdx + consecutive_count) > dx1) ? dx1 : (startdx + consecutive_count);
+                uint16_t actual_end = ((startdx + consecutive_count) > dx1)
+                                          ? dx1
+                                          : (startdx + consecutive_count);
                 uint16_t transfer_width = actual_end - actual_start;
 
                 if (transfer_width > 0) {
                     uint8_t* src = &l->vram[dy * l->w + actual_start];
-                    uint8_t* dst = ((uint8_t*)&vram_start[vy * VRAMWIDTH + transfer_x]) + 1 + (actual_start - startdx);
-                    if (transfer_width <= ss_adaptive_dma_threshold) {
-                        ss_layer_cpu_copy(dst, src, transfer_width);
-                    } else {
-                        ss_layer_dma_copy(dst, src, transfer_width);
-                    }
+                    volatile uint16_t* vram =
+                        &vram_start[vy * VRAMWIDTH + l->x + actual_start];
+                    ss_layer_blit_to_vram(vram, 0, src, transfer_width);
                 }
 
                 startdx = -1;
@@ -382,17 +325,16 @@ void ss_layer_draw_rect_layer_bounds(Layer* l, uint16_t dx0, uint16_t dy0, uint1
         if (startdx >= 0) {
             uint16_t transfer_x = l->x + startdx;
             uint16_t actual_start = (startdx < dx0) ? dx0 : startdx;
-            uint16_t actual_end = ((startdx + consecutive_count) > dx1) ? dx1 : (startdx + consecutive_count);
+            uint16_t actual_end = ((startdx + consecutive_count) > dx1)
+                                      ? dx1
+                                      : (startdx + consecutive_count);
             uint16_t transfer_width = actual_end - actual_start;
 
             if (transfer_width > 0) {
                 uint8_t* src = &l->vram[dy * l->w + actual_start];
-                uint8_t* dst = ((uint8_t*)&vram_start[vy * VRAMWIDTH + transfer_x]) + 1 + (actual_start - startdx);
-                if (transfer_width <= ss_adaptive_dma_threshold) {
-                    ss_layer_cpu_copy(dst, src, transfer_width);
-                } else {
-                    ss_layer_dma_copy(dst, src, transfer_width);
-                }
+                volatile uint16_t* vram =
+                    &vram_start[vy * VRAMWIDTH + l->x + actual_start];
+                ss_layer_blit_to_vram(vram, 0, src, transfer_width);
             }
         }
     }
@@ -411,9 +353,10 @@ void ss_layer_draw_dirty_only() {
                 // Performance monitoring: Start dirty rectangle drawing
                 SS_PERF_START_MEASUREMENT(SS_PERF_DIRTY_RECT);
 
-                // Draw the dirty rectangle using the new optimized scanline-based method
-                ss_layer_draw_rect_layer_bounds(layer,
-                    layer->dirty_x, layer->dirty_y,
+                // Draw the dirty rectangle using the new optimized
+                // scanline-based method
+                ss_layer_draw_rect_layer_bounds(
+                    layer, layer->dirty_x, layer->dirty_y,
                     layer->dirty_x + layer->dirty_w,
                     layer->dirty_y + layer->dirty_h);
 
@@ -422,8 +365,10 @@ void ss_layer_draw_dirty_only() {
                 // Performance monitoring: Start full layer drawing
                 SS_PERF_START_MEASUREMENT(SS_PERF_FULL_LAYER);
 
-                // For initial draw or full layer invalidation, use optimized method too
-                ss_layer_draw_rect_layer_bounds(layer, 0, 0, layer->w, layer->h);
+                // For initial draw or full layer invalidation, use optimized
+                // method too
+                ss_layer_draw_rect_layer_bounds(layer, 0, 0, layer->w,
+                                                layer->h);
 
                 SS_PERF_END_MEASUREMENT(SS_PERF_FULL_LAYER);
             }
@@ -451,9 +396,9 @@ Layer* ss_layer_find_at_position(uint16_t x, uint16_t y) {
         Layer* layer = ss_layer_mgr->zLayers[i];
 
         // Check if layer is visible and within bounds
-        if ((layer->attr & LAYER_ATTR_VISIBLE) &&
-            x >= layer->x && x < layer->x + layer->w &&
-            y >= layer->y && y < layer->y + layer->h) {
+        if ((layer->attr & LAYER_ATTR_VISIBLE) && x >= layer->x &&
+            x < layer->x + layer->w && y >= layer->y &&
+            y < layer->y + layer->h) {
             return layer;
         }
     }
@@ -511,7 +456,8 @@ void ss_layer_bring_to_front(Layer* layer) {
 
 // Set layer to a specific z-order position
 void ss_layer_set_z_order(Layer* layer, uint16_t new_z) {
-    if (!layer || !(layer->attr & LAYER_ATTR_USED) || new_z >= ss_layer_mgr->topLayerIdx) {
+    if (!layer || !(layer->attr & LAYER_ATTR_USED) ||
+        new_z >= ss_layer_mgr->topLayerIdx) {
         return;
     }
 

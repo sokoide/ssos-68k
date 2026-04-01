@@ -17,6 +17,7 @@ typedef struct {
     // Dirty rectangle tracking for performance
     uint16_t dirty_x, dirty_y, dirty_w, dirty_h;
     uint8_t needs_redraw;
+    uint8_t padding; // Ensure struct size is even (26 bytes) for array alignment
 } Layer;
 
 typedef struct {

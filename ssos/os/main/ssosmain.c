@@ -3,10 +3,10 @@
 #include "layer.h"
 #include "memory.h"
 #include "printf.h"
+#include "ss_perf.h"
 #include "ssoswindows.h"
 #include "task_manager.h"
 #include "vram.h"
-#include "ss_perf.h"
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -26,7 +26,7 @@ void task1_func(int16_t stacd, void* exinf) {
     (void)exinf;
     volatile uint32_t counter = 0;
     while (1) {
-        counter++;  // Just increment, no IOCS
+        counter++; // Just increment, no IOCS
     }
 }
 
@@ -41,7 +41,8 @@ void task2_func(int16_t stacd, void* exinf) {
         sprintf(buf, "Task2: %08lx", counter++);
         _iocs_b_print(buf);
 
-        for (volatile int i = 0; i < 50000; i++) {}
+        for (volatile int i = 0; i < 50000; i++) {
+        }
     }
 }
 
@@ -56,7 +57,8 @@ void task3_func(int16_t stacd, void* exinf) {
         sprintf(buf, "Task3: %08lx", counter++);
         _iocs_b_print(buf);
 
-        for (volatile int i = 0; i < 50000; i++) {}
+        for (volatile int i = 0; i < 50000; i++) {
+        }
     }
 }
 
@@ -94,31 +96,46 @@ void ssosmain() {
         tcb_table[i].state = TS_NONEXIST;
     }
 
-    main_task.stack = (uint8_t*)(ss_save_data_base * TASK_STACK_SIZE - 1);
-    main_task_id = ss_create_task(&main_task);
+    // Setup main task (the one already running)
+    // Create a TCB for the main task so it can be managed by the scheduler
+    // Use a dummy function pointer — the main task is already executing,
+    // so this value will never be called via cs_start_new_task.
+    static TaskInfo main_task;
+    memset(&main_task, 0, sizeof(TaskInfo));
+    main_task.task =
+        (FUNCPTR)1; // Dummy non-NULL value (main task is already running)
+    main_task.task_pri = 1; // Highest priority for the main task
+    main_task.stack_size = TASK_STACK_SIZE;
+    main_task.task_attr = TA_HLNG | TA_RNG0;
 
-    // Set up main task for preemptive context switching
-    // Key: context is set to NULL (not stack_addr) so it's treated as "existing task"
-    // When the first timer interrupt occurs:
-    // 1. timerd_handler saves d0-d7/a0-a6 + PC + SR to ssosmain's stack
-    // 2. context_switch saves current SP to curr_task->context
-    // 3. This allows ssosmain to be restored later
+    // We MUST switch the current stack pointer to the new stack area
+    // to avoid potential collisions with the program code/data.
+    // Human68k's default stack might be too close to our code.
+    uint32_t stack_end = (uint32_t)(ss_task_stack_base + TASK_STACK_SIZE);
+    uint8_t* new_sp = (uint8_t*)((stack_end - 4) & 0xFFFFFFFC);
+    static uint8_t* ss_old_main_sp = NULL;
+
+    __asm__ __volatile__("move.l %%sp, %0\n"
+                         "move.l %1, %%sp\n"
+                         : "=r"(ss_old_main_sp)
+                         : "r"(new_sp));
+
+    main_task_id = ss_create_task(&main_task);
     curr_task = &tcb_table[main_task_id - 1];
     curr_task->state = TS_READY;
-    curr_task->context = NULL;  // NULL means "running, context not yet saved"
-                                 // (differs from stack_addr which means "new task")
+    curr_task->context = NULL; // NULL means "running, context not yet saved"
 
-    // Add main task to ready queue so scheduler can select it
+    // Add main task to ready queue so the scheduler can switch back to it later
     ss_task_queue_add_entry(curr_task);
 
-#if 0  // Preemptive multitasking demo - DISABLED (context switch needs more work)
+#if 1 // Preemptive multitasking demo - ENABLED for testing
     // Create demo tasks for multitasking test
     // Each task will run in an infinite loop
     // Timer interrupt will switch between main task and demo tasks
     TaskInfo task1_info = {
         .task_attr = TA_HLNG,
         .task = task1_func,
-        .task_pri = 1,  // Same priority as main task for round-robin
+        .task_pri = 1, // Same priority as main task for round-robin
         .stack_size = TASK_STACK_SIZE,
         .stack = NULL,
     };
@@ -126,7 +143,7 @@ void ssosmain() {
     TaskInfo task2_info = {
         .task_attr = TA_HLNG,
         .task = task2_func,
-        .task_pri = 1,  // Same priority as main task for round-robin
+        .task_pri = 1, // Same priority as main task for round-robin
         .stack_size = TASK_STACK_SIZE,
         .stack = NULL,
     };
@@ -134,7 +151,7 @@ void ssosmain() {
     TaskInfo task3_info = {
         .task_attr = TA_HLNG,
         .task = task3_func,
-        .task_pri = 1,  // Same priority as main task for round-robin
+        .task_pri = 1, // Same priority as main task for round-robin
         .stack_size = TASK_STACK_SIZE,
         .stack = NULL,
     };
@@ -143,12 +160,14 @@ void ssosmain() {
     uint16_t task2_id = ss_create_task(&task2_info);
     uint16_t task3_id = ss_create_task(&task3_info);
 
-    // Start demo tasks - only task1 for testing
-    if (task1_id > 0) ss_start_task(task1_id, 0);
-    // if (task2_id > 0) ss_start_task(task2_id, 0);  // disabled
-    // if (task3_id > 0) ss_start_task(task3_id, 0);  // disabled
-#endif  // Preemptive multitasking demo
-
+    // Start demo tasks - all tasks for testing
+    if (task1_id > 0)
+        ss_start_task(task1_id, 0);
+    if (task2_id > 0)
+        ss_start_task(task2_id, 0);
+    if (task3_id > 0)
+        ss_start_task(task3_id, 0);
+#endif // Preemptive multitasking demo
 
 #if 1
     ss_layer_init();
@@ -165,72 +184,73 @@ void ssosmain() {
     // Initial complete draw - use layer system for full screen refresh
     ss_all_layer_draw();
 
-    // Reset damage buffer after initial complete draw to clear any accumulated regions
+    // Reset damage buffer after initial complete draw to clear any accumulated
+    // regions
     ss_damage_reset();
 
-  while (true) {
-    // Performance monitoring: Start frame timing
-    SS_PERF_START_MEASUREMENT(SS_PERF_FRAME_TIME);
+    while (true) {
+        // Performance monitoring: Start frame timing
+        SS_PERF_START_MEASUREMENT(SS_PERF_FRAME_TIME);
 
-    // if it's vsync, wait for display period
-    while (!((*mfp) & 0x10)) {
+        // if it's vsync, wait for display period
+        while (!((*mfp) & 0x10)) {
+            if (ss_handle_keys() == -1)
+#ifdef LOCAL_MODE
+                goto CLEANUP;
+#else
+                ;
+#endif
+        }
+        // wait for vsync
+        while ((*mfp) & 0x10) {
+            if (ss_handle_keys() == -1)
+#ifdef LOCAL_MODE
+                goto CLEANUP;
+#else
+                ;
+#endif
+        }
+
         if (ss_handle_keys() == -1)
 #ifdef LOCAL_MODE
-            goto CLEANUP;
-#else
-            ;
-#endif
-    }
-    // wait for vsync
-    while ((*mfp) & 0x10) {
-        if (ss_handle_keys() == -1)
-#ifdef LOCAL_MODE
-            goto CLEANUP;
-#else
-            ;
-#endif
-    }
+            break;
 
-    if (ss_handle_keys() == -1)
-#ifdef LOCAL_MODE
-        break;
-
-    ;
+        ;
 
 #endif
 
-    // Performance monitoring: Start layer update timing
-    SS_PERF_START_MEASUREMENT(SS_PERF_LAYER_UPDATE);
-    update_layer_3(l3);
+        // Performance monitoring: Start layer update timing
+        SS_PERF_START_MEASUREMENT(SS_PERF_LAYER_UPDATE);
+        update_layer_3(l3);
 
-    if (ss_timerd_counter > prev_counter + 1000 ||
-        ss_timerd_counter < prev_counter) {
-        prev_counter = ss_timerd_counter;
-        update_layer_2(l2);
+        if (ss_timerd_counter > prev_counter + 1000 ||
+            ss_timerd_counter < prev_counter) {
+            prev_counter = ss_timerd_counter;
+            update_layer_2(l2);
+        }
+
+        // Performance monitoring: End layer update timing
+        SS_PERF_END_MEASUREMENT(SS_PERF_LAYER_UPDATE);
+
+        // OPTIMIZED: Use damage system with occlusion optimization disabled
+        SS_PERF_START_MEASUREMENT(SS_PERF_DRAW_TIME);
+        ss_damage_draw_regions();
+        SS_PERF_END_MEASUREMENT(SS_PERF_DRAW_TIME);
+
+        // Performance monitoring: Display damage statistics every 5 seconds
+        static uint32_t last_perf_report = 0;
+        if (ss_timerd_counter > last_perf_report + 5000) {
+            last_perf_report = ss_timerd_counter;
+            // In a real implementation, you might want to display these stats
+            // ss_damage_perf_report();
+        }
+
+        // Performance monitoring: End frame timing
+        SS_PERF_END_MEASUREMENT(SS_PERF_FRAME_TIME);
     }
-
-    // Performance monitoring: End layer update timing
-    SS_PERF_END_MEASUREMENT(SS_PERF_LAYER_UPDATE);
-
-    // OPTIMIZED: Use damage system with occlusion optimization disabled
-    SS_PERF_START_MEASUREMENT(SS_PERF_DRAW_TIME);
-    ss_damage_draw_regions();
-    SS_PERF_END_MEASUREMENT(SS_PERF_DRAW_TIME);
-
-    // Performance monitoring: Display damage statistics every 5 seconds
-    static uint32_t last_perf_report = 0;
-    if (ss_timerd_counter > last_perf_report + 5000) {
-        last_perf_report = ss_timerd_counter;
-        // In a real implementation, you might want to display these stats
-        // ss_damage_perf_report();
-    }
-
-    // Performance monitoring: End frame timing
-    SS_PERF_END_MEASUREMENT(SS_PERF_FRAME_TIME);
-}
 
 CLEANUP:
-    ss_damage_cleanup();  // Cleanup damage buffer
+    ss_damage_cleanup(); // Cleanup damage buffer
     // uninit
     _iocs_ms_curof();
     _iocs_skey_mod(-1, 0, 0);
@@ -238,5 +258,10 @@ CLEANUP:
     _iocs_g_clr_on(); // clear graphics, reset palette to the default,
                       // access page 0
     _iocs_crtmod(16); // 768x512 dots, 16 colors, 1 screen
+
+    // Restore original stack before returning to Human68k
+    if (ss_old_main_sp != NULL) {
+        __asm__ __volatile__("move.l %0, %%sp\n" : : "r"(ss_old_main_sp));
+    }
 #endif
 }

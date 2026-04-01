@@ -28,9 +28,7 @@ void test_framework_report(void) {
     }
 }
 
-int test_framework_exit_code(void) {
-    return (failed_tests == 0) ? 0 : 1;
-}
+int test_framework_exit_code(void) { return (failed_tests == 0) ? 0 : 1; }
 
 void reset_mocks(void) {
     // Reset any mock state here
@@ -48,6 +46,7 @@ int main() {
     extern void run_error_tests(void);
     extern void run_performance_tests(void);
     extern void run_kernel_tests(void);
+    extern void run_render_perf_tests(void);
 
     // Run all test suites
     printf("Running Memory Tests...\n");
@@ -67,6 +66,9 @@ int main() {
 
     printf("\nRunning Kernel Tests...\n");
     run_kernel_tests();
+
+    printf("\nRunning Render Performance Tests...\n");
+    run_render_perf_tests();
 
     test_framework_report();
     return test_framework_exit_code();

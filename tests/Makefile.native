@@ -26,7 +26,8 @@ UNIT_TEST_SRCS = unit/test_memory.c \
                  unit/test_layers.c \
                  unit/test_errors.c \
                  unit/test_performance.c \
-                 unit/test_kernel.c
+                 unit/test_kernel.c \
+                 unit/test_render_perf.c
 
 # All sources for native testing
 ALL_SRCS = $(FRAMEWORK_SRCS) $(UNIT_TEST_SRCS) \

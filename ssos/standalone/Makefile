@@ -45,9 +45,11 @@ LDFLAGS=$(LIB) -lx68kiocs -nostdlib -lc -lm -lgcc
 ASFLAGS=-m68000 --register-prefix-optional --traditional-format -I../include -I../os/kernel
 
 .PHONY:
-	clean install dump compiledb
+	clean install standalone dump compiledb
 
-all: $(TARGET)
+all: standalone
+
+standalone: $(TARGET)
 	cp $(TARGET) $(HOME)/tmp
 
 install: $(TARGET)

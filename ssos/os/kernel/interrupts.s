@@ -411,7 +411,7 @@ timerc_handler_l4_sub:
 | ============================================================
 TCB_CONTEXT    = 0
 TCB_TASK_ADDR  = 16
-TCB_STACK_ADDR = 24
+TCB_STACK_ADDR = 22
 
 | ============================================================
 | timerd_handler - Timer D interrupt handler (1ms interval)
@@ -437,11 +437,11 @@ timerd_handler:
 	| Fall through to normal return
 
 skip_context_switch:
-	| Reset ISRB's Timer D bit
+	| Reset ISRB's Timer D bit (bit 4)
 	move.l	#0xe88011, a0
 	move.b	(a0), d0
-	and.b	#0x6f, d0
-	move.b	d0, 0xe8800f
+	and.b	#0xef, d0
+	move.b	d0, 0xe88011
 
 	| Restore ALL registers and return from interrupt
 	movem.l	(sp)+, d0-d7/a0-a6
@@ -516,8 +516,8 @@ cs_call_scheduler:
 	| Reset MFP Timer D bit BEFORE switching stacks
 	move.l	#0xe88011, a1
 	move.b	(a1), d0
-	and.b	#0x6f, d0
-	move.b	d0, 0xe8800f
+	and.b	#0xef, d0
+	move.b	d0, 0xe88011
 
 	| Switch to the restored task's stack
 	move.l	a0, sp			| sp = saved context SP
@@ -541,8 +541,8 @@ cs_start_new_task:
 	| Reset MFP Timer D bit before switching stacks
 	move.l	#0xe88011, a0
 	move.b	(a0), d0
-	and.b	#0x6f, d0
-	move.b	d0, 0xe8800f
+	and.b	#0xef, d0
+	move.b	d0, 0xe88011
 
 	| Get task entry point and stack address
 	move.l	TCB_TASK_ADDR(a1), a0	| a0 = tcb->task_addr (entry point)

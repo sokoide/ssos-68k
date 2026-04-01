@@ -1,17 +1,20 @@
-#include "layer.h"
 #include "damage.h"
-#include "memory.h"
 #include "kernel.h"
+#include "layer.h"
+#include "memory.h"
 #include "ss_perf.h"
 #include <stddef.h>
 
 // Internal helper function declarations
-static int ss_damage_overlap_area(const DamageRect* rect, uint16_t x, uint16_t y, uint16_t w, uint16_t h);
-static bool ss_damage_layer_overlaps_region(const Layer* layer, const DamageRect* region);
-static void ss_damage_calculate_layer_region_overlap(const Layer* layer, const DamageRect* region,
-                                                    uint16_t* overlap_x, uint16_t* overlap_y,
-                                                    uint16_t* overlap_w, uint16_t* overlap_h);
-static void ss_damage_draw_layer_region(const Layer* layer, uint16_t x, uint16_t y, uint16_t w, uint16_t h);
+static int ss_damage_overlap_area(const DamageRect* rect, uint16_t x,
+                                  uint16_t y, uint16_t w, uint16_t h);
+static bool ss_damage_layer_overlaps_region(const Layer* layer,
+                                            const DamageRect* region);
+static void ss_damage_calculate_layer_region_overlap(
+    const Layer* layer, const DamageRect* region, uint16_t* overlap_x,
+    uint16_t* overlap_y, uint16_t* overlap_w, uint16_t* overlap_h);
+static void ss_damage_draw_layer_region(const Layer* layer, uint16_t x,
+                                        uint16_t y, uint16_t w, uint16_t h);
 
 // Global damage buffer instance
 DamageBuffer g_damage_buffer;
@@ -19,34 +22,29 @@ DamagePerfStats g_damage_perf;
 
 // Global occlusion configuration - CONSERVATIVE VALUES FOR DEBUGGING
 OcclusionConfig g_occlusion_config = {
-    .full_occlusion_threshold = 100,   // 100% occlusion needed to mark as fully occluded (DISABLED)
-    .split_threshold = 75,             // 75% occlusion needed to consider splitting
-    .max_enhanced_regions = 8,         // Maximum number of enhanced regions to process
+    .full_occlusion_threshold =
+        100, // 100% occlusion needed to mark as fully occluded (DISABLED)
+    .split_threshold = 75,     // 75% occlusion needed to consider splitting
+    .max_enhanced_regions = 8, // Maximum number of enhanced regions to process
     .performance_samples = 0,
-    .avg_processing_time = 0
-};
+    .avg_processing_time = 0};
 
 // Initialize the damage buffer system
 void ss_damage_init() {
     // Initialize buffer dimensions
-    g_damage_buffer.buffer_width = 768;   // X68000 standard width
-    g_damage_buffer.buffer_height = 512;  // X68000 standard height
+    g_damage_buffer.buffer_width = 768;  // X68000 standard width
+    g_damage_buffer.buffer_height = 512; // X68000 standard height
 
-    // Allocate 384KB offscreen buffer (768x512 bytes for 8-bit indexed color)
-    g_damage_buffer.buffer = (uint8_t*)ss_mem_alloc4k(g_damage_buffer.buffer_width * g_damage_buffer.buffer_height);
-    if (g_damage_buffer.buffer) {
-        g_damage_buffer.buffer_allocated = true;
-        // Clear buffer to black
-        for (int i = 0; i < g_damage_buffer.buffer_width * g_damage_buffer.buffer_height; i++) {
-            g_damage_buffer.buffer[i] = 0;
-        }
-    } else {
-        g_damage_buffer.buffer_allocated = false;
-    }
+    // A4 OPTIMIZATION: Skip offscreen buffer allocation
+    // The damage buffer was allocated but never actually used for rendering.
+    // Layers draw directly to their own offscreen buffers, then blit to VRAM.
+    // Removing this saves 384KB (768*512) of main RAM at 10MHz.
+    g_damage_buffer.buffer = NULL;
+    g_damage_buffer.buffer_allocated = false;
 
     // Initialize damage regions
     g_damage_buffer.region_count = 0;
-    g_damage_buffer.frame_batching = false;  // No batching by default
+    g_damage_buffer.frame_batching = false; // No batching by default
     for (int i = 0; i < MAX_DAMAGE_REGIONS; i++) {
         g_damage_buffer.regions[i].needs_redraw = false;
         g_damage_buffer.regions[i].w = 0;
@@ -60,7 +58,8 @@ void ss_damage_init() {
 // Cleanup damage buffer system
 void ss_damage_cleanup() {
     if (g_damage_buffer.buffer_allocated && g_damage_buffer.buffer) {
-        // Note: We don't free the memory as it's managed by the memory allocator
+        // Note: We don't free the memory as it's managed by the memory
+        // allocator
         g_damage_buffer.buffer = NULL;
         g_damage_buffer.buffer_allocated = false;
     }
@@ -79,7 +78,8 @@ void ss_damage_reset() {
 
 // Add a rectangular region to the damage buffer
 void ss_damage_add_rect(uint16_t x, uint16_t y, uint16_t w, uint16_t h) {
-    if (w == 0 || h == 0) return;
+    if (w == 0 || h == 0)
+        return;
 
     // Align to 8-pixel boundaries for optimal X68000 performance
     uint16_t aligned_x = ss_damage_align8(x);
@@ -88,8 +88,10 @@ void ss_damage_add_rect(uint16_t x, uint16_t y, uint16_t w, uint16_t h) {
     uint16_t aligned_h = ss_damage_align8_ceil(y + h) - aligned_y;
 
     // Clamp to buffer bounds
-    if (aligned_x >= g_damage_buffer.buffer_width) return;
-    if (aligned_y >= g_damage_buffer.buffer_height) return;
+    if (aligned_x >= g_damage_buffer.buffer_width)
+        return;
+    if (aligned_y >= g_damage_buffer.buffer_height)
+        return;
 
     if (aligned_x + aligned_w > g_damage_buffer.buffer_width) {
         aligned_w = g_damage_buffer.buffer_width - aligned_x;
@@ -98,7 +100,8 @@ void ss_damage_add_rect(uint16_t x, uint16_t y, uint16_t w, uint16_t h) {
         aligned_h = g_damage_buffer.buffer_height - aligned_y;
     }
 
-    if (aligned_w == 0 || aligned_h == 0) return;
+    if (aligned_w == 0 || aligned_h == 0)
+        return;
 
     // Try to merge with existing regions first
     for (int i = 0; i < g_damage_buffer.region_count; i++) {
@@ -107,12 +110,14 @@ void ss_damage_add_rect(uint16_t x, uint16_t y, uint16_t w, uint16_t h) {
 
             // Check if rectangles overlap significantly (more than 75% overlap)
             // Increased threshold from 50% to 75% for finer-grained tracking
-            int overlap_area = ss_damage_overlap_area(existing, aligned_x, aligned_y, aligned_w, aligned_h);
+            int overlap_area = ss_damage_overlap_area(
+                existing, aligned_x, aligned_y, aligned_w, aligned_h);
             int existing_area = existing->w * existing->h;
             int new_area = aligned_w * aligned_h;
 
             // Only merge if overlap is more than 75% of either region
-            if (overlap_area > (existing_area * 3 / 4) || overlap_area > (new_area * 3 / 4)) {
+            if (overlap_area > (existing_area * 3 / 4) ||
+                overlap_area > (new_area * 3 / 4)) {
                 // Merge with existing region
                 uint16_t x1 = existing->x;
                 uint16_t y1 = existing->y;
@@ -121,8 +126,12 @@ void ss_damage_add_rect(uint16_t x, uint16_t y, uint16_t w, uint16_t h) {
 
                 uint16_t new_x1 = (aligned_x < x1) ? aligned_x : x1;
                 uint16_t new_y1 = (aligned_y < y1) ? aligned_y : y1;
-                uint16_t new_x2 = ((aligned_x + aligned_w) > x2) ? (aligned_x + aligned_w) : x2;
-                uint16_t new_y2 = ((aligned_y + aligned_h) > y2) ? (aligned_y + aligned_h) : y2;
+                uint16_t new_x2 = ((aligned_x + aligned_w) > x2)
+                                      ? (aligned_x + aligned_w)
+                                      : x2;
+                uint16_t new_y2 = ((aligned_y + aligned_h) > y2)
+                                      ? (aligned_y + aligned_h)
+                                      : y2;
 
                 existing->x = new_x1;
                 existing->y = new_y1;
@@ -135,7 +144,8 @@ void ss_damage_add_rect(uint16_t x, uint16_t y, uint16_t w, uint16_t h) {
 
     // Add as new region if space available
     if (g_damage_buffer.region_count < MAX_DAMAGE_REGIONS) {
-        DamageRect* new_rect = &g_damage_buffer.regions[g_damage_buffer.region_count];
+        DamageRect* new_rect =
+            &g_damage_buffer.regions[g_damage_buffer.region_count];
         new_rect->x = aligned_x;
         new_rect->y = aligned_y;
         new_rect->w = aligned_w;
@@ -147,7 +157,8 @@ void ss_damage_add_rect(uint16_t x, uint16_t y, uint16_t w, uint16_t h) {
         int max_area_idx = 0;
         int max_area = 0;
         for (int i = 0; i < MAX_DAMAGE_REGIONS; i++) {
-            int area = g_damage_buffer.regions[i].w * g_damage_buffer.regions[i].h;
+            int area =
+                g_damage_buffer.regions[i].w * g_damage_buffer.regions[i].h;
             if (area > max_area) {
                 max_area = area;
                 max_area_idx = i;
@@ -163,8 +174,10 @@ void ss_damage_add_rect(uint16_t x, uint16_t y, uint16_t w, uint16_t h) {
 
         uint16_t new_x1 = (aligned_x < x1) ? aligned_x : x1;
         uint16_t new_y1 = (aligned_y < y1) ? aligned_y : y1;
-        uint16_t new_x2 = ((aligned_x + aligned_w) > x2) ? (aligned_x + aligned_w) : x2;
-        uint16_t new_y2 = ((aligned_y + aligned_h) > y2) ? (aligned_y + aligned_h) : y2;
+        uint16_t new_x2 =
+            ((aligned_x + aligned_w) > x2) ? (aligned_x + aligned_w) : x2;
+        uint16_t new_y2 =
+            ((aligned_y + aligned_h) > y2) ? (aligned_y + aligned_h) : y2;
 
         largest->x = new_x1;
         largest->y = new_y1;
@@ -191,8 +204,10 @@ void ss_damage_merge_regions() {
                         ss_damage_merge_rects(rect1, rect2);
 
                         // Shift remaining regions down
-                        for (int k = j; k < g_damage_buffer.region_count - 1; k++) {
-                            g_damage_buffer.regions[k] = g_damage_buffer.regions[k + 1];
+                        for (int k = j; k < g_damage_buffer.region_count - 1;
+                             k++) {
+                            g_damage_buffer.regions[k] =
+                                g_damage_buffer.regions[k + 1];
                         }
                         g_damage_buffer.region_count--;
                         changed = true;
@@ -200,7 +215,8 @@ void ss_damage_merge_regions() {
                     }
                 }
             }
-            if (changed) break;
+            if (changed)
+                break;
         }
     }
 }
@@ -227,28 +243,33 @@ void ss_damage_draw_regions() {
         if (region->needs_redraw && region->w > 0 && region->h > 0) {
 
             // Draw layers in z-order for this region
-            for (int layer_idx = 0; layer_idx < ss_layer_mgr->topLayerIdx; layer_idx++) {
+            for (int layer_idx = 0; layer_idx < ss_layer_mgr->topLayerIdx;
+                 layer_idx++) {
                 Layer* layer = ss_layer_mgr->zLayers[layer_idx];
 
                 // Check if layer overlaps with damage region
                 if (ss_damage_layer_overlaps_region(layer, region)) {
                     // Calculate overlap rectangle
                     uint16_t overlap_x, overlap_y, overlap_w, overlap_h;
-                    ss_damage_calculate_layer_region_overlap(layer, region,
-                                                            &overlap_x, &overlap_y,
-                                                            &overlap_w, &overlap_h);
+                    ss_damage_calculate_layer_region_overlap(
+                        layer, region, &overlap_x, &overlap_y, &overlap_w,
+                        &overlap_h);
 
                     if (overlap_w > 0 && overlap_h > 0) {
-                        if (!ss_layer_region_visible(layer, overlap_x, overlap_y, overlap_w, overlap_h)) {
+                        if (!ss_layer_region_visible(layer, overlap_x,
+                                                     overlap_y, overlap_w,
+                                                     overlap_h)) {
                             g_damage_perf.occlusion_culled_regions++;
                             continue;
                         }
 
                         // Draw the overlapped portion of this layer
-                        ss_damage_draw_layer_region(layer, overlap_x, overlap_y, overlap_w, overlap_h);
+                        ss_damage_draw_layer_region(layer, overlap_x, overlap_y,
+                                                    overlap_w, overlap_h);
 
                         // Update performance statistics
-                        uint32_t pixels_drawn = (uint32_t)overlap_w * (uint32_t)overlap_h;
+                        uint32_t pixels_drawn =
+                            (uint32_t)overlap_w * (uint32_t)overlap_h;
                         g_damage_perf.total_pixels_drawn += pixels_drawn;
                         g_damage_perf.total_regions_processed++;
                     }
@@ -274,17 +295,16 @@ void ss_damage_draw_regions() {
 // Optimize damage regions by removing occluded areas
 // TEMPORARILY DISABLED: Hybrid scanline-based occlusion optimization
 void ss_damage_optimize_for_occlusion() {
-    // DISABLED FOR DEBUGGING: The occlusion optimization might be blocking layer 1 updates
-    // This ensures all damage regions are processed to debug the issue
+    // DISABLED FOR DEBUGGING: The occlusion optimization might be blocking
+    // layer 1 updates This ensures all damage regions are processed to debug
+    // the issue
     return;
 }
 
 // Check if two damage rectangles overlap
 bool ss_damage_rects_overlap(const DamageRect* a, const DamageRect* b) {
-    return !(a->x >= b->x + b->w ||
-             b->x >= a->x + a->w ||
-             a->y >= b->y + b->h ||
-             b->y >= a->y + a->h);
+    return !(a->x >= b->x + b->w || b->x >= a->x + a->w ||
+             a->y >= b->y + b->h || b->y >= a->y + a->h);
 }
 
 // Merge rectangle b into rectangle a
@@ -327,12 +347,16 @@ void ss_damage_perf_report() {
 
     if (elapsed > 0 && g_damage_perf.total_regions_processed > 0) {
         // Calculate average pixels per operation
-        uint32_t avg_pixels = g_damage_perf.total_pixels_drawn / g_damage_perf.total_regions_processed;
+        uint32_t avg_pixels = g_damage_perf.total_pixels_drawn /
+                              g_damage_perf.total_regions_processed;
 
         // Calculate transfer method percentages
-        uint32_t total_transfers = g_damage_perf.dma_transfers_count + g_damage_perf.cpu_transfers_count;
-        uint32_t dma_percent = total_transfers > 0 ?
-            (g_damage_perf.dma_transfers_count * 100) / total_transfers : 0;
+        uint32_t total_transfers = g_damage_perf.dma_transfers_count +
+                                   g_damage_perf.cpu_transfers_count;
+        uint32_t dma_percent =
+            total_transfers > 0
+                ? (g_damage_perf.dma_transfers_count * 100) / total_transfers
+                : 0;
         uint32_t culled_regions = g_damage_perf.occlusion_culled_regions;
 
         // Simple performance output (can be enhanced with proper printf)
@@ -355,14 +379,15 @@ void ss_damage_perf_update(uint32_t pixels_drawn, bool used_dma) {
 void ss_damage_occlusion_report() {
     // This would display occlusion statistics in a real implementation
     // For now, we can track the metrics internally
-    // The performance impact can be measured by comparing regions processed vs regions drawn
+    // The performance impact can be measured by comparing regions processed vs
+    // regions drawn
 
-    // Calculate occlusion efficiency: if avg processing time is low and regions are removed,
-    // then the optimization is effective
+    // Calculate occlusion efficiency: if avg processing time is low and regions
+    // are removed, then the optimization is effective
     if (g_occlusion_config.performance_samples > 0) {
         // Simple efficiency metric (could be enhanced)
         uint32_t efficiency = g_damage_perf.total_regions_processed /
-                             (g_occlusion_config.avg_processing_time + 1);
+                              (g_occlusion_config.avg_processing_time + 1);
 
         // This data could be used to adapt thresholds in future versions
         // For now, it's collected for debugging purposes
@@ -370,7 +395,8 @@ void ss_damage_occlusion_report() {
 }
 
 // Helper function to calculate overlap area
-static int ss_damage_overlap_area(const DamageRect* rect, uint16_t x, uint16_t y, uint16_t w, uint16_t h) {
+static int ss_damage_overlap_area(const DamageRect* rect, uint16_t x,
+                                  uint16_t y, uint16_t w, uint16_t h) {
     int x1 = (rect->x > x) ? rect->x : x;
     int y1 = (rect->y > y) ? rect->y : y;
     int x2 = ((rect->x + rect->w) < (x + w)) ? (rect->x + rect->w) : (x + w);
@@ -383,25 +409,27 @@ static int ss_damage_overlap_area(const DamageRect* rect, uint16_t x, uint16_t y
 }
 
 // Check if layer overlaps with damage region
-static bool ss_damage_layer_overlaps_region(const Layer* layer, const DamageRect* region) {
-    return !(layer->x >= region->x + region->w ||
-             region->x >= layer->x + layer->w ||
-             layer->y >= region->y + region->h ||
-             region->y >= layer->y + layer->h);
+static bool ss_damage_layer_overlaps_region(const Layer* layer,
+                                            const DamageRect* region) {
+    return !(
+        layer->x >= region->x + region->w || region->x >= layer->x + layer->w ||
+        layer->y >= region->y + region->h || region->y >= layer->y + layer->h);
 }
 
 // Calculate overlap between layer and damage region
-static void ss_damage_calculate_layer_region_overlap(const Layer* layer, const DamageRect* region,
-                                                    uint16_t* overlap_x, uint16_t* overlap_y,
-                                                    uint16_t* overlap_w, uint16_t* overlap_h) {
+static void ss_damage_calculate_layer_region_overlap(
+    const Layer* layer, const DamageRect* region, uint16_t* overlap_x,
+    uint16_t* overlap_y, uint16_t* overlap_w, uint16_t* overlap_h) {
     uint16_t x1 = (layer->x > region->x) ? layer->x : region->x;
     uint16_t y1 = (layer->y > region->y) ? layer->y : region->y;
-    uint16_t x2 = ((layer->x + layer->w) < (region->x + region->w)) ?
-                   (layer->x + layer->w) : (region->x + region->w);
-    uint16_t y2 = ((layer->y + layer->h) < (region->y + region->h)) ?
-                   (layer->y + layer->h) : (region->y + region->h);
+    uint16_t x2 = ((layer->x + layer->w) < (region->x + region->w))
+                      ? (layer->x + layer->w)
+                      : (region->x + region->w);
+    uint16_t y2 = ((layer->y + layer->h) < (region->y + region->h))
+                      ? (layer->y + layer->h)
+                      : (region->y + region->h);
 
-    *overlap_x = x1 - layer->x;  // Convert to layer-local coordinates
+    *overlap_x = x1 - layer->x; // Convert to layer-local coordinates
     *overlap_y = y1 - layer->y;
     *overlap_w = x2 - x1;
     *overlap_h = y2 - y1;
@@ -414,7 +442,8 @@ uint32_t ss_damage_calculate_occlusion_fraction(const DamageRect* region,
     uint32_t total_occluded_area = 0;
     uint32_t region_area = region->w * region->h;
 
-    if (region_area == 0) return 0;
+    if (region_area == 0)
+        return 0;
 
     *layer_count = 0;
 
@@ -431,27 +460,31 @@ uint32_t ss_damage_calculate_occlusion_fraction(const DamageRect* region,
         // and doesn't overlap with any window, we can potentially optimize
         if (background_layer->x <= region->x &&
             background_layer->y <= region->y &&
-            background_layer->x + background_layer->w >= region->x + region->w &&
-            background_layer->y + background_layer->h >= region->y + region->h) {
+            background_layer->x + background_layer->w >=
+                region->x + region->w &&
+            background_layer->y + background_layer->h >=
+                region->y + region->h) {
 
             // Check if this region overlaps with any other visible layer
             bool overlaps_with_window = false;
-            for (int layer_idx = 1; layer_idx < ss_layer_mgr->topLayerIdx; layer_idx++) {
+            for (int layer_idx = 1; layer_idx < ss_layer_mgr->topLayerIdx;
+                 layer_idx++) {
                 Layer* window_layer = ss_layer_mgr->zLayers[layer_idx];
-                if (!(window_layer->attr & LAYER_ATTR_VISIBLE)) continue;
+                if (!(window_layer->attr & LAYER_ATTR_VISIBLE))
+                    continue;
 
                 // Simple overlap check
                 if (!(window_layer->x >= region->x + region->w ||
-                     window_layer->x + window_layer->w <= region->x ||
-                     window_layer->y >= region->y + region->h ||
-                     window_layer->y + window_layer->h <= region->y)) {
+                      window_layer->x + window_layer->w <= region->x ||
+                      window_layer->y >= region->y + region->h ||
+                      window_layer->y + window_layer->h <= region->y)) {
                     overlaps_with_window = true;
                     break;
                 }
             }
 
-            // If the region is in background area and doesn't overlap with any window
-            // and the background is static, we can potentially optimize
+            // If the region is in background area and doesn't overlap with any
+            // window and the background is static, we can potentially optimize
             if (!overlaps_with_window) {
                 total_occluded_area = region_area;
             }
@@ -481,16 +514,15 @@ bool ss_damage_is_region_fully_occluded(const DamageRect* region) {
 }
 
 // Draw a specific region of a layer
-static void ss_damage_draw_layer_region(const Layer* layer, uint16_t x, uint16_t y, uint16_t w, uint16_t h) {
+static void ss_damage_draw_layer_region(const Layer* layer, uint16_t x,
+                                        uint16_t y, uint16_t w, uint16_t h) {
     // Use the existing layer drawing system with the optimized DMA functions
     ss_layer_draw_rect_layer_bounds((Layer*)layer, x, y, x + w, y + h);
 }
 
 // Frame batching for VSync-optimized drawing
 // Start batching mode - damage regions will be accumulated but not drawn
-void ss_damage_frame_begin(void) {
-    g_damage_buffer.frame_batching = true;
-}
+void ss_damage_frame_begin(void) { g_damage_buffer.frame_batching = true; }
 
 // End batching mode and execute all accumulated draws
 void ss_damage_frame_end(void) {

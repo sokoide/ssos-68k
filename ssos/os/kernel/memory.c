@@ -34,8 +34,8 @@
 
 #include "memory.h"
 #include "kernel.h"
-#include <stdint.h>
 #include <stddef.h>
+#include <stdint.h>
 
 void* ss_ssos_memory_base;
 uint32_t ss_ssos_memory_size;
@@ -174,15 +174,19 @@ __attribute__((weak)) void ss_mem_init() {
  * @section Coalescing_Algorithm
  * Boundary Tag Coalescing Strategy:
  *
- * 1. **Find Insertion Point**: Binary search for correct position in sorted free list
- * 2. **Backward Coalescing**: Check if freed block can merge with previous block
+ * 1. **Find Insertion Point**: Binary search for correct position in sorted
+ * free list
+ * 2. **Backward Coalescing**: Check if freed block can merge with previous
+ * block
  * 3. **Forward Coalescing**: Check if freed block can merge with next block
- * 4. **Triple Merge**: Handle case where previous + freed + next form contiguous region
+ * 4. **Triple Merge**: Handle case where previous + freed + next form
+ * contiguous region
  * 5. **Insert New Block**: If no coalescing possible, insert as new free block
  *
  * @section Complexity
  * - **Time**: O(n) where n is number of free blocks (linear search)
- * - **Space**: O(1) additional space, O(MEM_FREE_BLOCKS) total for free block table
+ * - **Space**: O(1) additional space, O(MEM_FREE_BLOCKS) total for free block
+ * table
  *
  * @section Edge_Cases
  * - Adjacent to previous block only
@@ -208,21 +212,30 @@ int ss_mem_free(uintptr_t block_address, uint32_t block_size) {
         return -1;
     }
 
+    // Alignment: Round up to 4-byte boundary to maintain heap consistency
+    // and ensure next allocation returns a 68000-safe (even) address.
+    block_size = (block_size + 3) & ~3;
+
     // 2. Locate Insertion Point
     // The memory manager keeps the list sorted by memory address to allow
     // for efficient merging (coalescing) of adjacent free fragments.
-    for (block_index = 0; block_index < ss_mem_mgr.free_block_count; block_index++) {
-        // If the current list entry starts after our freed block, we've found the spot.
+    for (block_index = 0; block_index < ss_mem_mgr.free_block_count;
+         block_index++) {
+        // If the current list entry starts after our freed block, we've found
+        // the spot.
         if (ss_mem_mgr.free_blocks[block_index].start_address > block_address) {
             break;
         }
     }
 
     // 3. Backward Coalescing
-    // Attempt to merge the freed block with the fragment immediately preceding it.
+    // Attempt to merge the freed block with the fragment immediately preceding
+    // it.
     if (block_index > 0) {
-        SsMemoryFreeBlock* previous_fragment = &ss_mem_mgr.free_blocks[block_index - 1];
-        uint32_t previous_fragment_end = previous_fragment->start_address + previous_fragment->size_in_bytes;
+        SsMemoryFreeBlock* previous_fragment =
+            &ss_mem_mgr.free_blocks[block_index - 1];
+        uint32_t previous_fragment_end =
+            previous_fragment->start_address + previous_fragment->size_in_bytes;
 
         // If the previous block ends exactly where our freed block begins:
         if (previous_fragment_end == block_address) {
@@ -230,19 +243,26 @@ int ss_mem_free(uintptr_t block_address, uint32_t block_size) {
             previous_fragment->size_in_bytes += block_size;
 
             // 3.1. Triple Coalescing Check
-            // Now check if our merged block is also adjacent to the NEXT fragment.
+            // Now check if our merged block is also adjacent to the NEXT
+            // fragment.
             if (block_index < ss_mem_mgr.free_block_count) {
-                SsMemoryFreeBlock* next_fragment = &ss_mem_mgr.free_blocks[block_index];
+                SsMemoryFreeBlock* next_fragment =
+                    &ss_mem_mgr.free_blocks[block_index];
                 uint32_t current_block_end = block_address + block_size;
 
                 if (next_fragment->start_address == current_block_end) {
-                    // TRIPLE MERGE: Prev + Ours + Next become one single fragment.
-                    previous_fragment->size_in_bytes += next_fragment->size_in_bytes;
-                    
-                    // Remove the redundant 'next' entry and shift the list left.
+                    // TRIPLE MERGE: Prev + Ours + Next become one single
+                    // fragment.
+                    previous_fragment->size_in_bytes +=
+                        next_fragment->size_in_bytes;
+
+                    // Remove the redundant 'next' entry and shift the list
+                    // left.
                     ss_mem_mgr.free_block_count--;
-                    for (int i = block_index; i < ss_mem_mgr.free_block_count; i++) {
-                        ss_mem_mgr.free_blocks[i] = ss_mem_mgr.free_blocks[i + 1];
+                    for (int i = block_index; i < ss_mem_mgr.free_block_count;
+                         i++) {
+                        ss_mem_mgr.free_blocks[i] =
+                            ss_mem_mgr.free_blocks[i + 1];
                     }
                 }
             }
@@ -251,7 +271,8 @@ int ss_mem_free(uintptr_t block_address, uint32_t block_size) {
     }
 
     // 4. Forward Coalescing
-    // If we couldn't merge backwards, check if we can merge with the next fragment.
+    // If we couldn't merge backwards, check if we can merge with the next
+    // fragment.
     if (block_index < ss_mem_mgr.free_block_count) {
         SsMemoryFreeBlock* next_fragment = &ss_mem_mgr.free_blocks[block_index];
         uint32_t current_block_end = block_address + block_size;
@@ -283,13 +304,15 @@ int ss_mem_free(uintptr_t block_address, uint32_t block_size) {
     // 6. Critical Error: Resource Exhaustion
     // The fixed-size free block table is full. Fragmentation has reached an
     // unrecoverable state, or MEM_FREE_BLOCKS is too small for the workload.
-    ss_set_error(SS_ERROR_OUT_OF_RESOURCES, SS_SEVERITY_ERROR,
-                __func__, __FILE__, __LINE__, "Memory fragmentation limit: Free block table full.");
+    ss_set_error(SS_ERROR_OUT_OF_RESOURCES, SS_SEVERITY_ERROR, __func__,
+                 __FILE__, __LINE__,
+                 "Memory fragmentation limit: Free block table full.");
     return -1;
 }
 
 /**
- * @brief Frees a memory block, ensuring the size is rounded up to a 4KB boundary.
+ * @brief Frees a memory block, ensuring the size is rounded up to a 4KB
+ * boundary.
  *
  * This is useful for memory regions that were allocated using ss_mem_alloc4k.
  */
@@ -309,7 +332,8 @@ int ss_mem_free4k(uintptr_t addr, uint32_t sz) {
  * @brief Allocate memory from the SSOS memory pool
  *
  * Allocates a block of memory of the specified size from the free memory pool.
- * Uses first-fit allocation strategy optimized for embedded systems performance.
+ * Uses first-fit allocation strategy optimized for embedded systems
+ * performance.
  *
  * @param sz Size in bytes to allocate (0 returns 0)
  * @return Address of allocated memory block, or 0 if allocation failed
@@ -347,10 +371,16 @@ __attribute__((weak)) uintptr_t ss_mem_alloc(uint32_t requested_size) {
         return 0;
     }
 
+    // Alignment: Round up to 4-byte boundary to maintain heap consistency
+    // and ensure all returned addresses are 68000-safe (even) addresses.
+    requested_size = (requested_size + 3) & ~3;
+
     // 2. First-Fit Search Strategy
     // We iterate through our address-sorted list of free memory fragments.
-    // The "First-Fit" algorithm selects the first fragment that can satisfy the request.
-    for (block_index = 0; block_index < ss_mem_mgr.free_block_count; block_index++) {
+    // The "First-Fit" algorithm selects the first fragment that can satisfy the
+    // request.
+    for (block_index = 0; block_index < ss_mem_mgr.free_block_count;
+         block_index++) {
         SsMemoryFreeBlock* current_block = &ss_mem_mgr.free_blocks[block_index];
 
         if (current_block->size_in_bytes >= requested_size) {
@@ -362,31 +392,13 @@ __attribute__((weak)) uintptr_t ss_mem_alloc(uint32_t requested_size) {
             current_block->size_in_bytes -= requested_size;
 
             // 3. Post-Allocation Cleanup
-            // If the block was fully consumed (size is now zero), remove it from the list.
+            // If the block was fully consumed (size is now zero), remove it
+            // from the list.
             if (current_block->size_in_bytes == 0) {
                 ss_mem_mgr.free_block_count--;
-
-                // Shift subsequent blocks to maintain a contiguous array list.
-                int blocks_to_shift = ss_mem_mgr.free_block_count - block_index;
-                if (blocks_to_shift > 0) {
-                    /**
-                     * MOTOROLA 68000 OPTIMIZATION:
-                     * On the 68k, 32-bit (Long) operations are significantly faster than
-                     * series of 8-bit or 16-bit operations. Since our block structure
-                     * is exactly 8 bytes (2x 32-bit uint32_t), we use 32-bit bulk moves.
-                     */
-                    SsMemoryFreeBlock* source_ptr = &ss_mem_mgr.free_blocks[block_index + 1];
-                    SsMemoryFreeBlock* destination_ptr = &ss_mem_mgr.free_blocks[block_index];
-
-                    uint32_t* src_u32 = (uint32_t*)source_ptr;
-                    uint32_t* dst_u32 = (uint32_t*)destination_ptr;
-                    
-                    // Each block contains 2 uint32_t elements.
-                    int words_to_copy = blocks_to_shift * (sizeof(SsMemoryFreeBlock) / sizeof(uint32_t));
-
-                    for (int i = 0; i < words_to_copy; i++) {
-                        *dst_u32++ = *src_u32++;
-                    }
+                for (int i = block_index; i < ss_mem_mgr.free_block_count;
+                     i++) {
+                    ss_mem_mgr.free_blocks[i] = ss_mem_mgr.free_blocks[i + 1];
                 }
             }
             return allocated_address;
@@ -401,7 +413,7 @@ __attribute__((weak)) uintptr_t ss_mem_alloc(uint32_t requested_size) {
 /**
  * @brief Allocates a 4KB-aligned block of memory.
  *
- * Aligned allocation is critical for hardware features like DMA or 
+ * Aligned allocation is critical for hardware features like DMA or
  * memory-mapped I/O, which often require page-aligned buffers.
  */
 __attribute__((weak)) uintptr_t ss_mem_alloc4k(uint32_t requested_size) {
@@ -412,7 +424,8 @@ __attribute__((weak)) uintptr_t ss_mem_alloc4k(uint32_t requested_size) {
     // Round up the requested size to the nearest 4KB page.
     // MEM_ALIGN_4K = 4096 (0x1000)
     // MEM_ALIGN_4K_MASK = 0xFFFFF000
-    uint32_t aligned_size = (requested_size + MEM_ALIGN_4K - 1) & MEM_ALIGN_4K_MASK;
+    uint32_t aligned_size =
+        (requested_size + MEM_ALIGN_4K - 1) & MEM_ALIGN_4K_MASK;
 
     return ss_mem_alloc(aligned_size);
 }
@@ -426,12 +439,13 @@ __attribute__((weak)) uint32_t ss_mem_total_bytes() {
 
 /**
  * @brief Calculates the total amount of free memory currently available.
- * 
+ *
  * This is done by summing up the sizes of all individual free blocks.
  */
 __attribute__((weak)) uint32_t ss_mem_free_bytes() {
     uint32_t total_free_bytes = 0;
-    for (int block_index = 0; block_index < ss_mem_mgr.free_block_count; block_index++) {
+    for (int block_index = 0; block_index < ss_mem_mgr.free_block_count;
+         block_index++) {
         total_free_bytes += ss_mem_mgr.free_blocks[block_index].size_in_bytes;
     }
     return total_free_bytes;
