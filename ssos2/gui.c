@@ -30,6 +30,12 @@ int g_num_wins = 0;
 /* --- Z-order map: g_zorder[0]=bottom index, g_zorder[top]=top index --- */
 static int g_zorder[MAX_WINDOWS];
 
+/* --- Temp buffer for batch text rendering (DMA) ---
+ * Flat layout: row-major with stride = pix_w (actual text width).
+ * This allows DMA rect copy with correct src_stride. */
+#define TEXT_BUF_MAX_COLS 384  /* 48 chars × 8 px */
+static uint16_t text_buf[TEXT_BUF_MAX_COLS * 16]; /* 12288 bytes */
+
 /* ===========================================================
  * Initialization
  * =========================================================== */
@@ -229,10 +235,36 @@ void gui_draw_char(int x, int y, char c, uint16_t fg, uint16_t bg) {
 }
 
 void gui_draw_text(int x, int y, const char* str, uint16_t fg, uint16_t bg) {
-    while (*str) {
-        gui_draw_char(x, y, *str, fg, bg);
-        x += 8;
-        str++;
+    int len = 0;
+    while (str[len] && len < 48) len++;
+    if (len == 0) return;
+
+    int pix_w = len * 8;
+
+    /* Expand all glyphs into text_buf (stride = pix_w) */
+    for (int col = 0; col < len; col++) {
+        const uint8_t* glyph = CGROM_BASE + (uint8_t)str[col] * 16;
+        int base = col * 8;
+        for (int row = 0; row < 16; row++) {
+            uint8_t bits = glyph[row];
+            uint16_t* p = text_buf + row * pix_w + base;
+            for (int bit = 0; bit < 8; bit++)
+                *p++ = (bits & (0x80 >> bit)) ? fg : bg;
+        }
+    }
+
+    /* Clip to screen */
+    int sx = 0, dx = x, w = pix_w;
+    if (dx < 0) { sx = -dx; w += dx; dx = 0; }
+    if (dx + w > SCREEN_W) w = SCREEN_W - dx;
+    if (y < 0 || y + 16 > SCREEN_H || w <= 0) return;
+
+    /* DMA: temp buffer → backbuf */
+    if (sx == 0) {
+        dma_copy_rect_words(text_buf, &backbuf[y][dx], w, 16, pix_w, SCREEN_W);
+    } else {
+        for (int row = 0; row < 16; row++)
+            memcpy(&backbuf[y + row][dx], text_buf + row * pix_w + sx, w * 2);
     }
 }
 
@@ -387,18 +419,17 @@ void gui_flip_full(void) {
     dma_copy_words(backbuf, (void*)VRAM_BASE, (uint32_t)SCREEN_W * SCREEN_H);
 }
 /* ===========================================================
- * Dirty region tracking
+ * Dirty region tracking (multiple rects)
  * =========================================================== */
 
-static int dirty_x0, dirty_y0, dirty_x1, dirty_y1;
-static int dirty_active = 0;
+#define MAX_DIRTY_RECTS 16
+
+static int dirty_count;
+static int dirty_active;
+static struct { int x0, y0, x1, y1; } dirty_rects[MAX_DIRTY_RECTS];
 
 void dirty_reset(void) {
-    dirty_active = 0;
-    dirty_x0 = SCREEN_W;
-    dirty_y0 = SCREEN_H;
-    dirty_x1 = 0;
-    dirty_y1 = 0;
+    dirty_count = 0;
 }
 
 void dirty_include(int x, int y, int w, int h) {
@@ -413,22 +444,22 @@ void dirty_include(int x, int y, int w, int h) {
     if (y1 > SCREEN_H)
         y1 = SCREEN_H;
 
-    if (!dirty_active) {
-        dirty_x0 = x0;
-        dirty_y0 = y0;
-        dirty_x1 = x1;
-        dirty_y1 = y1;
+    if (dirty_count < MAX_DIRTY_RECTS) {
+        dirty_rects[dirty_count].x0 = x0;
+        dirty_rects[dirty_count].y0 = y0;
+        dirty_rects[dirty_count].x1 = x1;
+        dirty_rects[dirty_count].y1 = y1;
+        dirty_count++;
         dirty_active = 1;
-    } else {
-        if (x0 < dirty_x0)
-            dirty_x0 = x0;
-        if (y0 < dirty_y0)
-            dirty_y0 = y0;
-        if (x1 > dirty_x1)
-            dirty_x1 = x1;
-        if (y1 > dirty_y1)
-            dirty_y1 = y1;
+        return;
     }
+    /* Fallback: expand first rect to cover new rect */
+    dirty_rects[0].x0 = x0;
+    dirty_rects[0].y0 = y0;
+    dirty_rects[0].x1 = x1;
+    dirty_rects[0].y1 = y1;
+    dirty_count = 1;
+    dirty_active = 1;
 }
 
 void dirty_include_window(const Window* w) {
@@ -442,10 +473,41 @@ void dirty_include_cursor(int cx, int cy) {
 
 int dirty_is_empty(void) { return !dirty_active; }
 
-/* Transfer only the dirty region to VRAM */
+/* Merge overlapping dirty rects to reduce DMA operation count */
+static void dirty_coalesce(void) {
+    for (int i = 0; i < dirty_count; i++) {
+        for (int j = i + 1; j < dirty_count; j++) {
+            int* a = (int*)&dirty_rects[i];
+            int* b = (int*)&dirty_rects[j];
+            if (b[0] <= a[2] && b[1] <= a[3] && b[2] >= a[0] && b[3] >= a[1]) {
+                if (b[0] < a[0]) a[0] = b[0];
+                if (b[1] < a[1]) a[1] = b[1];
+                if (b[2] > a[2]) a[2] = b[2];
+                if (b[3] > a[3]) a[3] = b[3];
+                dirty_rects[j] = dirty_rects[--dirty_count];
+                j--;
+            }
+        }
+    }
+}
+
+/* Transfer all dirty rects to VRAM */
 void gui_flip_dirty_region(void) {
     if (!dirty_active)
         return;
-    gui_flip_rect(dirty_x0, dirty_y0, dirty_x1 - dirty_x0, dirty_y1 - dirty_y0);
+    dirty_coalesce();
+    for (int r = 0; r < dirty_count; r++) {
+        int x0 = dirty_rects[r].x0;
+        int y0 = dirty_rects[r].y0;
+        int x1 = dirty_rects[r].x1;
+        int y1 = dirty_rects[r].y1;
+        int w = x1 - x0;
+        int h = y1 - y0;
+        if (w <= 0 || h <= 0) continue;
+        dma_copy_rect_words(&backbuf[y0][x0],
+                            (void*)(VRAM_BASE + (uint32_t)(y0 * VRAM_W) + x0),
+                            w, h, SCREEN_W, VRAM_W);
+    }
+    dirty_count = 0;
     dirty_active = 0;
 }
