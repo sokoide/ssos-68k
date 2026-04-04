@@ -19,16 +19,18 @@
 #define REG_DFC 0x31  /* Device Function Code */
 #define REG_BFC 0x39  /* Base Function Code */
 
-/* Array chain entry: 12 bytes per transfer descriptor (word-aligned) */
-typedef struct {
-    uint16_t mtc;   /* Transfer count (0 = 65536) */
-    uint16_t _pad;  /* Padding for alignment */
-    uint32_t mar;   /* Memory address */
-    uint32_t dar;   /* Device address */
-} dma_chain_entry_t;
+/* NOTE: HD63450 array chain entries are 6 bytes each: MAR(4) + MTC(2).
+ * DAR is set once in the register and auto-increments via SCR.
+ * Per-entry DAR is NOT supported — DAR auto-increments by MTC. */
 
-/* Maximum chain entries (screen height = 512) */
-#define MAX_CHAIN_ENTRIES 512
+/* X68000 HD63450 array chain entry: 6 bytes (packed) */
+typedef struct __attribute__((packed)) {
+    uint32_t mar;
+    uint16_t mtc;
+} dma_chain6_t;
+
+#define MAX_CHAIN6_ENTRIES 512
+static dma_chain6_t chain6[MAX_CHAIN6_ENTRIES];
 
 void dma_init(void) {
     volatile uint8_t* ch = DMA_CH2_BASE;
@@ -115,9 +117,12 @@ void dma_fill_block(uint16_t color, void* dst, uint16_t w, uint16_t h, uint16_t 
     static volatile uint16_t s_color;
     s_color = color;
 
-    /* For small transfers, use simple loop */
-    if (h <= 8) {
-        volatile uint8_t* ch = DMA_CH2_BASE;
+    volatile uint8_t* ch = DMA_CH2_BASE;
+
+    /* For non-contiguous stride or small transfers, use per-line stop-start.
+     * HD63450 array chain does NOT support per-entry DAR —
+     * DAR auto-increments by MTC, so chain mode only works when stride == w. */
+    if (h <= 8 || stride != w) {
         dma_config_channel(0x20, 0x01);  /* 16-bit, MAR fixed, DAR inc */
 
         uint8_t* d = (uint8_t*)dst;
@@ -133,43 +138,26 @@ void dma_fill_block(uint16_t color, void* dst, uint16_t w, uint16_t h, uint16_t 
         return;
     }
 
-    /* Array chain mode for large fills */
-    static dma_chain_entry_t chain_table[MAX_CHAIN_ENTRIES];
-    int chain_count = (h > MAX_CHAIN_ENTRIES) ? MAX_CHAIN_ENTRIES : h;
-
-    /* Build chain table */
-    uint8_t* d = (uint8_t*)dst;
+    /* Array chain mode for contiguous fills (stride == w).
+     * Each entry: MAR=&s_color, MTC=w. DAR auto-increments correctly. */
+    int chain_count = (h > MAX_CHAIN6_ENTRIES) ? MAX_CHAIN6_ENTRIES : h;
     for (int i = 0; i < chain_count; i++) {
-        chain_table[i].mtc = (w >= 65536) ? 0 : w;
-        chain_table[i].mar = (uint32_t)&s_color;
-        chain_table[i].dar = (uint32_t)d;
-        d += stride * 2;
+        chain6[i].mar = (uint32_t)&s_color;
+        chain6[i].mtc = (w >= 65536) ? 0 : w;
     }
 
-    volatile uint8_t* ch = DMA_CH2_BASE;
     ch[REG_CCR] = 0x00;
     ch[REG_CSR] = 0xFF;
-    ch[REG_DCR] = 0x04; /* 16-bit device port */
-    *(volatile uint32_t*)&ch[REG_BAR] = (uint32_t)chain_table;
+    ch[REG_DCR] = 0x08;
+    *(volatile uint32_t*)&ch[REG_BAR] = (uint32_t)chain6;
     *(volatile uint16_t*)&ch[REG_BTC] = chain_count;
-    ch[REG_OCR] = 0x09; /* Array chain mode (ssos/os verified), 16-bit via DCR */
-    ch[REG_SCR] = 0x01; /* MAR fixed, DAR inc */
+    ch[REG_OCR] = 0x19; /* Array chain mode */
+    ch[REG_SCR] = 0x01; /* DAR inc (MAR from chain, always &s_color) */
+    *(volatile uint32_t*)&ch[REG_DAR] = (uint32_t)dst;
     ch[REG_CCR] = 0x80;
 
-    while (!(ch[REG_CSR] & 0x10)) {
-        if (ch[REG_CSR] & 0x02) break;
-    }
+    while (!(ch[REG_CSR] & 0x90));
 }
-
-/* X68000 HD63450 array chain entry: 6 bytes
- * [MAR: 4 bytes (source address)] [MTC: 2 bytes (word count, 0=65536)] */
-typedef struct {
-    uint32_t mar;
-    uint16_t mtc;
-} dma_chain6_t;
-
-#define MAX_CHAIN6_ENTRIES 512
-static dma_chain6_t chain6[MAX_CHAIN6_ENTRIES];
 
 /* Contiguous word copy: RAM → VRAM (for full-screen flip)
  * Uses array chain mode (OCR=$19) when possible for maximum throughput.
@@ -305,40 +293,48 @@ void dma_transfer_block(const void* src, void* dst, uint16_t w, uint16_t h, uint
         return;
     }
 
-    /* Array chain mode for large transfers */
-    static dma_chain_entry_t chain_table[MAX_CHAIN_ENTRIES];
-    int chain_count = (h > MAX_CHAIN_ENTRIES) ? MAX_CHAIN_ENTRIES : h;
+    /* HD63450 array chain does NOT support per-entry DAR.
+     * DAR auto-increments by MTC, so chain only works when dst_stride == w.
+     * For non-contiguous dest, fall back to per-line stop-start. */
+    if (dst_stride != w) {
+        volatile uint8_t* ch = DMA_CH2_BASE;
+        dma_config_channel(0x20, 0x05);
 
-    /* Build chain table */
-    uint8_t* s = (uint8_t*)src;
-    uint8_t* d = (uint8_t*)dst;
-    for (int i = 0; i < chain_count; i++) {
-        chain_table[i].mtc = w;
-        chain_table[i].mar = (uint32_t)s;
-        chain_table[i].dar = (uint32_t)d;
-        s += src_stride * 2;
-        d += dst_stride * 2;
+        uint8_t* s = (uint8_t*)src;
+        uint8_t* d = (uint8_t*)dst;
+        for (int i = 0; i < h; i++) {
+            *(volatile uint16_t*)&ch[REG_MTC] = w;
+            *(volatile uint32_t*)&ch[REG_MAR] = (uint32_t)s;
+            *(volatile uint32_t*)&ch[REG_DAR] = (uint32_t)d;
+            ch[REG_CCR] = 0x80;
+            while (!(ch[REG_CSR] & 0x10));
+            ch[REG_CSR] = 0xFF;
+            s += src_stride * 2;
+            d += dst_stride * 2;
+        }
+        return;
     }
 
-    /* Configure DMA for array chain mode */
+    /* Array chain mode: dst_stride == w, DAR auto-increments correctly.
+     * Each entry provides MAR (source offset per line) + MTC. */
+    int chain_count = (h > MAX_CHAIN6_ENTRIES) ? MAX_CHAIN6_ENTRIES : h;
+    uint8_t* s = (uint8_t*)src;
+    for (int i = 0; i < chain_count; i++) {
+        chain6[i].mar = (uint32_t)s;
+        chain6[i].mtc = w;
+        s += src_stride * 2;
+    }
+
     volatile uint8_t* ch = DMA_CH2_BASE;
     ch[REG_CCR] = 0x00;
     ch[REG_CSR] = 0xFF;
-    ch[REG_DCR] = 0x04; /* 16-bit device port */
-
-    /* Set base address and count for array chain */
-    *(volatile uint32_t*)&ch[REG_BAR] = (uint32_t)chain_table;
+    ch[REG_DCR] = 0x08;
+    *(volatile uint32_t*)&ch[REG_BAR] = (uint32_t)chain6;
     *(volatile uint16_t*)&ch[REG_BTC] = chain_count;
-
-    /* Configure for array chain operation */
-    ch[REG_OCR] = 0x29;  /* Based on working ssos/os (0x09), D5=1 for 16-bit */
-    ch[REG_SCR] = 0x05;  /* MAR inc, DAR inc */
-
-    /* Start transfer - DMA processes all entries automatically */
+    ch[REG_OCR] = 0x19; /* Array chain mode */
+    ch[REG_SCR] = 0x05; /* MAR inc (from chain), DAR inc */
+    *(volatile uint32_t*)&ch[REG_DAR] = (uint32_t)dst;
     ch[REG_CCR] = 0x80;
 
-    /* Wait for all transfers to complete */
-    while (!(ch[REG_CSR] & 0x10)) {
-        if (ch[REG_CSR] & 0x02) break;
-    }
+    while (!(ch[REG_CSR] & 0x90));
 }
