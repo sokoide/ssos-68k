@@ -59,6 +59,9 @@ void dma_clear();
 void dma_start();
 void dma_wait_completion();
 
+// Single transfer of 16-bit words (RAM -> VRAM)
+void dma_copy_words_x68k(void* dst, const void* src, uint16_t word_count);
+
 // Batch DMA transfer API - reduces setup overhead by batching multiple spans
 void dma_batch_begin(void);
 uint16_t dma_batch_add_span(uint8_t* dst, uint8_t* src, uint16_t count);

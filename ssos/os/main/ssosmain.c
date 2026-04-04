@@ -229,7 +229,8 @@ void ssosmain() {
             // This also adds the old frame position to damage buffer for automatic cleanup
             ss_drag_update_frame();
             
-            // 2. Reduce UI update frequency during drag to save CPU for background restoration
+            // 2. Optimization: Skip heavy background layer updates during drag
+            // Only update layer 3 (mouse info) at reduced frequency
             if ((ss_timerd_counter & 0x7) == 0) {
                 update_layer_3(l3);
             }
@@ -248,11 +249,7 @@ void ssosmain() {
 
             // Phase 1: Update layer content
             update_layer_3(l3);
-            if (ss_timerd_counter > prev_counter + 1000 ||
-                ss_timerd_counter < prev_counter) {
-                prev_counter = ss_timerd_counter;
-                update_layer_2(l2);
-            }
+            update_layer_2(l2);
 
             // Phase 2: Composite dirty regions to VRAM
             SS_PERF_START_MEASUREMENT(SS_PERF_DRAW_TIME);

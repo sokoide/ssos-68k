@@ -32,14 +32,14 @@ void dma_prepare_x68k_16color(void) {
         return;
     }
 
+    dma->ccr = 0x00;  // Stop and Reset
+    dma->csr = 0xFF;  // Clear status
+
     // 16-bit backbuffer to VRAM 16-bit port:
     // Device: VRAM 16-bit port, Source: Memory
     dma->dcr = 0x04;  // VRAM 16-bit port
-    dma->ocr = 0x09;  // memory->vram, array chaining
-    dma->scr = 0x05;  // MAR and DAR both increment (0x06 = MAR only, DAR fixed!)
-    dma->ccr = 0x00;
-    // NOTE: CPR (offset $2D) is Channel Priority Register, NOT destination increment.
-    // DAR increment is controlled by SCR bit 0.
+    dma->ocr = 0x10;  // memory -> vram (MAR -> DAR), 16-bit, no chain
+    dma->scr = 0x05;  // MAR and DAR both increment
     dma->mfc = 0x05;
     dma->dfc = 0x05;
     dma->bfc = 0x05;
@@ -68,6 +68,33 @@ void dma_start() { dma->ccr |= 0x80; }
 void dma_wait_completion() {
     while (!(dma->csr & 0x90))
         ;
+}
+
+// Single transfer of 16-bit words (RAM -> VRAM)
+void dma_copy_words_x68k(void* dst, const void* src, uint16_t word_count) {
+    if (word_count == 0) return;
+    
+    dma_prepare_x68k_16color();
+    
+    dma->ccr = 0x00; // STOP
+    dma->csr = 0xFF; // CLEAR STATUS
+    
+    dma->dcr = 0x08; // 16-bit device, BURST mode (faster)
+    dma->ocr = 0x10; // MAR -> DAR, no chain
+    dma->scr = 0x05; // MAR inc, DAR inc
+    
+    dma->mtc = word_count;
+    dma->mar = (uint8_t*)src;
+    dma->dar = (uint8_t*)dst;
+    
+    dma->ccr = 0x80; // START
+    
+    // Wait for completion (Operation Complete bit)
+    while (!(dma->csr & 0x10)) {
+        if (dma->csr & 0x02) break; // Error check
+    }
+    
+    dma->csr = 0xFF; // CLEAR STATUS
 }
 
 // Batch DMA transfer implementation
