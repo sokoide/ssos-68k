@@ -305,3 +305,49 @@ void ss_init_palette() {
     _iocs_gpalet(14, rgb888_2grb(255, 255, 85, 0));
     _iocs_gpalet(15, rgb888_2grb(255, 255, 255, 0));
 }
+
+void ss_xor_dotted_rect_vram(int16_t x, int16_t y, int16_t w, int16_t h, int phase) {
+    int16_t right = x + w - 1;
+    int16_t bottom = y + h - 1;
+    uint16_t mask = 0xFFFF;
+
+    // Horizontal edges
+    if (y >= 0 && y < HEIGHT) {
+        uint16_t* p = &vram_start[y * VRAMWIDTH + x];
+        for (int16_t i = 0; i < w; i++) {
+            if (((i + phase) & 3) < 2) {
+                int16_t px = x + i;
+                if (px >= 0 && px < WIDTH) p[i] ^= mask;
+            }
+        }
+    }
+    if (bottom >= 0 && bottom < HEIGHT && bottom != y) {
+        uint16_t* p = &vram_start[bottom * VRAMWIDTH + x];
+        for (int16_t i = 0; i < w; i++) {
+            if (((i + phase) & 3) < 2) {
+                int16_t px = x + i;
+                if (px >= 0 && px < WIDTH) p[i] ^= mask;
+            }
+        }
+    }
+
+    // Vertical edges
+    if (x >= 0 && x < WIDTH) {
+        for (int16_t i = 0; i < h; i++) {
+            if (((i + phase) & 3) < 2) {
+                int16_t py = y + i;
+                if (py >= 0 && py < HEIGHT)
+                    vram_start[py * VRAMWIDTH + x] ^= mask;
+            }
+        }
+    }
+    if (right >= 0 && right < WIDTH && right != x) {
+        for (int16_t i = 0; i < h; i++) {
+            if (((i + phase) & 3) < 2) {
+                int16_t py = y + i;
+                if (py >= 0 && py < HEIGHT)
+                    vram_start[py * VRAMWIDTH + right] ^= mask;
+            }
+        }
+    }
+}

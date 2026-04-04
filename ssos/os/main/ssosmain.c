@@ -221,21 +221,47 @@ void ssosmain() {
 
         // Performance monitoring: Start layer update timing
         SS_PERF_START_MEASUREMENT(SS_PERF_LAYER_UPDATE);
-        update_layer_3(l3);
 
-        if (ss_timerd_counter > prev_counter + 1000 ||
-            ss_timerd_counter < prev_counter) {
-            prev_counter = ss_timerd_counter;
-            update_layer_2(l2);
+        if (g_drag.is_dragging) {
+            // === DRAG MODE: Update drag frame and maintain dotted border ===
+            
+            // 1. Update mouse and drag frame
+            // This also adds the old frame position to damage buffer for automatic cleanup
+            ss_drag_update_frame();
+            
+            // 2. Reduce UI update frequency during drag to save CPU for background restoration
+            if ((ss_timerd_counter & 0x7) == 0) {
+                update_layer_3(l3);
+            }
+
+            // 3. Draw dirty regions (this erases the old XOR border using background data)
+            ss_damage_draw_regions();
+
+            // 4. Draw new XOR drag border on VRAM (after everything else)
+            if (g_drag.dragged_layer) {
+                int phase = ss_timerd_counter / 2;
+                ss_xor_dotted_rect_vram(g_drag.drag_frame_x, g_drag.drag_frame_y,
+                                        g_drag.dragged_layer->w, g_drag.dragged_layer->h, phase);
+            }
+        } else {
+            // === NORMAL MODE: Full layer updates ===
+
+            // Phase 1: Update layer content
+            update_layer_3(l3);
+            if (ss_timerd_counter > prev_counter + 1000 ||
+                ss_timerd_counter < prev_counter) {
+                prev_counter = ss_timerd_counter;
+                update_layer_2(l2);
+            }
+
+            // Phase 2: Composite dirty regions to VRAM
+            SS_PERF_START_MEASUREMENT(SS_PERF_DRAW_TIME);
+            ss_damage_draw_regions();
+            SS_PERF_END_MEASUREMENT(SS_PERF_DRAW_TIME);
         }
 
         // Performance monitoring: End layer update timing
         SS_PERF_END_MEASUREMENT(SS_PERF_LAYER_UPDATE);
-
-        // OPTIMIZED: Use damage system with occlusion optimization disabled
-        SS_PERF_START_MEASUREMENT(SS_PERF_DRAW_TIME);
-        ss_damage_draw_regions();
-        SS_PERF_END_MEASUREMENT(SS_PERF_DRAW_TIME);
 
         // Performance monitoring: Display damage statistics every 5 seconds
         static uint32_t last_perf_report = 0;

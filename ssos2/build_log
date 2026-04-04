@@ -1,0 +1,46 @@
+gui.c:66:5: warning: data definition has no type or storage class
+   66 |     dma_init();
+      |     ^~~~~~~~
+gui.c:66:5: warning: type defaults to 'int' in declaration of 'dma_init' [-Wimplicit-int]
+gui.c:66:5: warning: data definition has no type or storage class
+   66 |     dma_init();
+      |     ^~~~~~~~
+gui.c:66:5: warning: type defaults to 'int' in declaration of 'dma_init' [-Wimplicit-int]
+gui.c:66:5: error: conflicting types for 'dma_init'; have 'int()'
+In file included from gui.c:16:
+gui.h:129:6: note: previous declaration of 'dma_init' with type 'void(void)'
+  129 | void dma_init(void);
+      |      ^~~~~~~~
+gui.c:67:34: error: expected ')' before '[' token
+   67 |     dma_fill_block(color, backbuf[0], SCREEN_W, SCREEN_H, SCREEN_W);
+      |                                  ^
+      |                                  )
+gui.c:66:5: error: conflicting types for 'dma_init'; have 'int()'
+In file included from gui.c:16:
+gui.h:129:6: note: previous declaration of 'dma_init' with type 'void(void)'
+  129 | void dma_init(void);
+      |      ^~~~~~~~
+gui.c:67:34: error: expected ')' before '[' token
+   67 |     dma_fill_block(color, backbuf[0], SCREEN_W, SCREEN_H, SCREEN_W);
+      |                                  ^
+      |                                  )
+gui.h:25:18: error: expected identifier or '(' before numeric constant
+   25 | #define SCREEN_W 512
+      |                  ^~~
+gui.c:68:2: note: in expansion of macro 'SCREEN_W'
+   68 |  SCREEN_W);
+      |  ^~~~~~~~
+gui.h:25:18: error: expected identifier or '(' before numeric constant
+   25 | #define SCREEN_W 512
+      |                  ^~~
+gui.c:68:2: note: in expansion of macro 'SCREEN_W'
+   68 |  SCREEN_W);
+      |  ^~~~~~~~
+gui.c:69:1: error: expected identifier or '(' before '}' token
+   69 | }
+      | ^
+gui.c:69:1: error: expected identifier or '(' before '}' token
+   69 | }
+      | ^
+make: *** [gui.o] Error 1
+make: *** [gui.o] Error 1

@@ -14,6 +14,8 @@ extern char local_info[256];
 // Global debug message for click events
 char g_click_debug_msg[256] = {0};
 
+DragState g_drag = {0};
+
 void draw_title(uint16_t* buf);
 void draw_taskbar(uint16_t* buf);
 
@@ -30,39 +32,48 @@ Layer* get_layer_1() {
 }
 
 Layer* get_layer_2() {
-    uint16_t fg = 0;
-    uint16_t bg = 15;
-
     Layer* l = ss_layer_get();
-    const int lw = 512;
-    const int lh = 288;
+    const int lw = 512 + 8; // Extra space for shadow
+    const int lh = 288 + 8;
 
     // 16-bit backbuffer: 2 bytes per pixel
     uint16_t* lbuf = (uint16_t*)ss_mem_alloc4k(lw * lh * 2);
     ss_layer_set(l, lbuf, 16, 80, lw, lh);
-    ss_fill_rect_v(lbuf, lw, lh, 2, 0, 0, lw - 1, 24);
-    ss_fill_rect_v(lbuf, lw, lh, 15, 0, 25, lw - 1, lh - 1);
-    ss_draw_rect_v(lbuf, lw, lh, 0, 0, 0, lw - 1, lh - 1);
+    
+    // ssos2-style window drawing
+    // 1. Drop shadow (dark gray)
+    ss_fill_rect_v(lbuf, lw, lh, 8, 4, 4, lw - 1, lh - 1);
+    // 2. Window body background (white)
+    ss_fill_rect_v(lbuf, lw, lh, 15, 0, 0, lw - 5, lh - 5);
+    // 3. Title bar (green)
+    ss_fill_rect_v(lbuf, lw, lh, 2, 1, 1, lw - 6, 24);
+    // 4. Border (black)
+    ss_draw_rect_v(lbuf, lw, lh, 0, 0, 0, lw - 5, lh - 5);
+    
     ss_print_v(lbuf, lw, lh, 15, 2, 8, 4, "Every Second: Timer");
 
     return l;
 }
 
 Layer* get_layer_3() {
-    uint16_t fg = 0;
-    uint16_t bg = 15;
-
     Layer* l = ss_layer_get();
-    const int lw = 544;
-    const int lh =
-        112; // Increased by 16 pixels (one line) for keyboard display
+    const int lw = 544 + 8;
+    const int lh = 112 + 8;
 
     // 16-bit backbuffer: 2 bytes per pixel
     uint16_t* lbuf = (uint16_t*)ss_mem_alloc4k(lw * lh * 2);
     ss_layer_set(l, lbuf, 192, 24, lw, lh);
-    ss_fill_rect_v(lbuf, lw, lh, 3, 0, 0, lw - 1, 24);
-    ss_fill_rect_v(lbuf, lw, lh, 15, 0, 25, lw - 1, lh - 1);
-    ss_draw_rect_v(lbuf, lw, lh, 5, 0, 0, lw - 1, lh - 1);
+    
+    // ssos2-style window drawing
+    // 1. Drop shadow (dark gray)
+    ss_fill_rect_v(lbuf, lw, lh, 8, 4, 4, lw - 1, lh - 1);
+    // 2. Window body background (white)
+    ss_fill_rect_v(lbuf, lw, lh, 15, 0, 0, lw - 5, lh - 5);
+    // 3. Title bar (cyan)
+    ss_fill_rect_v(lbuf, lw, lh, 3, 1, 1, lw - 6, 24);
+    // 4. Border (black)
+    ss_draw_rect_v(lbuf, lw, lh, 0, 0, 0, lw - 5, lh - 5);
+    
     ss_print_v(lbuf, lw, lh, 15, 3, 8, 4, "Real Time: Mouse / Keyboard");
 
     return l;
@@ -299,10 +310,7 @@ void update_layer_3(Layer* l) {
     bool current_lclick = ((dt & 0xFF00) >> 8) != 0;
 
     // Track dragging state
-    static bool is_dragging = false;
-    static Layer* dragged_layer = NULL;
-    static uint16_t drag_offset_x = 0;
-    static uint16_t drag_offset_y = 0;
+    // Drag state moved to g_drag (see ssoswindows.h)
 
     uint16_t mouse_x = (pos & 0xFFFF0000) >> 16;
     uint16_t mouse_y = pos & 0x0000FFFF;
@@ -331,107 +339,70 @@ void update_layer_3(Layer* l) {
                                    ? (mouse_y - clicked_layer->y)
                                    : 0;
             if (clicked_id > 0 && local_y <= TITLEBAR_HEIGHT) {
-                is_dragging = true;
-                dragged_layer = clicked_layer;
-                drag_offset_x = mouse_x - clicked_layer->x;
-                drag_offset_y = mouse_y - clicked_layer->y;
+                g_drag.is_dragging = true;
+                g_drag.dragged_layer = clicked_layer;
+                g_drag.drag_offset_x = mouse_x - clicked_layer->x;
+                g_drag.drag_offset_y = mouse_y - clicked_layer->y;
+                g_drag.drag_frame_x = clicked_layer->x;
+                g_drag.drag_frame_y = clicked_layer->y;
+                g_drag.drag_old_frame_x = -1;  // No previous frame to erase yet
+                g_drag.drag_old_frame_y = -1;
                 sprintf(g_click_debug_msg, "DRAG START: L%d at (%d,%d)",
                         clicked_id, mouse_x, mouse_y);
             } else {
-                is_dragging = false;
-                dragged_layer = NULL;
+                g_drag.is_dragging = false;
+                g_drag.dragged_layer = NULL;
             }
         } else {
-            is_dragging = false;
-            dragged_layer = NULL;
+            g_drag.is_dragging = false;
+            g_drag.dragged_layer = NULL;
             sprintf(g_click_debug_msg, "NO LAYER at (%d,%d)", mouse_x, mouse_y);
         }
     }
 
-    if (is_dragging && dragged_layer && current_lclick) {
-        int32_t target_x = (int32_t)mouse_x - (int32_t)drag_offset_x;
-        int32_t target_y = (int32_t)mouse_y - (int32_t)drag_offset_y;
+    // During drag: only track frame position for XOR border, no layer updates
+    if (g_drag.is_dragging && g_drag.dragged_layer && current_lclick) {
+        int32_t target_x = (int32_t)mouse_x - (int32_t)g_drag.drag_offset_x;
+        int32_t target_y = (int32_t)mouse_y - (int32_t)g_drag.drag_offset_y;
 
-        int32_t max_x = (int32_t)WIDTH - dragged_layer->w;
-        int32_t max_y = (int32_t)HEIGHT - dragged_layer->h;
-        if (max_x < 0)
-            max_x = 0;
-        if (max_y < 0)
-            max_y = 0;
+        int32_t max_x = (int32_t)WIDTH - g_drag.dragged_layer->w;
+        int32_t max_y = (int32_t)HEIGHT - g_drag.dragged_layer->h;
+        if (max_x < 0) max_x = 0;
+        if (max_y < 0) max_y = 0;
+        if (target_x < 0) target_x = 0;
+        if (target_y < 0) target_y = 0;
+        if (target_x > max_x) target_x = max_x;
+        if (target_y > max_y) target_y = max_y;
 
-        if (target_x < 0)
-            target_x = 0;
-        if (target_y < 0)
-            target_y = 0;
-        if (target_x > max_x)
-            target_x = max_x;
-        if (target_y > max_y)
-            target_y = max_y;
-
-        uint16_t aligned_x = (uint16_t)(target_x & ~0x7);
-        uint16_t aligned_y = (uint16_t)(target_y & ~0x7);
-
-        if (aligned_x != dragged_layer->x || aligned_y != dragged_layer->y) {
-            uint16_t old_x = dragged_layer->x;
-            uint16_t old_y = dragged_layer->y;
-            dragged_layer->x = aligned_x;
-            dragged_layer->y = aligned_y;
-
-            uint32_t old_right = (uint32_t)old_x + dragged_layer->w;
-            uint32_t old_bottom = (uint32_t)old_y + dragged_layer->h;
-            uint32_t new_right = (uint32_t)aligned_x + dragged_layer->w;
-            uint32_t new_bottom = (uint32_t)aligned_y + dragged_layer->h;
-
-            uint16_t min_x = (old_x < aligned_x) ? old_x : aligned_x;
-            uint16_t min_y = (old_y < aligned_y) ? old_y : aligned_y;
-            uint16_t max_right = (old_right > new_right) ? (uint16_t)old_right
-                                                         : (uint16_t)new_right;
-            uint16_t max_bottom = (old_bottom > new_bottom)
-                                      ? (uint16_t)old_bottom
-                                      : (uint16_t)new_bottom;
-
-            if (min_x >= 8) {
-                min_x -= 8;
-            }
-            if (min_y >= 8) {
-                min_y -= 8;
-            }
-            if (max_right + 8 <= WIDTH) {
-                max_right += 8;
-            } else {
-                max_right = WIDTH;
-            }
-            if (max_bottom + 8 <= HEIGHT) {
-                max_bottom += 8;
-            } else {
-                max_bottom = HEIGHT;
-            }
-
-            ss_damage_add_rect(min_x, min_y, max_right - min_x,
-                               max_bottom - min_y);
-
-            ss_layer_rebuild_z_map();
-
-            // Keep cursor anchored to the same spot on the title bar
-            drag_offset_x = mouse_x - dragged_layer->x;
-            drag_offset_y = mouse_y - dragged_layer->y;
-
-            ss_layer_mark_dirty(dragged_layer, 0, 0, dragged_layer->w,
-                                dragged_layer->h);
-
-            sprintf(g_click_debug_msg, "DRAG: L%d (%d,%d)",
-                    dragged_layer - ss_layer_mgr->layers, aligned_x, aligned_y);
-        }
+        g_drag.drag_old_frame_x = g_drag.drag_frame_x;
+        g_drag.drag_old_frame_y = g_drag.drag_frame_y;
+        g_drag.drag_frame_x = (int16_t)target_x;
+        g_drag.drag_frame_y = (int16_t)target_y;
     }
 
+    // Drag end: move layer to final position and trigger redraw
     if (!current_lclick && prev_lclick) {
-        if (is_dragging && dragged_layer) {
+        if (g_drag.is_dragging && g_drag.dragged_layer) {
+            Layer* l = g_drag.dragged_layer;
+
+            // Damage old position
+            ss_damage_add_rect(l->x, l->y, l->w, l->h);
+
+            // Move layer to new aligned position
+            l->x = (uint16_t)(g_drag.drag_frame_x & ~0x7);
+            l->y = (uint16_t)(g_drag.drag_frame_y & ~0x7);
+
+            // Damage new position
+            ss_damage_add_rect(l->x, l->y, l->w, l->h);
+
+            ss_layer_rebuild_z_map();
+            ss_layer_mark_dirty(l, 0, 0, l->w, l->h);
+
             sprintf(g_click_debug_msg, "DRAG END: L%d (%d,%d)",
-                    dragged_layer - ss_layer_mgr->layers, dragged_layer->x,
-                    dragged_layer->y);
+                    l - ss_layer_mgr->layers, l->x, l->y);
         }
-        is_dragging = false;
-        dragged_layer = NULL;
+        g_drag.is_dragging = false;
+        g_drag.dragged_layer = NULL;
     }
 
     prev_lclick = current_lclick;
@@ -566,4 +537,85 @@ void draw_taskbar(uint16_t* buf) {
                    HEIGHT - 4);
     // start
     ss_print_v(buf, WIDTH, HEIGHT, 1, color_tb, 16, HEIGHT - 24, "Start");
+}
+
+// Lightweight drag frame update (called during drag instead of full update_layer_3)
+void ss_drag_update_frame(void) {
+    uint32_t dt = _iocs_ms_getdt();
+    uint32_t pos = _iocs_ms_curgt();
+    bool current_lclick = ((dt & 0xFF00) >> 8) != 0;
+
+    uint16_t mouse_x = (pos & 0xFFFF0000) >> 16;
+    uint16_t mouse_y = pos & 0x0000FFFF;
+
+    // Update drag frame position
+    if (g_drag.is_dragging && g_drag.dragged_layer && current_lclick) {
+        int32_t target_x = (int32_t)mouse_x - (int32_t)g_drag.drag_offset_x;
+        int32_t target_y = (int32_t)mouse_y - (int32_t)g_drag.drag_offset_y;
+
+        int32_t max_x = (int32_t)WIDTH - g_drag.dragged_layer->w;
+        int32_t max_y = (int32_t)HEIGHT - g_drag.dragged_layer->h;
+        if (max_x < 0) max_x = 0;
+        if (max_y < 0) max_y = 0;
+        if (target_x < 0) target_x = 0;
+        if (target_y < 0) target_y = 0;
+        if (target_x > max_x) target_x = max_x;
+        if (target_y > max_y) target_y = max_y;
+
+        g_drag.drag_old_frame_x = g_drag.drag_frame_x;
+        g_drag.drag_old_frame_y = g_drag.drag_frame_y;
+        g_drag.drag_frame_x = (int16_t)target_x;
+        g_drag.drag_frame_y = (int16_t)target_y;
+
+        // Mark drag frame region as damage (for cleanup at drag end)
+        // Add margin for border thickness and drop shadow
+        if (g_drag.drag_old_frame_x >= 0) {
+            uint16_t margin = 8;
+            uint16_t old_x = (g_drag.drag_old_frame_x > margin) ? (g_drag.drag_old_frame_x - margin) : 0;
+            uint16_t old_y = (g_drag.drag_old_frame_y > margin) ? (g_drag.drag_old_frame_y - margin) : 0;
+            uint16_t old_w = g_drag.dragged_layer->w + margin * 2;
+            uint16_t old_h = g_drag.dragged_layer->h + margin * 2;
+            if (old_x + old_w > WIDTH) old_w = WIDTH - old_x;
+            if (old_y + old_h > HEIGHT) old_h = HEIGHT - old_y;
+            ss_damage_add_rect(old_x, old_y, old_w, old_h);
+        }
+    }
+
+    // Drag end: move layer to final position and trigger redraw
+    if (!current_lclick && g_drag.is_dragging) {
+        if (g_drag.dragged_layer) {
+            Layer* l = g_drag.dragged_layer;
+
+            // Phase 1: ERASE final XOR drag border from VRAM before moving layer
+            int phase = ss_timerd_counter / 2;
+            ss_xor_dotted_rect_vram(g_drag.drag_frame_x, g_drag.drag_frame_y,
+                                    l->w, l->h, phase);
+
+            // Phase 2: Damage old position
+            ss_damage_add_rect(l->x, l->y, l->w, l->h);
+
+            // Phase 3: Move layer to new aligned position
+            l->x = (uint16_t)(g_drag.drag_frame_x & ~0x7);
+            l->y = (uint16_t)(g_drag.drag_frame_y & ~0x7);
+
+            // Phase 4: Damage new position and drag frame area
+            ss_damage_add_rect(l->x, l->y, l->w, l->h);
+            
+            // Damage the last drag frame area for complete cleanup
+            uint16_t margin = 8;
+            uint16_t frame_x = (g_drag.drag_frame_x > margin) ? (g_drag.drag_frame_x - margin) : 0;
+            uint16_t frame_y = (g_drag.drag_frame_y > margin) ? (g_drag.drag_frame_y - margin) : 0;
+            ss_damage_add_rect(frame_x, frame_y, l->w + margin * 2, l->h + margin * 2);
+
+            ss_layer_rebuild_z_map();
+            ss_layer_mark_dirty(l, 0, 0, l->w, l->h);
+
+            sprintf(g_click_debug_msg, "DRAG END: L%d (%d,%d)",
+                    l - ss_layer_mgr->layers, l->x, l->y);
+        }
+        g_drag.is_dragging = false;
+        g_drag.dragged_layer = NULL;
+    }
+
+    g_drag.prev_lclick = current_lclick;
 }

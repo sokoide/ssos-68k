@@ -77,6 +77,9 @@ extern volatile uint16_t* crtc_execution_port;
 extern uint16_t* vram_start;
 extern uint16_t* vram_end;
 
+// XOR dotted rectangle directly on VRAM (for drag frame)
+void ss_xor_dotted_rect_vram(int16_t x, int16_t y, int16_t w, int16_t h, int phase);
+
 // VRAM address helper for direct rendering
 // Returns pointer to VRAM at given coordinates (for 16-color mode)
 // Note: Each pixel is 2 bytes in VRAM, color data is in lower byte (+1 offset)
