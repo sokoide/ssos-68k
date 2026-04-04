@@ -14,12 +14,13 @@ extern char local_info[256];
 // Global debug message for click events
 char g_click_debug_msg[256] = {0};
 
-void draw_title(uint8_t* buf);
-void draw_taskbar(uint8_t* buf);
+void draw_title(uint16_t* buf);
+void draw_taskbar(uint16_t* buf);
 
 Layer* get_layer_1() {
     Layer* l = ss_layer_get();
-    uint8_t* lbuf = (uint8_t*)ss_mem_alloc4k(WIDTH * HEIGHT);
+    // 16-bit backbuffer: 2 bytes per pixel
+    uint16_t* lbuf = (uint16_t*)ss_mem_alloc4k(WIDTH * HEIGHT * 2);
     ss_layer_set(l, lbuf, 0, 0, WIDTH, HEIGHT);
     ss_fill_rect_v(lbuf, WIDTH, HEIGHT, color_bg, 0, 0, WIDTH, HEIGHT - 33);
 
@@ -36,7 +37,8 @@ Layer* get_layer_2() {
     const int lw = 512;
     const int lh = 288;
 
-    uint8_t* lbuf = (uint8_t*)ss_mem_alloc4k(lw * lh);
+    // 16-bit backbuffer: 2 bytes per pixel
+    uint16_t* lbuf = (uint16_t*)ss_mem_alloc4k(lw * lh * 2);
     ss_layer_set(l, lbuf, 16, 80, lw, lh);
     ss_fill_rect_v(lbuf, lw, lh, 2, 0, 0, lw - 1, 24);
     ss_fill_rect_v(lbuf, lw, lh, 15, 0, 25, lw - 1, lh - 1);
@@ -55,7 +57,8 @@ Layer* get_layer_3() {
     const int lh =
         112; // Increased by 16 pixels (one line) for keyboard display
 
-    uint8_t* lbuf = (uint8_t*)ss_mem_alloc4k(lw * lh);
+    // 16-bit backbuffer: 2 bytes per pixel
+    uint16_t* lbuf = (uint16_t*)ss_mem_alloc4k(lw * lh * 2);
     ss_layer_set(l, lbuf, 192, 24, lw, lh);
     ss_fill_rect_v(lbuf, lw, lh, 3, 0, 0, lw - 1, 24);
     ss_fill_rect_v(lbuf, lw, lh, 15, 0, 25, lw - 1, lh - 1);
@@ -525,7 +528,7 @@ void update_layer_3(Layer* l) {
     // actually changes
 }
 
-void draw_title(uint8_t* buf) {
+void draw_title(uint16_t* buf) {
 #ifdef LOCAL_MODE
     ss_print_v(buf, WIDTH, HEIGHT, 5, 0, 0, 0,
                "Scott & Sandy OS x68k, [ESC] to quit");
@@ -534,7 +537,7 @@ void draw_title(uint8_t* buf) {
 #endif
 }
 
-void draw_taskbar(uint8_t* buf) {
+void draw_taskbar(uint16_t* buf) {
     // white line above the taskbar
     ss_fill_rect_v(buf, WIDTH, HEIGHT, 15, 0, HEIGHT - 33, WIDTH, HEIGHT - 32);
     // taskbar

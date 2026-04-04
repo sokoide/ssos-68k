@@ -146,12 +146,12 @@ int main(void) {
     _iocs_ms_curon(); /* activate IOCS mouse tracking (required for _MS_GETDT)
                        */
 
-    /* --- Create windows --- */
+    /* --- Create windows (within 256x256 visible area) --- */
     Window w1 = {
-        .x = 80,
-        .y = 60,
-        .w = 280,
-        .h = 120,
+        .x = 8,
+        .y = 8,
+        .w = 240,
+        .h = 110,
         .border_color = COL_WHITE,
         .title_bg = COL_BLUE,
         .title_fg = COL_WHITE,
@@ -161,10 +161,10 @@ int main(void) {
     win_counter = gui_register_window(&w1);
 
     Window w2 = {
-        .x = 400,
-        .y = 200,
-        .w = 280,
-        .h = 120,
+        .x = 8,
+        .y = 130,
+        .w = 240,
+        .h = 110,
         .border_color = COL_WHITE,
         .title_bg = COL_PURPLE,
         .title_fg = COL_WHITE,

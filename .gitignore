@@ -24,6 +24,7 @@ Thumbs.db
 .serena/
 .codex/
 .gemini/
+.omc/
 conductor/archive/
 
 # ---- Build artifacts ----

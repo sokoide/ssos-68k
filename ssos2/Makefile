@@ -17,7 +17,7 @@ LIB     = -L$(XELF_BASE)/m68k-elf/lib \
 CFLAGS  = $(INCLUDE) -O2 -g
 ASFLAGS = --strip-local-absolute -m68000 --register-prefix-optional
 
-OBJS = main.o gui.o timer.o task.o
+OBJS = main.o gui.o timer.o task.o dma.o
 
 all: $(TARGET)
 

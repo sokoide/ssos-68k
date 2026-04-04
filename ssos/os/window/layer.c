@@ -59,17 +59,47 @@ static void ss_layer_cpu_copy(uint8_t* dst, uint8_t* src, uint16_t count) {
     }
 }
 
-// VRAM blit: transfers pixels from offscreen buffer to X68000 VRAM
-// X68000 16-color mode: each pixel occupies one word (2 bytes) in VRAM,
-// with the pixel value stored in the low byte (+1 offset / odd address).
-// Pixels are NOT contiguous in VRAM - each pixel is 2 bytes apart.
+// VRAM blit: transfers pixels from 16-bit offscreen buffer to X68000 VRAM
+// 16-bit backbuffer: each pixel is a 16-bit word.
+// X68000 VRAM 16-color mode: each pixel is a 16-bit word at $C00000.
+// Since formats match, we can use fast 32-bit (2-pixel) moves OR DMAC.
 static void ss_layer_blit_to_vram(volatile uint16_t* vram, uint16_t vram_offset,
-                                  const uint8_t* src, uint16_t count) {
+                                  const uint16_t* src, uint16_t count) {
     volatile uint16_t* dst = vram + vram_offset;
-    for (uint16_t i = 0; i < count; i++) {
-        dst[i] = src[i];
+    
+    // Performance improvement: Use HD63450 DMAC for larger spans
+    // For 16-bit to 16-bit transfers, DMA is very efficient.
+    // Threshold of 16 pixels (32 bytes) to justify DMA setup overhead.
+    if (count >= 16) {
+        dma_clear();
+        dma_init_x68k_16color((uint8_t*)dst, (uint8_t*)src, count);
+        dma_start();
+        dma_wait_completion();
+        dma_clear();
+        g_damage_perf.dma_transfers_count++;
+    } else if (count >= 4 && ((uintptr_t)src & 3) == 0 && ((uintptr_t)dst & 3) == 0) {
+        // Performance improvement: Use 32-bit (2-pixel) moves for small-but-aligned spans
+        uint32_t* src32 = (uint32_t*)src;
+        uint32_t* dst32 = (uint32_t*)dst;
+        uint16_t blocks = count >> 1; // 2 pixels per block
+        
+        for (uint16_t i = 0; i < blocks; i++) {
+            *dst32++ = *src32++;
+        }
+        
+        if (count & 1) {
+            uint16_t* src16 = (uint16_t*)src32;
+            uint16_t* dst16 = (uint16_t*)dst32;
+            *dst16 = *src16;
+        }
+        g_damage_perf.cpu_transfers_count++;
+    } else {
+        // Simple word copy for very small or unaligned spans
+        for (uint16_t i = 0; i < count; i++) {
+            dst[i] = src[i];
+        }
+        g_damage_perf.cpu_transfers_count++;
     }
-    g_damage_perf.cpu_transfers_count++;
 }
 
 LayerMgr* ss_layer_mgr;
@@ -109,7 +139,7 @@ Layer* ss_layer_get() {
     return l;
 }
 
-void ss_layer_set(Layer* layer, uint8_t* vram, uint16_t x, uint16_t y,
+void ss_layer_set(Layer* layer, uint16_t* vram, uint16_t x, uint16_t y,
                   uint16_t w, uint16_t h) {
     layer->vram = vram;
     layer->x = (x & 0xFFF8);
@@ -310,7 +340,7 @@ void ss_layer_draw_rect_layer_bounds(Layer* l, uint16_t dx0, uint16_t dy0,
                 uint16_t transfer_width = actual_end - actual_start;
 
                 if (transfer_width > 0) {
-                    uint8_t* src = &l->vram[dy * l->w + actual_start];
+                    uint16_t* src = &l->vram[dy * l->w + actual_start];
                     volatile uint16_t* vram =
                         &vram_start[vy * VRAMWIDTH + l->x + actual_start];
                     ss_layer_blit_to_vram(vram, 0, src, transfer_width);
@@ -331,7 +361,7 @@ void ss_layer_draw_rect_layer_bounds(Layer* l, uint16_t dx0, uint16_t dy0,
             uint16_t transfer_width = actual_end - actual_start;
 
             if (transfer_width > 0) {
-                uint8_t* src = &l->vram[dy * l->w + actual_start];
+                uint16_t* src = &l->vram[dy * l->w + actual_start];
                 volatile uint16_t* vram =
                     &vram_start[vy * VRAMWIDTH + l->x + actual_start];
                 ss_layer_blit_to_vram(vram, 0, src, transfer_width);

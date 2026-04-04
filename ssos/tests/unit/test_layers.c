@@ -9,7 +9,7 @@
 extern LayerMgr* ss_layer_mgr;
 
 // Mock VRAM buffer for testing
-static uint8_t test_vram[1024 * 1024];  // 1MB test VRAM
+static uint16_t test_vram[1024 * 1024];  // 1MB test VRAM
 
 // Test helper: Initialize layer system
 static void setup_layer_system(void) {
@@ -142,9 +142,9 @@ TEST(layers_z_order_management) {
     ASSERT_EQ(ss_layer_mgr->zLayers[1], layer2);
     ASSERT_EQ(ss_layer_mgr->zLayers[2], layer3);
 
-    // Change z-order of middle layer
-    ss_layer_set_z(layer2, 5);
-    ASSERT_EQ(layer2->z, 5);
+    // Change z-order
+    ss_layer_set_z_order(layer2, 0);
+    ASSERT_EQ(layer2->z, 0);
 }
 
 // Test dirty rectangle tracking
@@ -258,8 +258,8 @@ TEST(layers_memory_management) {
     ASSERT_NOT_NULL(layer);
 
     // Test with different VRAM pointers
-    uint8_t* vram1 = test_vram;
-    uint8_t* vram2 = test_vram + 10000;
+    uint16_t* vram1 = test_vram;
+    uint16_t* vram2 = test_vram + 10000;
 
     ss_layer_set(layer, vram1, 0, 0, 100, 100);
     ASSERT_EQ(layer->vram, vram1);

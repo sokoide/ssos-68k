@@ -17,8 +17,8 @@
 #include <string.h>
 #include <x68k/iocs.h>
 
-/* --- Back buffer: 1 byte/pixel, SCREEN_W × SCREEN_H (384KB) --- */
-uint8_t backbuf[SCREEN_H][SCREEN_W];
+/* --- Back buffer: 16-bit words/pixel, SCREEN_W × SCREEN_H (160KB) --- */
+uint16_t backbuf[SCREEN_H][SCREEN_W];
 
 /* --- Global tick counter (written by Timer D ISR) --- */
 volatile uint32_t ssos2_tick = 0;
@@ -35,35 +35,17 @@ static int g_zorder[MAX_WINDOWS];
  * =========================================================== */
 
 void gui_init(void) {
-    _iocs_crtmod(16); /* 768×512, 16 colors */
+    _iocs_crtmod(13); /* 320x256, 65536 colors */
     _iocs_g_clr_on(); /* Clear VRAM, reset palette, page 0 */
     _iocs_b_curoff(); /* Hide text cursor */
 
-    gui_set_palette();
+    dma_init();
     memset(backbuf, 0, sizeof(backbuf));
     memset(g_wins, 0, sizeof(g_wins));
     g_num_wins = 0;
 }
 
-void gui_set_palette(void) {
-    /* Set GRAPHIC screen palette via IOCS TPALET2.
-     * Color code format: 0xRGB (4-bit per component, 12-bit total) */
-    _iocs_tpalet2(COL_BLACK, 0x000);    /* 0  */
-    _iocs_tpalet2(COL_BLUE, 0x00A);     /* 1  */
-    _iocs_tpalet2(COL_RED, 0xF22);      /* 2  */
-    _iocs_tpalet2(COL_MAGENTA, 0xF0A);  /* 3  */
-    _iocs_tpalet2(COL_GREEN, 0x0C0);    /* 4  */
-    _iocs_tpalet2(COL_CYAN, 0x0CC);     /* 5  */
-    _iocs_tpalet2(COL_YELLOW, 0xEE0);   /* 6  */
-    _iocs_tpalet2(COL_WHITE, 0xFFF);    /* 7  */
-    _iocs_tpalet2(COL_LGRAY, 0xCCE);    /* 8  */
-    _iocs_tpalet2(COL_DGRAY, 0x445);    /* 9  */
-    _iocs_tpalet2(COL_DESKTOP, 0x004);  /* 10 */
-    _iocs_tpalet2(COL_TITLE_HI, 0x22F); /* 11 */
-    _iocs_tpalet2(COL_ORANGE, 0xFA0);   /* 12 */
-    _iocs_tpalet2(COL_TEAL, 0x0AA);     /* 13 */
-    _iocs_tpalet2(COL_PURPLE, 0xA0F);   /* 14 */
-}
+
 
 /* ===========================================================
  * V-sync
@@ -81,9 +63,13 @@ void gui_wait_vsync(void) {
  * Drawing primitives (all to back buffer — fast, in RAM)
  * =========================================================== */
 
-void gui_clear(uint8_t color) { memset(backbuf, color, sizeof(backbuf)); }
+void gui_clear(uint16_t color) {
+    uint16_t* p = backbuf[0];
+    for (int i = 0; i < SCREEN_W * SCREEN_H; i++)
+        p[i] = color;
+}
 
-void gui_fill_rect(int x, int y, int w, int h, uint8_t color) {
+void gui_fill_rect(int x, int y, int w, int h, uint16_t color) {
     if (x < 0) {
         w += x;
         x = 0;
@@ -100,10 +86,11 @@ void gui_fill_rect(int x, int y, int w, int h, uint8_t color) {
         return;
 
     for (int row = y; row < y + h; row++)
-        memset(&backbuf[row][x], color, w);
+        for (int col = x; col < x + w; col++)
+            backbuf[row][col] = color;
 }
 
-void gui_draw_rect(int x, int y, int w, int h, uint8_t color) {
+void gui_draw_rect(int x, int y, int w, int h, uint16_t color) {
     gui_fill_rect(x, y, w, 1, color);         /* top    */
     gui_fill_rect(x, y + h - 1, w, 1, color); /* bottom */
     gui_fill_rect(x, y, 1, h, color);         /* left   */
@@ -111,7 +98,7 @@ void gui_draw_rect(int x, int y, int w, int h, uint8_t color) {
 }
 
 void gui_draw_dotted_rect_xor(int x, int y, int w, int h, int phase) {
-    uint8_t mask = 0x07;
+    uint16_t mask = 0xFFFF;
     /* Draw horizontal dotted lines (top/bottom) */
     for (int i = 0; i < w; i++) {
         if (((i + phase) % 4) < 2) {
@@ -137,7 +124,7 @@ void gui_draw_dotted_rect_xor(int x, int y, int w, int h, int phase) {
 }
 
 void gui_draw_cursor_xor(int x, int y) {
-    uint8_t mask = 0x07;
+    uint16_t mask = 0x0007;
     /* Horizontal line (11px wide) */
     for (int i = -5; i <= 5; i++) {
         int px = x + i;
@@ -175,20 +162,43 @@ void gui_draw_app_windows(void) {
     }
 }
 
-/* Draw one 8×16 character from CGROM */
-void gui_draw_char(int x, int y, char c, uint8_t fg, uint8_t bg) {
+/* Draw one 8×16 character from CGROM - optimized with branchless pixel selection */
+void gui_draw_char(int x, int y, char c, uint16_t fg, uint16_t bg) {
+    if (y < 0 || y + 16 > SCREEN_H) return;
     const uint8_t* glyph = CGROM_BASE + (uint8_t)c * 16;
-    for (int row = 0; row < 16; row++) {
-        uint8_t bits = glyph[row];
-        for (int col = 0; col < 8; col++) {
-            int px = x + col, py = y + row;
-            if (px >= 0 && px < SCREEN_W && py >= 0 && py < SCREEN_H)
-                backbuf[py][px] = (bits & (0x80 >> col)) ? fg : bg;
+    uint16_t xor_mask = fg ^ bg;
+
+    if (x >= 0 && x + 8 <= SCREEN_W) {
+        /* Fast path: branchless, pre-incremented pointer */
+        uint16_t* p = &backbuf[y][x];
+        for (int row = 0; row < 16; row++) {
+            uint8_t bits = glyph[row];
+            p[0] = bg ^ (xor_mask & ((uint16_t)(-(int16_t)(bits >> 7))));
+            p[1] = bg ^ (xor_mask & ((uint16_t)(-(int16_t)(bits >> 6))));
+            p[2] = bg ^ (xor_mask & ((uint16_t)(-(int16_t)(bits >> 5))));
+            p[3] = bg ^ (xor_mask & ((uint16_t)(-(int16_t)(bits >> 4))));
+            p[4] = bg ^ (xor_mask & ((uint16_t)(-(int16_t)(bits >> 3))));
+            p[5] = bg ^ (xor_mask & ((uint16_t)(-(int16_t)(bits >> 2))));
+            p[6] = bg ^ (xor_mask & ((uint16_t)(-(int16_t)(bits >> 1))));
+            p[7] = bg ^ (xor_mask & ((uint16_t)(-(int16_t)(bits >> 0))));
+            p += SCREEN_W;
+        }
+    } else {
+        /* Slow path: per-pixel clipping for edge cases */
+        for (int row = 0; row < 16; row++) {
+            uint8_t bits = glyph[row];
+            uint16_t* p = &backbuf[y + row][x];
+            for (int col = 0; col < 8; col++) {
+                int px = x + col;
+                if (px >= 0 && px < SCREEN_W)
+                    *p = (bits & (0x80 >> col)) ? fg : bg;
+                p++;
+            }
         }
     }
 }
 
-void gui_draw_text(int x, int y, const char* str, uint8_t fg, uint8_t bg) {
+void gui_draw_text(int x, int y, const char* str, uint16_t fg, uint16_t bg) {
     while (*str) {
         gui_draw_char(x, y, *str, fg, bg);
         x += 8;
@@ -338,38 +348,16 @@ void gui_flip_rect(int x, int y, int w, int h) {
     if (w <= 0 || h <= 0)
         return;
 
-    volatile uint16_t* vram = VRAM_BASE;
-    for (int row = y; row < y + h; row++) {
-        for (int col = x; col < x + w; col++)
-            vram[row * VRAM_W + col] = backbuf[row][col];
-    }
+    dma_copy_rect_words(&backbuf[y][x],
+                        (void*)(VRAM_BASE + (uint32_t)(y * VRAM_W) + x),
+                        w, h, SCREEN_W, VRAM_W);
 }
 
 void gui_flip_full(void) {
-    volatile uint16_t* vram = VRAM_BASE;
-    for (int row = 0; row < SCREEN_H; row++) {
-        for (int col = 0; col < SCREEN_W; col++)
-            vram[row * VRAM_W + col] = backbuf[row][col];
-    }
+    dma_copy_words(backbuf, (void*)VRAM_BASE, (uint32_t)SCREEN_W * SCREEN_H);
 }
-
-/* Flip the dirty region (union of all changed window areas + cursor).
- * For simplicity, just flip the whole screen on changes. */
-void gui_flip_dirty(int mx, int my, int mx_prev, int my_prev) {
-    (void)mx;
-    (void)my;
-    (void)mx_prev;
-    (void)my_prev;
-    gui_flip_full();
-}
-
 /* ===========================================================
  * Dirty region tracking
- *
- * Instead of flipping the ENTIRE 384KB to VRAM every frame,
- * we track a bounding rectangle of all changed areas and only
- * transfer that region. During drag this reduces VRAM writes
- * from ~393K pixels to ~50-100K — a 4-8x speedup.
  * =========================================================== */
 
 static int dirty_x0, dirty_y0, dirty_x1, dirty_y1;

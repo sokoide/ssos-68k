@@ -13,7 +13,7 @@ typedef struct {
     uint16_t x, y, z;
     uint16_t w, h;
     uint16_t attr;
-    uint8_t* vram;
+    uint16_t* vram;
     // Dirty rectangle tracking for performance
     uint16_t dirty_x, dirty_y, dirty_w, dirty_h;
     uint8_t needs_redraw;
@@ -31,7 +31,7 @@ extern LayerMgr* ss_layer_mgr;
 
 void ss_layer_init();
 Layer* ss_layer_get();
-void ss_layer_set(Layer* layer, uint8_t* vram, uint16_t x, uint16_t y,
+void ss_layer_set(Layer* layer, uint16_t* vram, uint16_t x, uint16_t y,
                   uint16_t w, uint16_t h);
 void ss_all_layer_draw();
 

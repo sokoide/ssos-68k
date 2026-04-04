@@ -32,11 +32,14 @@ void dma_prepare_x68k_16color(void) {
         return;
     }
 
-    dma->dcr = 0x00;  // VRAM 8-bit port - lower byte access
-    dma->ocr = 0x09;  // memory->vram, 8 bit, array chaining
-    dma->scr = 0x05;  // source increment by 1
+    // UPDATED for 16-bit backbuffer:
+    // Device: VRAM 16-bit port
+    // Source: Memory 16-bit access
+    dma->dcr = 0x04;  // VRAM 16-bit port
+    dma->ocr = 0x09;  // memory->vram, 16-bit transfer, array chaining
+    dma->scr = 0x06;  // source increment by 2
     dma->ccr = 0x00;
-    dma->cpr = 0x03;  // destination increment by 2 (VRAM pixel format)
+    dma->cpr = 0x03;  // destination increment by 2
     dma->mfc = 0x05;
     dma->dfc = 0x05;
     dma->bfc = 0x05;

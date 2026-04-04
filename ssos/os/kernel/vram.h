@@ -28,20 +28,20 @@ typedef struct {
 void ss_clear_vram_fast();
 void ss_wait_for_clear_vram_completion();
 
-void ss_fill_rect_v(uint8_t* offscreen, uint16_t sw, uint16_t sh,
+void ss_fill_rect_v(uint16_t* offscreen, uint16_t sw, uint16_t sh,
                     uint16_t color, int x0, int y0, int x1, int y1);
 
-void ss_draw_rect_v(uint8_t* offscreen, uint16_t sw, uint16_t sh,
+void ss_draw_rect_v(uint16_t* offscreen, uint16_t sw, uint16_t sh,
                     uint16_t color, int x0, int y0, int x1, int y1);
 
-void ss_put_char_v(uint8_t* offscreen, uint16_t sw, uint16_t sh,
+void ss_put_char_v(uint16_t* offscreen, uint16_t sw, uint16_t sh,
                    uint16_t fg_color, uint16_t bg_color, int x, int y, char c);
 
-void ss_print_v(uint8_t* offscreen, uint16_t sw, uint16_t sh, uint16_t fg_color,
+void ss_print_v(uint16_t* offscreen, uint16_t sw, uint16_t sh, uint16_t fg_color,
                 uint16_t bg_color, int x, int y, char* str);
 
 // Smart text functions that only redraw when text changes
-int ss_print_v_smart(uint8_t* offscreen, uint16_t sw, uint16_t sh, uint16_t fg_color,
+int ss_print_v_smart(uint16_t* offscreen, uint16_t sw, uint16_t sh, uint16_t fg_color,
                      uint16_t bg_color, int x, int y, char* str, char* prev_str);
 
 void ss_init_palette();
@@ -63,7 +63,7 @@ void ss_memcpy_32(uint32_t* dst, const uint32_t* src, size_t count);
 void ss_memset_32(uint32_t* dst, uint32_t value, size_t count);
 
 // Optimized rectangle fill using word-alignment
-void ss_fill_rect_v_fast(uint8_t* offscreen, uint16_t w, uint16_t h,
+void ss_fill_rect_v_fast(uint16_t* offscreen, uint16_t w, uint16_t h,
                          uint16_t color, int x0, int y0, int x1, int y1);
 
 // globals
@@ -80,6 +80,6 @@ extern uint16_t* vram_end;
 // VRAM address helper for direct rendering
 // Returns pointer to VRAM at given coordinates (for 16-color mode)
 // Note: Each pixel is 2 bytes in VRAM, color data is in lower byte (+1 offset)
-static inline uint8_t* ss_vram_get_ptr(uint16_t x, uint16_t y) {
-    return ((uint8_t*)&vram_start[y * 1024 + x]) + 1;
+static inline uint16_t* ss_vram_get_ptr(uint16_t x, uint16_t y) {
+    return &vram_start[y * 1024 + x];
 }
