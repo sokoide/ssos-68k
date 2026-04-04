@@ -32,14 +32,14 @@ void dma_prepare_x68k_16color(void) {
         return;
     }
 
-    // UPDATED for 16-bit backbuffer:
-    // Device: VRAM 16-bit port
-    // Source: Memory 16-bit access
+    // 16-bit backbuffer to VRAM 16-bit port:
+    // Device: VRAM 16-bit port, Source: Memory
     dma->dcr = 0x04;  // VRAM 16-bit port
-    dma->ocr = 0x09;  // memory->vram, 16-bit transfer, array chaining
-    dma->scr = 0x06;  // source increment by 2
+    dma->ocr = 0x09;  // memory->vram, array chaining
+    dma->scr = 0x05;  // MAR and DAR both increment (0x06 = MAR only, DAR fixed!)
     dma->ccr = 0x00;
-    dma->cpr = 0x03;  // destination increment by 2
+    // NOTE: CPR (offset $2D) is Channel Priority Register, NOT destination increment.
+    // DAR increment is controlled by SCR bit 0.
     dma->mfc = 0x05;
     dma->dfc = 0x05;
     dma->bfc = 0x05;
