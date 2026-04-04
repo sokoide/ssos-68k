@@ -64,9 +64,11 @@ void gui_wait_vsync(void) {
  * =========================================================== */
 
 void gui_clear(uint16_t color) {
-    uint16_t* p = backbuf[0];
-    for (int i = 0; i < SCREEN_W * SCREEN_H; i++)
-        p[i] = color;
+    uint32_t c32 = ((uint32_t)color << 16) | color;
+    uint32_t* p = (uint32_t*)backbuf;
+    int n = (SCREEN_W * SCREEN_H) / 2;
+    for (int i = 0; i < n; i++)
+        p[i] = c32;
 }
 
 void gui_fill_rect(int x, int y, int w, int h, uint16_t color) {
@@ -85,9 +87,30 @@ void gui_fill_rect(int x, int y, int w, int h, uint16_t color) {
     if (w <= 0 || h <= 0)
         return;
 
-    for (int row = y; row < y + h; row++)
-        for (int col = x; col < x + w; col++)
-            backbuf[row][col] = color;
+    uint32_t c32 = ((uint32_t)color << 16) | color;
+
+    for (int row = y; row < y + h; row++) {
+        uint16_t* p = &backbuf[row][x];
+        int rem = w;
+
+        /* Align to 4-byte boundary */
+        if ((uintptr_t)p & 2) {
+            *p++ = color;
+            rem--;
+        }
+
+        /* 32-bit fill: 2 pixels per write */
+        uint32_t* p32 = (uint32_t*)p;
+        int pairs = rem / 2;
+        for (int i = 0; i < pairs; i++)
+            p32[i] = c32;
+
+        /* Trailing pixel */
+        if (rem & 1) {
+            uint16_t* tail = (uint16_t*)(p32 + pairs);
+            *tail = color;
+        }
+    }
 }
 
 void gui_draw_rect(int x, int y, int w, int h, uint16_t color) {
@@ -144,15 +167,22 @@ void gui_draw_cursor_xor(int x, int y) {
 }
 
 void gui_draw_app_windows(void) {
-    /* Draw windows from bottom to top without clearing desktop */
+    /* Find lowest z-order of any dirty window */
+    int lowest_dirty = g_num_wins;
     for (int i = 0; i < g_num_wins; i++) {
+        int idx = g_zorder[i];
+        if (g_wins[idx].dirty && i < lowest_dirty)
+            lowest_dirty = i;
+    }
+    if (lowest_dirty >= g_num_wins) return;
+
+    /* Redraw from lowest dirty to top (covers overlap correctly) */
+    for (int i = lowest_dirty; i < g_num_wins; i++) {
         int idx = g_zorder[i];
         AppWin* aw = &g_wins[idx];
 
-        /* Draw the window frame */
         gui_draw_window(&aw->win);
 
-        /* Draw body text lines */
         int tx = aw->win.x + 10;
         int ty = aw->win.y + TITLEBAR_H + 8;
         gui_draw_text(tx, ty, aw->line1, COL_WHITE, aw->win.body_bg);
