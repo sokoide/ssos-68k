@@ -7,13 +7,16 @@ SRCS=	main.c \
 		../os/kernel/scheduler.c \
 		../os/mem/buddy.c \
 		../os/mem/slab.c
+ASRCS=	../os/kernel/interrupts.s
 
 OBJDIR=obj
 
 SRC_OBJS=$(patsubst %.c,$(OBJDIR)/%.o,$(notdir $(SRCS)))
-OBJS=$(SRC_OBJS)
+ASRC_OBJS=$(patsubst %.s,$(OBJDIR)/%.o,$(notdir $(ASRCS)))
+OBJS=$(ASRC_OBJS) $(SRC_OBJS)
 
 CC=m68k-xelf-gcc
+AS=m68k-xelf-as
 LD=m68k-xelf-ld
 OBJDUMP=m68k-xelf-objdump
 READELF=m68k-xelf-readelf
@@ -42,6 +45,9 @@ $(OBJDIR)/%.o: %.c | $(OBJDIR)
 
 $(OBJDIR)/%.o: ../os/kernel/%.c | $(OBJDIR)
 	$(CC) -Wa,-adhlns="$@.lst" -c $< -o $@ $(CCFLAGS)
+
+$(OBJDIR)/%.o: ../os/kernel/%.s | $(OBJDIR)
+	$(AS) --strip-local-absolute $< -o $@ -m68000 --register-prefix-optional --traditional-format -I../include -I../os/kernel
 
 $(OBJDIR)/%.o: ../os/mem/%.c | $(OBJDIR)
 	$(CC) -Wa,-adhlns="$@.lst" -c $< -o $@ $(CCFLAGS)

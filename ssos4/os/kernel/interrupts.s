@@ -231,6 +231,7 @@ s4_vdisp_handler:
 		.extern s4_curr_task
 		.extern s4_scheduled_task
 		.extern s4_do_context_switch
+		.extern s4_do_wakeups
 
 s4_timerd_handler:
 		| Save ALL registers for preemptive context switch
@@ -247,6 +248,9 @@ s4_timerd_handler:
 		bne.s	.no_switch
 
 		move.b	#0, (a0)
+
+		| Wake up sleeping tasks whose deadline has passed
+		bsr	s4_do_wakeups
 
 		| Check if there's a current task
 		move.l	s4_curr_task, d0

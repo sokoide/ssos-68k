@@ -138,18 +138,18 @@ void s4_do_context_switch(void) {
     S4Task* curr = (S4Task*)s4_curr_task;
     if (curr == NULL) return;
 
-    /* Context SP is saved by the interrupt handler assembly */
-    /* This function only handles the scheduling decision */
+    /* Round-robin: move current task to tail BEFORE picking next.
+       This ensures s4_sched_pick() returns a different task. */
+    if (curr->state == S4_TS_READY) {
+        s4_sched_dequeue(curr);
+        s4_sched_enqueue(curr);
+    }
 
     S4Task* next = s4_sched_pick();
     if (next == NULL || next == curr) {
         s4_scheduled_task = curr;
         return;
     }
-
-    /* Round-robin: move current to end of its priority queue */
-    s4_sched_dequeue(curr);
-    s4_sched_enqueue(curr);
 
     s4_scheduled_task = next;
     s4_curr_task = next;
@@ -165,7 +165,12 @@ uint16_t s4_task_sleep(uint32_t ms) {
     s4_sched_dequeue(curr);
     s4_enable_interrupts();
 
-    /* Task will be woken by timer tick when wait_until expires */
+    /* Spin until timer interrupt wakes us and reschedules us.
+       Without this, the task continues executing after sleep()
+       and may call sleep() again, corrupting the ready queue. */
+    while (((volatile S4Task*)curr)->state == S4_TS_WAIT)
+        ;
+
     return S4_OK;
 }
 
@@ -179,7 +184,7 @@ void s4_task_yield(void) {
     s4_enable_interrupts();
 }
 
-void s4_process_wakeups(void) {
+void s4_do_wakeups(void) {
     uint32_t now = s4_tick_counter;
     for (uint16_t i = 0; i < S4_MAX_TASKS; i++) {
         S4Task* tcb = &tcb_table[i];
@@ -189,4 +194,8 @@ void s4_process_wakeups(void) {
             s4_sched_enqueue(tcb);
         }
     }
+}
+
+void s4_process_wakeups(void) {
+    s4_do_wakeups();
 }

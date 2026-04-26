@@ -46,6 +46,7 @@ S4Task* s4_sched_pick(void);
 uint16_t s4_task_create(S4TaskInfo* info);
 uint16_t s4_task_start(uint16_t id);
 void     s4_do_context_switch(void);
+void     s4_do_wakeups(void);
 uint16_t s4_task_sleep(uint32_t ms);
 void     s4_task_yield(void);
 void     s4_process_wakeups(void);
