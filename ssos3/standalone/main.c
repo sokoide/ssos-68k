@@ -270,6 +270,46 @@ static void draw_text(int px, int py, const char* s, uint8_t fg, uint8_t bg) {
     }
 }
 
+/* Draw char, skipping pixels covered by windows above zmap[zpos] */
+static void draw_char8_clip(int px, int py, char ch, uint8_t fg, uint8_t bg,
+                            int zpos) {
+    uint8_t c = (uint8_t)ch;
+    if (c < 0x20 || c > 0x7E)
+        c = ' ';
+    const uint8_t* g = spleen_5x8[c - 0x20];
+    for (int r = 0; r < 8; r++) {
+        int yy = py + r;
+        if (yy < 0 || yy >= DISP_H)
+            continue;
+        volatile uint16_t* row = GVRAM + yy * GVRAM_STR;
+        uint8_t bits = g[r];
+        for (int b = 0; b < 5; b++) {
+            int xx = px + b;
+            if (xx < 0 || xx >= DISP_W)
+                continue;
+            int covered = 0;
+            for (int k = zpos + 1; k < 3; k++) {
+                Win* ow = &wins[zmap[k]];
+                if (xx >= ow->x && xx < ow->x + ow->w &&
+                    yy >= ow->y && yy < ow->y + ow->h) {
+                    covered = 1;
+                    break;
+                }
+            }
+            if (!covered)
+                row[xx] = (bits & (0x80 >> b)) ? fg : bg;
+        }
+    }
+}
+
+static void draw_text_clip(int px, int py, const char* s, uint8_t fg,
+                           uint8_t bg, int zpos) {
+    while (*s) {
+        draw_char8_clip(px, py, *s++, fg, bg, zpos);
+        px += 6;
+    }
+}
+
 static void pad(char* s, int n) {
     int l = (int)strlen(s);
     for (int i = l; i < n; i++) s[i] = ' ';
@@ -597,7 +637,18 @@ int main(void) {
             draw_march_outline(wins[drag].x, wins[drag].y, wins[drag].w,
                                wins[drag].h);
         } else {
-            for (int i = 0; i < 3; i++) draw_content_dirty(&wins[zmap[i]]);
+            for (int i = 0; i < 3; i++) {
+                int idx = zmap[i];
+                Win* w = &wins[idx];
+                for (int j = 0; j < 3; j++) {
+                    if (memcmp(w->line[j], w->prev[j], 30) != 0) {
+                        draw_text_clip(w->x + 4,
+                                       w->y + CONTENT_Y + j * LINE_H,
+                                       w->line[j], C_BLACK, C_WHITE, i);
+                        memcpy(w->prev[j], w->line[j], 30);
+                    }
+                }
+            }
         }
     }
 
