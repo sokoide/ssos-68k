@@ -257,11 +257,36 @@ static void draw_frame(Win* w) {
     draw_text(w->x + 4, w->y + 1, w->title, C_BLACK, w->title_bg);
 }
 
-static void draw_outline(int x, int y, int w, int h) {
-    fill_rect(x, y, x + w - 1, y, C_WHITE);
-    fill_rect(x, y + h - 1, x + w - 1, y + h - 1, C_WHITE);
-    fill_rect(x, y, x, y + h - 1, C_WHITE);
-    fill_rect(x + w - 1, y, x + w - 1, y + h - 1, C_WHITE);
+/* MacOS 7 style marching ants outline */
+static void draw_march_outline(int x, int y, int w, int h) {
+    int offset = (int)(frame & 7);  /* Animate every frame */
+    uint16_t colors[2] = { C_WHITE, C_BLACK };
+    /* Walk perimeter: top → right → bottom → left */
+    int peri = 0;
+    /* Top edge (left to right) */
+    for (int i = 0; i < w; i++, peri++) {
+        int px = x + i;
+        if (px >= 0 && px < DISP_W && y >= 0 && y < DISP_H)
+            GVRAM[y * GVRAM_STR + px] = colors[((peri + offset) >> 2) & 1];
+    }
+    /* Right edge (top to bottom) */
+    for (int i = 1; i < h; i++, peri++) {
+        int py = y + i;
+        if (x + w - 1 >= 0 && x + w - 1 < DISP_W && py >= 0 && py < DISP_H)
+            GVRAM[py * GVRAM_STR + x + w - 1] = colors[((peri + offset) >> 2) & 1];
+    }
+    /* Bottom edge (right to left) */
+    for (int i = w - 2; i >= 0; i--, peri++) {
+        int px = x + i;
+        if (px >= 0 && px < DISP_W && y + h - 1 >= 0 && y + h - 1 < DISP_H)
+            GVRAM[(y + h - 1) * GVRAM_STR + px] = colors[((peri + offset) >> 2) & 1];
+    }
+    /* Left edge (bottom to top) */
+    for (int i = h - 2; i >= 1; i--, peri++) {
+        int py = y + i;
+        if (x >= 0 && x < DISP_W && py >= 0 && py < DISP_H)
+            GVRAM[py * GVRAM_STR + x] = colors[((peri + offset) >> 2) & 1];
+    }
 }
 
 /* ---- Outline save / restore ---- */
@@ -378,6 +403,7 @@ int main(void) {
     s3_mem_init(local_memory, sizeof(local_memory));
     s3_sched_init();
 
+    int old_mode = _iocs_crtmod(-1);
     _iocs_crtmod(8); /* 512x512 65536-color */
     _iocs_g_clr_on();
     _iocs_b_curoff();
@@ -485,14 +511,14 @@ int main(void) {
             }
             if (drag >= 0) {
                 ol_save(wins[drag].x, wins[drag].y, wins[drag].w, wins[drag].h);
-                draw_outline(wins[drag].x, wins[drag].y, wins[drag].w,
+                draw_march_outline(wins[drag].x, wins[drag].y, wins[drag].w,
                              wins[drag].h);
             }
             need_full = 0;
         } else if (drag >= 0) {
             ol_restore();
             ol_save(wins[drag].x, wins[drag].y, wins[drag].w, wins[drag].h);
-            draw_outline(wins[drag].x, wins[drag].y, wins[drag].w,
+            draw_march_outline(wins[drag].x, wins[drag].y, wins[drag].w,
                          wins[drag].h);
         } else {
             for (int i = 0; i < 3; i++) draw_content_dirty(&wins[zmap[i]]);
@@ -502,7 +528,7 @@ int main(void) {
     ol_restore();
     _iocs_ms_curof();
     _iocs_skey_mod(-1, 0, 0);
-    _iocs_crtmod(0);
+    _iocs_crtmod(old_mode);
     _iocs_b_curon();
     _iocs_b_print("SSOS3 terminated.\r\n");
     _iocs_b_super(ssp);
