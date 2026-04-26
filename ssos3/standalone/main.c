@@ -308,10 +308,16 @@ int main(void) {
             sprintf(wins[0].line[1], "Time: %lu.%02lu",sec,frac); pad(wins[0].line[1],24);
             sprintf(wins[0].line[2], "Frame: %lu/57", frame%57); pad(wins[0].line[2],24);
         }
-        {   /* Test: display alphabet for font debugging */
-            strcpy(wins[1].line[0], "abcdefgh"); pad(wins[1].line[0],24);
-            strcpy(wins[1].line[1], "ijklmnop"); pad(wins[1].line[1],24);
-            strcpy(wins[1].line[2], "qrstuvwx"); pad(wins[1].line[2],24);
+        {   if (last_key >= 0) {
+                int k = last_key & 0xFF;
+                char ch = (k >= 0x20 && k < 0x7F) ? (char)k : '.';
+                sprintf(wins[1].line[0],"Code:%02XH '%c'",k,ch); pad(wins[1].line[0],24);
+                sprintf(wins[1].line[1],"Shift:%02XH",(last_key>>8)&0xFF); pad(wins[1].line[1],24);
+            } else {
+                strcpy(wins[1].line[0], "Press any key...  "); pad(wins[1].line[0],24);
+                strcpy(wins[1].line[1], "                        ");
+            }
+            strcpy(wins[1].line[2], "                        ");
         }
         {   sprintf(wins[2].line[0],"X:%3d Y:%3d",mx,my); pad(wins[2].line[0],24);
             sprintf(wins[2].line[1],"L=%s", left?"DN":"UP"); pad(wins[2].line[1],24);
