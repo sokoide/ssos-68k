@@ -622,6 +622,7 @@ int main(void) {
             strcpy(wins[2].line[2], "                        ");
         }
 
+        if (need_full || drag >= 0 || (frame % 11 == 0)) {
         if (need_full) {
             fill_stipple(0, 0, DISP_W - 1, DISP_H - 1, C_WHITE, C_GRAY_M);
             for (int i = 0; i < 3; i++) {
@@ -650,6 +651,7 @@ int main(void) {
                 }
             }
         }
+        } /* render gate */
     }
 
     ol_restore();
