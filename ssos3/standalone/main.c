@@ -94,18 +94,19 @@ static void fill_rect(int x0, int y0, int x1, int y1, uint16_t c) {
 }
 
 static void draw_char8(int px, int py, char ch, uint16_t fg, uint16_t bg) {
-    if (ch < 0x20 || ch > 0x7E) ch = ' ';
-    /* Read 8x8 ANK font at CGROM+$F3C000, 16 bytes per character (16bit bus layout) */
-    const uint8_t* g = CGROM + 0x3C000 + ch * 16;
+    uint8_t c = (uint8_t)ch;
+    if (c < 0x20 || (c > 0x7E && c < 0xA1) || c > 0xDF) c = ' ';
+    /* Read 8x8 ANK font at CGROM+$F3A000, 8 bytes per character (packed layout) */
+    const uint8_t* g = CGROM + 0x3A000 + c * 8;
     for (int r = 0; r < 8; r++) {
         int yy = py + r;
         if (yy < 0 || yy >= SH) continue;
         volatile uint16_t* row = GVRAM + yy * GVRAM_STR;
-        uint8_t bits = g[r * 2];  /* Skip dummy byte */
-        for (int c = 0; c < 8; c++) {
-            int xx = px + c;
+        uint8_t bits = g[r];
+        for (int b = 0; b < 8; b++) {
+            int xx = px + b;
             if (xx >= 0 && xx < SW)
-                row[xx] = (bits & (0x80 >> c)) ? fg : bg;
+                row[xx] = (bits & (0x80 >> b)) ? fg : bg;
         }
     }
 }
