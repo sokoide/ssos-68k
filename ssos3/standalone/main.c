@@ -547,7 +547,8 @@ int main(void) {
             mx = (int16_t)((pos >> 16) & 0xFFFF);
             my = (int16_t)(pos & 0xFFFF);
         }
-        int left = ((dt >> 8) & 0xFF) != 0;
+        int left = (dt & 0x0200) != 0;
+        int right = (dt & 0x0001) != 0;
 
         if (left && drag < 0) {
             int hit = hit_test(mx, my);
@@ -617,7 +618,7 @@ int main(void) {
         {
             sprintf(wins[2].line[0], "X:%3d Y:%3d", mx, my);
             pad(wins[2].line[0], 24);
-            sprintf(wins[2].line[1], "L=%s", left ? "DN" : "UP");
+            sprintf(wins[2].line[1], "L=%s R=%s", left ? "DN" : "UP", right ? "DN" : "UP");
             pad(wins[2].line[1], 24);
             strcpy(wins[2].line[2], "                        ");
         }
