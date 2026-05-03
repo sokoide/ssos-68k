@@ -169,6 +169,63 @@ X68000 の DMAC チャネル2（汎用）を使用すると、大面積の VRAM 
 
 DMA 導入の優先度は `fill_rect` が最も高く（ドラッグ開始時の stipple 再描画で効果大）、次いで `fill_stipple`（初回描画の高速化）。
 
+## プリエンティブコンテキストスイッチの 68000/68030 両対応
+
+### 問題: `rte` 命令の例外フレーム差異
+
+68000 と 68030 では `rte` (Return from Exception) が期待するスタックフレームが異なる:
+
+| CPU | `rte` が消費するフレーム |
+| :--- | :--- |
+| 68000 | SR (2バイト) + PC (4バイト) = **6バイト** |
+| 68030 | Format/Vector (2バイト) + SR (2バイト) + PC (4バイト) = **8バイト** |
+
+タイマ割り込みで CPU が自動的に push するフレームは各 CPU 仕様に合致するため、そのまま `rte` で戻れる。しかし、タスクの明示的 yield (s4_task_yield) や新規タスク起動では、コードが手動で SR + PC を push する。68030 でこのフレームを `rte` で消費すると、SR (0x2000) を Format/Vector word と誤認し (format=2 = short bus error)、不正な PC に jump して **bus error** が発生する。
+
+### 解決策: resume_type による復帰方法の選択
+
+TCB の `pad` フィールド (offset 31) を `resume_type` として使用し、3種類の復帰パスを切り替える:
+
+| resume_type | 場面 | 復帰方法 |
+| :--- | :--- | :--- |
+| 0 | タイマ割り込みによるプリエンプション | `movem.l` → **`rte`** (CPU frame安全) |
+| 1 | `s4_task_yield` による自発的 yield | `movem.l` → `move.w (sp)+,%sr` → `move.l (sp)+,%a0` → **`jmp (%a0)`** |
+| (新規タスク) | context == stack_base | `move.w #0x2000,%sr` → **`jmp entry`** |
+
+**要点**: `rte` はタイマ割り込みされたタスクのみ使用。yield と新規タスクは `rte` を使わず、手動で SR を復帰して `jmp` で遷移する。これにより CPU 種別に依存しない安全なコンテキストスイッチが実現できる。
+
+### スタックフレーム構造
+
+#### タイマ割り込み (resume_type = 0)
+
+```
+SP → d0-d7/a0-a6 (60バイト, movem.l)
+     CPU例外フレーム (68000: SR+PC, 68030: Fmt+SR+PC)  ← CPUがpush
+```
+
+復帰: `movem.l (sp)+,d0-d7/a0-a6` → `rte` (CPUが自身のフレームを正しく消費)
+
+#### Yield (resume_type = 1)
+
+```
+SP → d0-d7/a0-a6 (60バイト, movem.l)
+     SR = 0x2000 (2バイト, 手動push)
+     .yield_resume アドレス (4バイト, pea)
+     元のreturn address (4バイト, bsr s4_task_yield がpush)
+```
+
+復帰: `movem.l (sp)+,d0-d7/a0-a6` → `move.w (sp)+,%sr` → `move.l (sp)+,%a0` → `jmp (%a0)` → `.yield_resume` で `rts`
+
+#### 新規タスク
+
+スタックは使用せず、TCB の entry フィールドから直接 jump:
+
+```
+move.l  20(a1), a0    | a0 = タスクエントリ関数
+move.w  #0x2000, %sr  | 割り込み許可
+jmp     (%a0)         | タスク開始
+```
+
 ## 今後の拡張
 - 8x16 フォントおよび全角文字のパレットモード対応。
 - ドラッグ中のウィンドウのアウトラインアニメーション（マーチングアンツ）の最適化。
