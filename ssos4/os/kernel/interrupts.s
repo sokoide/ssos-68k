@@ -231,6 +231,12 @@ s4_vdisp_handler:
 		|   entry      = 20  (function pointer)
 		|   wait_until = 24  (uint32_t)
 		|   state      = 28  (uint8_t)
+		|   pri        = 29  (uint8_t)
+		|   ctx_level  = 30  (uint8_t)
+		|   pad        = 31  (uint8_t) = resume_type
+		|
+		| resume_type: 0 = timer-interrupted (rte safe)
+		|              1 = yielded (manual SR/PC restore)
 		| ============================================================
 		.extern s4_curr_task
 		.extern s4_scheduled_task
@@ -241,17 +247,6 @@ s4_timerd_handler:
 		| Minimal save: only d0/a0 needed for non-switch path
 		movem.l	d0/a0, -(sp)
 		addq.l	#1, s4_tick_counter
-
-		| CPU detection (first tick only)
-		| On 68000: exception frame at sp+8 is SR (0x2xxx)
-		| On 68030: exception frame at sp+8 is format/vector (0x00xx)
-		tst.b	s4_cpu_030
-		bne.s	.cpu_done
-		move.w	8(sp), d0
-		andi.w	#0xF000, d0
-		bne.s	.cpu_done		| 68000: leave s4_cpu_030=0
-		move.b	#1, s4_cpu_030		| 68030 detected
-	.cpu_done:
 
 		lea		s4_switch_tick, a0
 		addq.b	#1, (a0)
@@ -275,6 +270,10 @@ s4_timerd_handler:
 		andi.b	#0xef, d1
 		move.b	d1, (a0)
 
+		| Mark as timer-interrupted (resume_type = 0)
+		move.l	s4_curr_task, a1
+		move.b	#0, 31(a1)
+
 		bra.w	s4_context_switch
 
 	.no_switch:
@@ -294,11 +293,10 @@ s4_timerd_handler:
 		rte
 
 		| ============================================================
-		| s4_context_switch - Preemptive context switch
+		| s4_context_switch - Save current task, switch to next
 		|
-		| Called from timer handler. Never returns to caller.
 		| On entry: all registers saved on current task's stack
-		|           by timer handler's movem.l
+		|           resume_type already set in TCB
 		| ============================================================
 s4_context_switch:
 		| Save current SP to curr_task->context
@@ -308,7 +306,13 @@ s4_context_switch:
 		| Call C scheduler to pick next task
 		bsr	s4_do_context_switch
 
-		| Load next task's context SP
+		| Fall through to .resume_task
+
+		| ============================================================
+		| .resume_task - Resume the scheduled task
+		| Uses resume_type (TCB offset 31) to select restore method
+		| ============================================================
+	.resume_task:
 		move.l	s4_scheduled_task, a1
 		move.l	(a1), sp
 
@@ -317,58 +321,46 @@ s4_context_switch:
 		move.l	(a1), a0
 		move.l	12(a1), d0
 		cmp.l	a0, d0
-		beq.w	.start_new_task
+		beq.w	.start_task
 
-		| Existing task: restore registers and return from exception
+		| Check resume_type at TCB offset 31
+		cmpi.b	#0, 31(a1)
+		beq.s	.resume_interrupted
+
+		| resume_type == 1: yielded, manual SR/PC restore (no rte)
+		movem.l	(sp)+, d0-d7/a0-a6
+		move.w	(sp)+, %sr
+		move.l	(sp)+, %a0
+		jmp		(%a0)
+
+	.resume_interrupted:
+		| resume_type == 0: timer-interrupted, CPU frame intact, rte safe
 		movem.l	(sp)+, d0-d7/a0-a6
 		rte
 
-	.start_new_task:
-		| Build initial exception frame for new task
-		| rte pops: SR (2 bytes), then PC (4 bytes)
+	.start_task:
+		| New task: set SR and jump directly (no rte)
 		move.l	20(a1), a0		| a0 = task entry function
-		move.l	12(a1), sp		| sp = stack_base (top of stack)
-		move.l	a0, -(sp)		| Push PC (task entry point)
-		move.w	#0x2000, -(sp)		| Push SR (supervisor, interrupts enabled)
-		tst.b	s4_cpu_030
-		beq.s	.do_rte_new
-		move.w	#0x0000, -(sp)		| format 0 word for 68030
-	.do_rte_new:
-		rte				| Start the new task
+		move.w	#0x2000, %sr		| enable interrupts
+		jmp		(%a0)			| start the task
 
 
 		| ============================================================
 		| s4_task_yield - Voluntary context switch (callable from C)
 		| ============================================================
 s4_task_yield:
+		| Build manual resume frame: SR + return PC
 		pea		.yield_resume
 		move.w	#0x2000, -(sp)
-		tst.b	s4_cpu_030
-		beq.s	.no_fmt_yield
-		move.w	#0x0000, -(sp)
-	.no_fmt_yield:
+		| Save all registers
 		movem.l	d0-d7/a0-a6, -(sp)
+		| Mark as yielded (resume_type = 1)
 		move.l	s4_curr_task, a1
+		move.b	#1, 31(a1)
+		| Save SP and switch
 		move.l	sp, (a1)
 		bsr	s4_do_context_switch
-		move.l	s4_scheduled_task, a1
-		move.l	(a1), sp
-		move.l	(a1), a0
-		move.l	12(a1), d0
-		cmp.l	a0, d0
-		beq.w	.start_new_task_yield
-		movem.l	(sp)+, d0-d7/a0-a6
-		rte
-	.start_new_task_yield:
-		move.l	20(a1), a0
-		move.l	12(a1), sp
-		move.l	a0, -(sp)
-		move.w	#0x2000, -(sp)
-		tst.b	s4_cpu_030
-		beq.s	.do_rte_yield
-		move.w	#0x0000, -(sp)		| format 0 word for 68030
-	.do_rte_yield:
-		rte
+		bra.w	.resume_task
 	.yield_resume:
 		rts
 
@@ -389,9 +381,6 @@ s4_switch_tick:
 		.even
 s4_switch_count:
 		dc.l	0
-		.even
-s4_cpu_030:
-		dc.b	0
 		.even
 
 		.section .bss
