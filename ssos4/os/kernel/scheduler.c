@@ -163,31 +163,19 @@ uint16_t s4_task_sleep(uint32_t ms) {
     curr->state = S4_TS_WAIT;
     curr->wait_until = s4_tick_counter + ms;
     s4_sched_dequeue(curr);
-    s4_enable_interrupts();
-
-    /* Spin until timer interrupt wakes us and reschedules us.
-       Without this, the task continues executing after sleep()
-       and may call sleep() again, corrupting the ready queue. */
-    while (((volatile S4Task*)curr)->state == S4_TS_WAIT)
-        ;
-
+    /* Yield immediately — rte restores interrupts (SR=0x2000) */
+    s4_task_yield();
     return S4_OK;
 }
 
-void s4_task_yield(void) {
-    S4Task* curr = (S4Task*)s4_curr_task;
-    if (curr == NULL) return;
-
-    s4_disable_interrupts();
-    s4_sched_dequeue(curr);
-    s4_sched_enqueue(curr);
-    s4_enable_interrupts();
-}
-
 void s4_do_wakeups(void) {
+    if (s4_task_count == 0) return;
     uint32_t now = s4_tick_counter;
-    for (uint16_t i = 0; i < S4_MAX_TASKS; i++) {
+    uint16_t checked = 0;
+    for (uint16_t i = 0; i < S4_MAX_TASKS && checked < s4_task_count; i++) {
         S4Task* tcb = &tcb_table[i];
+        if (tcb->state == S4_TS_NONE) continue;
+        checked++;
         if (tcb->state == S4_TS_WAIT && tcb->wait_until <= now) {
             tcb->state = S4_TS_READY;
             tcb->wait_until = 0;

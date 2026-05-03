@@ -31,7 +31,8 @@ static uint8_t local_stack_mem[S4_MAX_TASKS * S4_TASK_STACK]
 
 uint8_t* s4_task_stack_base = local_stack_mem;
 
-/* s4_tick_counter and s4_vsync_counter are defined in interrupts.s */
+/* s4_tick_counter, s4_vsync_counter, s4_switch_count defined in interrupts.s */
+extern uint32_t s4_switch_count;
 
 #define GVRAM ((volatile uint16_t*)0xC00000)
 #define GVRAM_STR 512
@@ -476,8 +477,10 @@ static int hit_test(int hx, int hy) {
 
 static void wait_vsync(void) {
     volatile uint8_t* gpip = (volatile uint8_t*)0xE88001;
-    while (!(*gpip & 0x10));
-    while (*gpip & 0x10);
+    while (!(*gpip & 0x10))
+        ;
+    while (*gpip & 0x10)
+        ;
 }
 
 /* ================================================================
@@ -495,7 +498,7 @@ static void* timer_thread(void* arg) {
         pad(wins[0].line[0], 24);
         sprintf(wins[0].line[1], "Time: %lu.%02lu", sec, frac);
         pad(wins[0].line[1], 24);
-        sprintf(wins[0].line[2], "Frame: %lu/57", f % 57);
+        sprintf(wins[0].line[2], "Sw:%lu", s4_switch_count);
         pad(wins[0].line[2], 24);
         s4_task_sleep(57);
     }

@@ -5,7 +5,10 @@
 		.globl	s4_set_interrupts, s4_restore_interrupts
 		.globl	s4_disable_interrupts, s4_enable_interrupts
 		.globl	s4_tick_counter, s4_vsync_counter
+		.globl	s4_vsync_flag
 		.globl	s4_save_data_base
+		.globl	s4_task_yield
+		.globl	s4_switch_count
 		.type	s4_set_interrupts, @function
 
 s4_disable_interrupts:
@@ -200,7 +203,7 @@ s4_restore_interrupts:
 s4_nop_handler:
 		rte
 
-		| V-DISP handler: increment vsync counter and reset ISR
+		| V-DISP handler: increment vsync counter and set flag
 s4_vdisp_handler:
 		movem.l	d0/a0, -(sp)
 
@@ -211,6 +214,7 @@ s4_vdisp_handler:
 		move.b	d0, (a0)
 
 		addq.l	#1, s4_vsync_counter
+		move.b	#1, s4_vsync_flag
 
 		movem.l	(sp)+, d0/a0
 		rte
@@ -234,44 +238,58 @@ s4_vdisp_handler:
 		.extern s4_do_wakeups
 
 s4_timerd_handler:
-		| Save ALL registers for preemptive context switch
-		| 15 registers: d0-d7 + a0-a6 = 60 bytes
-		movem.l	d0-d7/a0-a6, -(sp)
-
-		| Increment tick counter
+		| Minimal save: only d0/a0 needed for non-switch path
+		movem.l	d0/a0, -(sp)
 		addq.l	#1, s4_tick_counter
 
-		| Context switch every 5ms (every 5th tick)
+		| CPU detection (first tick only)
+		| On 68000: exception frame at sp+8 is SR (0x2xxx)
+		| On 68030: exception frame at sp+8 is format/vector (0x00xx)
+		tst.b	s4_cpu_030
+		bne.s	.cpu_done
+		move.w	8(sp), d0
+		andi.w	#0xF000, d0
+		bne.s	.cpu_done		| 68000: leave s4_cpu_030=0
+		move.b	#1, s4_cpu_030		| 68030 detected
+	.cpu_done:
+
 		lea		s4_switch_tick, a0
 		addq.b	#1, (a0)
-		cmpi.b	#5, (a0)
+		cmpi.b	#20, (a0)
 		bne.s	.no_switch
 
+		| Switch tick: restore minimal, do full save
+		movem.l	(sp)+, d0/a0
+		movem.l	d0-d7/a0-a6, -(sp)
+		lea		s4_switch_tick, a0
 		move.b	#0, (a0)
+		addq.l	#1, s4_switch_count
 
-		| Wake up sleeping tasks whose deadline has passed
 		bsr	s4_do_wakeups
 
-		| Check if there's a current task
 		move.l	s4_curr_task, d0
-		beq.s	.no_switch
+		beq.s	.no_switch_full
 
-		| Reset MFP Timer D ISR bit BEFORE switching stacks
 		move.l	#0xe88011, a0
 		move.b	(a0), d1
 		andi.b	#0xef, d1
 		move.b	d1, (a0)
 
-		| Jump to context switch (does not return here)
 		bra.w	s4_context_switch
 
 	.no_switch:
-		| Reset ISRB Timer D bit
 		move.l	#0xe88011, a0
 		move.b	(a0), d0
 		andi.b	#0xef, d0
 		move.b	d0, (a0)
+		movem.l	(sp)+, d0/a0
+		rte
 
+	.no_switch_full:
+		move.l	#0xe88011, a0
+		move.b	(a0), d0
+		andi.b	#0xef, d0
+		move.b	d0, (a0)
 		movem.l	(sp)+, d0-d7/a0-a6
 		rte
 
@@ -312,7 +330,47 @@ s4_context_switch:
 		move.l	12(a1), sp		| sp = stack_base (top of stack)
 		move.l	a0, -(sp)		| Push PC (task entry point)
 		move.w	#0x2000, -(sp)		| Push SR (supervisor, interrupts enabled)
+		tst.b	s4_cpu_030
+		beq.s	.do_rte_new
+		move.w	#0x0000, -(sp)		| format 0 word for 68030
+	.do_rte_new:
 		rte				| Start the new task
+
+
+		| ============================================================
+		| s4_task_yield - Voluntary context switch (callable from C)
+		| ============================================================
+s4_task_yield:
+		pea		.yield_resume
+		move.w	#0x2000, -(sp)
+		tst.b	s4_cpu_030
+		beq.s	.no_fmt_yield
+		move.w	#0x0000, -(sp)
+	.no_fmt_yield:
+		movem.l	d0-d7/a0-a6, -(sp)
+		move.l	s4_curr_task, a1
+		move.l	sp, (a1)
+		bsr	s4_do_context_switch
+		move.l	s4_scheduled_task, a1
+		move.l	(a1), sp
+		move.l	(a1), a0
+		move.l	12(a1), d0
+		cmp.l	a0, d0
+		beq.w	.start_new_task_yield
+		movem.l	(sp)+, d0-d7/a0-a6
+		rte
+	.start_new_task_yield:
+		move.l	20(a1), a0
+		move.l	12(a1), sp
+		move.l	a0, -(sp)
+		move.w	#0x2000, -(sp)
+		tst.b	s4_cpu_030
+		beq.s	.do_rte_yield
+		move.w	#0x0000, -(sp)		| format 0 word for 68030
+	.do_rte_yield:
+		rte
+	.yield_resume:
+		rts
 
 		| ============================================================
 		| Data section
@@ -323,7 +381,16 @@ s4_tick_counter:
 		dc.l	0
 s4_vsync_counter:
 		dc.l	0
+s4_vsync_flag:
+		dc.b	0
+		.even
 s4_switch_tick:
+		dc.b	0
+		.even
+s4_switch_count:
+		dc.l	0
+		.even
+s4_cpu_030:
 		dc.b	0
 		.even
 
