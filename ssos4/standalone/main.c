@@ -213,10 +213,13 @@ static void fill_rect(int x0, int y0, int x1, int y1, uint8_t c) {
     if (x0 > x1 || y0 > y1)
         return;
     int w = x1 - x0 + 1;
+    int h = y1 - y0 + 1;
     uint16_t cw = c;
     int dma_error = 0;
 
-    if (w > DMA_FILL_THRESHOLD) {
+    /* Use DMA only for large rectangles (width > 64 AND height > 4) */
+    /* Small rectangles: CPU setup cost < DMA transfer time */
+    if (w > DMA_FILL_THRESHOLD && h > 4) {
         for (int i = 0; i < w; i++)
             dma_fill_buf[i] = cw;
         for (int y = y0; y <= y1; y++) {
