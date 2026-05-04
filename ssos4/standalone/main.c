@@ -93,6 +93,7 @@ static int zmap[3] = {0, 1, 2};
 static volatile uint32_t frame = 0;
 static volatile int last_key = -1;
 static volatile int mx = DISP_W / 2, my = DISP_H / 2;
+static volatile uint8_t mb_left, mb_right;
 static volatile int exit_flag = 0;
 static int drag = -1, dox, doy;
 static int need_full = 1;
@@ -109,15 +110,95 @@ static int ol_x, ol_y, ol_w, ol_h, ol_valid;
  * Drawing
  * ================================================================ */
 
+/* DMAC HD63450 CH2 — register layout from working ssos dma.h */
+typedef struct {
+    uint8_t   csr;
+    uint8_t   cer;
+    uint16_t  spare1;
+    uint8_t   dcr;
+    uint8_t   ocr;
+    uint8_t   scr;
+    uint8_t   ccr;
+    uint16_t  spare2;
+    uint16_t  mtc;
+    uint8_t*  mar;
+    uint32_t  spare3;
+    uint8_t*  dar;
+    uint16_t  spare4;
+    uint16_t  btc;
+    uint8_t*  bar;
+    uint32_t  spare5;
+    uint8_t   spare6;
+    uint8_t   niv;
+    uint8_t   spare7;
+    uint8_t   eiv;
+    uint8_t   spare8;
+    uint8_t   mfc;
+    uint16_t  spare9;
+    uint8_t   spare10;
+    uint8_t   cpr;
+    uint16_t  spare11;
+    uint8_t   spare12;
+    uint8_t   dfc;
+    uint32_t  spare13;
+    uint16_t  spare14;
+    uint8_t   spare15;
+    uint8_t   bfc;
+} DMA_REG;
+
+#define dma_ch2 ((volatile DMA_REG*)0xE84080)
+#define DMA_FILL_THRESHOLD 64
+static uint16_t dma_fill_buf[512];
+
+/* XFR_INF structure for array chain mode (6 bytes per entry) */
+typedef struct {
+    uint8_t* mar;  /* Memory Address Register (4 bytes) */
+    uint16_t mtc;  /* Memory Transfer Count (2 bytes) */
+} XFR_INF;
+
+static int dma_copy_row(volatile uint16_t* dst, int count) {
+    volatile DMA_REG* ch = dma_ch2;
+    static XFR_INF xfr_table;
+    int timeout = 10000;  /* Safety timeout */
+
+    /* Build XFR_INF entry for this row */
+    xfr_table.mar = (uint8_t*)dma_fill_buf;
+    xfr_table.mtc = (uint16_t)count;
+
+    /* Program DMAC for array chain mode */
+    ch->ccr = 0x00;           /* Stop channel */
+    ch->csr = 0xFF;           /* Clear all status bits */
+    ch->dcr = 0x08;           /* Dest direction: increment, 16-bit port */
+    ch->ocr = 0x99;           /* Array chain mode (256-color GVRAM) */
+    ch->scr = 0x05;           /* Device function code: supervisor data */
+    ch->mfc = 0x05;           /* Memory function code: supervisor data */
+    ch->dfc = 0x05;           /* Device function code: supervisor data */
+    ch->dar = (uint8_t*)dst;  /* Destination: VRAM */
+    ch->bar = (uint8_t*)&xfr_table;  /* Base of array chain table */
+    ch->btc = 1;              /* One entry in array chain */
+
+    ch->ccr = 0x80;           /* Start channel */
+
+    /* Wait for completion (COC bit) or error with timeout */
+    while (!(ch->csr & 0x10) && --timeout > 0) {
+        if (ch->csr & 0x02) {
+            /* Error detected - return error code */
+            ch->csr = 0xFF;
+            ch->ccr = 0x00;
+            return -1;
+        }
+    }
+
+    ch->csr = 0xFF;           /* Clear status */
+    ch->ccr = 0x00;           /* Stop channel */
+
+    return (timeout > 0) ? 0 : -2;  /* 0=success, -1=error, -2=timeout */
+}
+
 static inline void fill_long(volatile uint32_t* dst, uint32_t val,
                              uint32_t count) {
-    if (count == 0) return;
-    __asm__ volatile("1: move.l %2,(%0)+\n"
-                     "   subq.l #1,%1\n"
-                     "   bne.s 1b\n"
-                     : "+a"(dst), "+d"(count)
-                     : "d"(val)
-                     : "memory");
+    for (uint32_t i = 0; i < count; i++)
+        dst[i] = val;
 }
 
 static void fill_rect(int x0, int y0, int x1, int y1, uint8_t c) {
@@ -131,14 +212,39 @@ static void fill_rect(int x0, int y0, int x1, int y1, uint8_t c) {
         y1 = DISP_H - 1;
     if (x0 > x1 || y0 > y1)
         return;
-    uint32_t c2 = ((uint32_t)c << 16) | c;
-    for (int y = y0; y <= y1; y++) {
-        volatile uint16_t* b = GVRAM + y * (uint32_t)GVRAM_STR;
-        int x = x0;
-        if (x & 1) b[x++] = c;
-        int n = (x1 - x + 1) / 2;
-        fill_long((volatile uint32_t*)(b + x), c2, n);
-        if ((x1 - x + 1) & 1) b[x1] = c;
+    int w = x1 - x0 + 1;
+    uint16_t cw = c;
+    int dma_error = 0;
+
+    if (w > DMA_FILL_THRESHOLD) {
+        for (int i = 0; i < w; i++)
+            dma_fill_buf[i] = cw;
+        for (int y = y0; y <= y1; y++) {
+            volatile uint16_t* b = GVRAM + y * (uint32_t)GVRAM_STR;
+            if (dma_copy_row(b + x0, w) != 0) {
+                dma_error = 1;
+                break;
+            }
+        }
+        if (dma_error) {
+            /* DMA failed - fall back to CPU for this and future calls */
+            for (int y = y0; y <= y1; y++) {
+                volatile uint16_t* b = GVRAM + y * (uint32_t)GVRAM_STR;
+                fill_long((volatile uint32_t*)(b + x0), ((uint32_t)c << 16) | c, (uint32_t)w / 2);
+                if (w & 1)
+                    b[x0 + w - 1] = cw;
+            }
+        }
+    } else {
+        uint32_t c2 = ((uint32_t)c << 16) | c;
+        for (int y = y0; y <= y1; y++) {
+            volatile uint16_t* b = GVRAM + y * (uint32_t)GVRAM_STR;
+            int x = x0;
+            if (x & 1) b[x++] = cw;
+            int n = (x1 - x + 1) / 2;
+            fill_long((volatile uint32_t*)(b + x), c2, n);
+            if ((x1 - x + 1) & 1) b[x1] = cw;
+        }
     }
 }
 
@@ -281,29 +387,10 @@ static void draw_char8(int px, int py, char ch, uint8_t fg, uint8_t bg) {
             continue;
         volatile uint16_t* row = GVRAM + yy * (uint32_t)GVRAM_STR;
         uint8_t bits = g[r];
-        if (px >= 0 && px + 4 < DISP_W) {
-            uint16_t p0 = (bits & 0x80) ? fg : bg;
-            uint16_t p1 = (bits & 0x40) ? fg : bg;
-            uint16_t p2 = (bits & 0x20) ? fg : bg;
-            uint16_t p3 = (bits & 0x10) ? fg : bg;
-            uint16_t p4 = (bits & 0x08) ? fg : bg;
-            if ((px & 1) == 0) {
-                volatile uint32_t* p32 = (volatile uint32_t*)(row + px);
-                p32[0] = ((uint32_t)p0 << 16) | p1;
-                p32[1] = ((uint32_t)p2 << 16) | p3;
-                row[px + 4] = p4;
-            } else {
-                row[px] = p0;
-                volatile uint32_t* p32 = (volatile uint32_t*)(row + px + 1);
-                p32[0] = ((uint32_t)p1 << 16) | p2;
-                p32[1] = ((uint32_t)p3 << 16) | p4;
-            }
-        } else {
-            for (int b = 0; b < 5; b++) {
-                int xx = px + b;
-                if (xx >= 0 && xx < DISP_W)
-                    row[xx] = (bits & (0x80 >> b)) ? fg : bg;
-            }
+        for (int b = 0; b < 5; b++) {
+            int xx = px + b;
+            if (xx >= 0 && xx < DISP_W)
+                row[xx] = (bits & (0x80 >> b)) ? fg : bg;
         }
     }
 }
@@ -680,12 +767,12 @@ static void* mouse_thread(void* arg) {
             mx = (int16_t)((pos >> 16) & 0xFFFF);
             my = (int16_t)(pos & 0xFFFF);
         }
-        int left = (dt & 0x0200) != 0;
-        int right = (dt & 0x0001) != 0;
+        mb_left = (dt & 0x0200) != 0;
+        mb_right = (dt & 0x0001) != 0;
 
         sprintf(wins[2].line[0], "X:%3d Y:%3d", (int)mx, (int)my);
         pad(wins[2].line[0], 24);
-        sprintf(wins[2].line[1], "L=%s R=%s", left ? "DN" : "UP", right ? "DN" : "UP");
+        sprintf(wins[2].line[1], "L=%s R=%s", mb_left ? "DN" : "UP", mb_right ? "DN" : "UP");
         pad(wins[2].line[1], 24);
         strcpy(wins[2].line[2], "                        ");
         s4_task_sleep(16);
@@ -762,8 +849,7 @@ int main(void) {
             break;
 
         int cur_mx = mx, cur_my = my;
-        int dt = _iocs_ms_getdt();
-        int left = (dt & 0x0200) != 0;
+        int left = mb_left;
 
         if (left && drag < 0) {
             int hit = hit_test(cur_mx, cur_my);
