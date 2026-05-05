@@ -96,6 +96,8 @@ static volatile int mx = DISP_W / 2, my = DISP_H / 2;
 static volatile uint8_t mb_left, mb_right;
 static volatile int exit_flag = 0;
 static int drag = -1, dox, doy;
+static uint16_t win_save_buf[WIN_W * WIN_H];
+static int win_save_valid;
 static int need_full = 1;
 
 /* Main task TCB — registers main()'s context with the scheduler
@@ -190,6 +192,38 @@ static int dma_fill_row(volatile uint16_t* dst, int count) {
     }
     ch->csr = 0xFF;
     return (timeout > 0) ? 0 : -2;
+}
+
+/* Save window VRAM bitmap to RAM buffer (before stipple erases it) */
+static void save_win_bitmap(int x, int y, int w, int h) {
+    volatile uint16_t* s = GVRAM + (uint32_t)y * GVRAM_STR + x;
+    for (int row = 0; row < h; row++) {
+        for (int i = 0; i < w; i++)
+            win_save_buf[row * w + i] = s[i];
+        s += GVRAM_STR;
+    }
+    win_save_valid = 1;
+}
+
+/* Restore saved bitmap to VRAM (move.l when aligned) */
+static void restore_win_bitmap(int x, int y, int w, int h) {
+    volatile uint16_t* d = GVRAM + (uint32_t)y * GVRAM_STR + x;
+    for (int row = 0; row < h; row++) {
+        uint16_t* src = win_save_buf + row * w;
+        if ((x & 1) == 0) {
+            volatile uint32_t* dl = (volatile uint32_t*)d;
+            uint32_t* sl = (uint32_t*)src;
+            for (int i = 0; i < w / 2; i++)
+                dl[i] = sl[i];
+            if (w & 1)
+                d[w - 1] = src[w - 1];
+        } else {
+            for (int i = 0; i < w; i++)
+                d[i] = src[i];
+        }
+        d += GVRAM_STR;
+    }
+    win_save_valid = 0;
 }
 
 static inline void fill_long(volatile uint32_t* dst, uint32_t val,
@@ -863,6 +897,8 @@ int main(void) {
                 dox = cur_mx - wins[hit].x;
                 doy = cur_my - wins[hit].y;
                 bring_to_front(hit);
+                save_win_bitmap(wins[hit].x, wins[hit].y,
+                                wins[hit].w, wins[hit].h);
                 fill_stipple(wins[hit].x, wins[hit].y,
                              wins[hit].x + wins[hit].w - 1,
                              wins[hit].y + wins[hit].h - 1, C_WHITE,
@@ -885,7 +921,29 @@ int main(void) {
         }
         if (!left && drag >= 0) {
             ol_restore();
-            draw_frame(&wins[drag], 1);
+            int wx = wins[drag].x, wy = wins[drag].y;
+            int ww = wins[drag].w, wh = wins[drag].h;
+            if (win_save_valid && wx >= 0 && wy >= 0 &&
+                wx + ww <= SW && wy + wh <= SH) {
+                restore_win_bitmap(wx, wy, ww, wh);
+                /* Redraw title bar with foreground style */
+                fill_rect(wx + 1, wy + 1, wx + ww - 2,
+                          wy + TITLE_H - 2, C_GRAY_L);
+                int tw = (int)strlen(wins[drag].title) * 6;
+                int tx = wx + (ww - tw) / 2;
+                for (int li = 0; li < 5; li++) {
+                    int ly = wy + 2 + li * 2;
+                    if (tx > wx + 12)
+                        fill_rect(wx + 4, ly, tx - 8, ly, C_BLACK);
+                    if (tx + tw + 8 < wx + ww - 4)
+                        fill_rect(tx + tw + 8, ly, wx + ww - 5, ly,
+                                  C_BLACK);
+                }
+                draw_text(tx, wy + 2, wins[drag].title, C_BLACK,
+                          C_GRAY_L);
+            } else {
+                draw_frame(&wins[drag], 1);
+            }
             memset(wins[drag].prev, 0xFF, sizeof(wins[drag].prev));
             draw_content_dirty(&wins[drag]);
             drag = -1;
