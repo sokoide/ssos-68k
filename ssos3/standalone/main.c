@@ -1,8 +1,12 @@
 /*
- * SSOS3 Standalone — Interactive Windowed Demo for X68000
- * CRT: 320x256 65536-color (crtmod 13)
- * Font: 8x8 ANK via _iocs_fntget
- * Exit: ESC key only
+ * SSOS3 Standalone — Cooperative Threading Windowed Demo for X68000
+ * CRT: 512x512 256-color (crtmod 9)
+ * Font: Spleen 5x8
+ * Exit: ESC key
+ *
+ * Architecture:
+ *   Single thread (main): All IOCS calls + rendering in main loop
+ *   Cooperative scheduling (no preemptive context switches)
  */
 
 #include "../os/kernel/kernel.h"
@@ -47,7 +51,6 @@ void s3_enable_interrupts(void) {}
 #define C_GRAY_D  252
 
 /* X68k Palette Helper (GGGGG RRRRR BBBBB P) */
-/* Force Bit 15 (Green MSB) and Bit 0 (Priority) to 1 for maximum brightness */
 #define PAL_RGB(r, g, b)                                                       \
     (uint16_t)((((g) & 0x1F) << 11) | (((r) & 0x1F) << 6) | (((b) & 0x1F) << 1) | 1)
 
@@ -67,13 +70,9 @@ static void set_palette(void) {
     }
 
     /* 2. 40 System Colors (Indices 216-255) */
-    /* Reds (216-225) */
     for (i = 0; i < 10; i++) _iocs_gpalet(idx++, PAL_RGB(system_levels[i], 0, 0));
-    /* Greens (226-235) */
     for (i = 0; i < 10; i++) _iocs_gpalet(idx++, PAL_RGB(0, system_levels[i], 0));
-    /* Blues (236-245) */
     for (i = 0; i < 10; i++) _iocs_gpalet(idx++, PAL_RGB(0, 0, system_levels[i]));
-    /* Grays (246-255) */
     for (i = 0; i < 10; i++) _iocs_gpalet(idx++, PAL_RGB(system_levels[i], system_levels[i], system_levels[i]));
 }
 
@@ -101,6 +100,9 @@ static int mx = DISP_W / 2, my = DISP_H / 2;
 static int drag = -1, dox, doy;
 static int need_full = 1;
 
+static uint16_t win_save_buf[WIN_W * WIN_H];
+static int win_save_valid;
+
 #define OL_MAX 1200
 static uint16_t ol_buf[OL_MAX];
 static int ol_x, ol_y, ol_w, ol_h, ol_valid;
@@ -108,6 +110,122 @@ static int ol_x, ol_y, ol_w, ol_h, ol_valid;
 /* ================================================================
  * Drawing
  * ================================================================ */
+
+/* DMAC HD63450 CH2 — register layout */
+typedef struct {
+    uint8_t   csr;
+    uint8_t   cer;
+    uint16_t  spare1;
+    uint8_t   dcr;
+    uint8_t   ocr;
+    uint8_t   scr;
+    uint8_t   ccr;
+    uint16_t  spare2;
+    uint16_t  mtc;
+    uint8_t*  mar;
+    uint32_t  spare3;
+    uint8_t*  dar;
+    uint16_t  spare4;
+    uint16_t  btc;
+    uint8_t*  bar;
+    uint32_t  spare5;
+    uint8_t   spare6;
+    uint8_t   niv;
+    uint8_t   spare7;
+    uint8_t   eiv;
+    uint8_t   spare8;
+    uint8_t   mfc;
+    uint16_t  spare9;
+    uint8_t   spare10;
+    uint8_t   cpr;
+    uint16_t  spare11;
+    uint8_t   spare12;
+    uint8_t   dfc;
+    uint32_t  spare13;
+    uint16_t  spare14;
+    uint8_t   spare15;
+    uint8_t   bfc;
+} DMA_REG;
+
+#define dma_ch2 ((volatile DMA_REG*)0xE84080)
+
+typedef struct __attribute__((packed)) {
+    uint8_t* mar;
+    uint16_t mtc;
+} XFR_INF;
+
+#define DMA_FILL_THRESHOLD 64
+static uint16_t dma_fill_buf[512];
+
+static void dma_fill_init(void) {
+    volatile DMA_REG* ch = dma_ch2;
+    ch->ccr = 0x00;
+    ch->csr = 0xFF;
+    ch->dcr = 0x08;
+    ch->ocr = 0x99;
+    ch->scr = 0x05;
+    ch->mfc = 0x05;
+    ch->dfc = 0x05;
+}
+
+static int dma_fill_row(volatile uint16_t* dst, int count) {
+    volatile DMA_REG* ch = dma_ch2;
+    static XFR_INF xfr_table;
+    int timeout = 10000;
+
+    xfr_table.mar = (uint8_t*)dma_fill_buf;
+    xfr_table.mtc = (uint16_t)count;
+    ch->csr = 0xFF;
+    ch->dar = (uint8_t*)dst;
+    ch->bar = (uint8_t*)&xfr_table;
+    ch->btc = 1;
+    ch->ccr = 0x80;
+
+    while (!(ch->csr & 0x10) && --timeout > 0) {
+        if (ch->csr & 0x02) {
+            ch->csr = 0xFF;
+            return -1;
+        }
+    }
+    ch->csr = 0xFF;
+    return (timeout > 0) ? 0 : -2;
+}
+
+static void save_win_bitmap(int x, int y, int w, int h) {
+    volatile uint16_t* s = GVRAM + (uint32_t)y * GVRAM_STR + x;
+    for (int row = 0; row < h; row++) {
+        for (int i = 0; i < w; i++)
+            win_save_buf[row * w + i] = s[i];
+        s += GVRAM_STR;
+    }
+    win_save_valid = 1;
+}
+
+static void restore_win_bitmap(int x, int y, int w, int h) {
+    volatile uint16_t* d = GVRAM + (uint32_t)y * GVRAM_STR + x;
+    for (int row = 0; row < h; row++) {
+        uint16_t* src = win_save_buf + row * w;
+        if ((x & 1) == 0) {
+            volatile uint32_t* dl = (volatile uint32_t*)d;
+            uint32_t* sl = (uint32_t*)src;
+            for (int i = 0; i < w / 2; i++)
+                dl[i] = sl[i];
+            if (w & 1)
+                d[w - 1] = src[w - 1];
+        } else {
+            for (int i = 0; i < w; i++)
+                d[i] = src[i];
+        }
+        d += GVRAM_STR;
+    }
+    win_save_valid = 0;
+}
+
+static inline void fill_long(volatile uint32_t* dst, uint32_t val,
+                             uint32_t count) {
+    for (uint32_t i = 0; i < count; i++)
+        dst[i] = val;
+}
 
 static void fill_rect(int x0, int y0, int x1, int y1, uint8_t c) {
     if (x0 < 0)
@@ -120,13 +238,44 @@ static void fill_rect(int x0, int y0, int x1, int y1, uint8_t c) {
         y1 = DISP_H - 1;
     if (x0 > x1 || y0 > y1)
         return;
-    for (int y = y0; y <= y1; y++) {
-        volatile uint16_t* b = GVRAM + y * GVRAM_STR;
-        for (int x = x0; x <= x1; x++) b[x] = c;
+    int w = x1 - x0 + 1;
+    int h = y1 - y0 + 1;
+    uint16_t cw = c;
+    int dma_error = 0;
+
+    if (w > DMA_FILL_THRESHOLD && h > 4) {
+        for (int i = 0; i < w; i++)
+            dma_fill_buf[i] = cw;
+        dma_fill_init();
+        for (int y = y0; y <= y1; y++) {
+            volatile uint16_t* b = GVRAM + y * (uint32_t)GVRAM_STR;
+            if (dma_fill_row(b + x0, w) != 0) {
+                dma_error = 1;
+                break;
+            }
+        }
+        dma_ch2->ccr = 0x00;
+        if (dma_error) {
+            for (int y = y0; y <= y1; y++) {
+                volatile uint16_t* b = GVRAM + y * (uint32_t)GVRAM_STR;
+                fill_long((volatile uint32_t*)(b + x0), ((uint32_t)c << 16) | c, (uint32_t)w / 2);
+                if (w & 1)
+                    b[x0 + w - 1] = cw;
+            }
+        }
+    } else {
+        uint32_t c2 = ((uint32_t)c << 16) | c;
+        for (int y = y0; y <= y1; y++) {
+            volatile uint16_t* b = GVRAM + y * (uint32_t)GVRAM_STR;
+            int x = x0;
+            if (x & 1) b[x++] = cw;
+            int n = (x1 - x + 1) / 2;
+            fill_long((volatile uint32_t*)(b + x), c2, n);
+            if ((x1 - x + 1) & 1) b[x1] = cw;
+        }
     }
 }
 
-/* MacOS 7 style desktop pattern (Checkerboard) */
 static void fill_stipple(int x0, int y0, int x1, int y1, uint8_t c1,
                          uint8_t c2) {
     if (x0 < 0)
@@ -137,11 +286,23 @@ static void fill_stipple(int x0, int y0, int x1, int y1, uint8_t c1,
         x1 = DISP_W - 1;
     if (y1 >= DISP_H)
         y1 = DISP_H - 1;
+    if (x0 > x1 || y0 > y1)
+        return;
+
+    uint32_t pat[2];
+    pat[0] = ((uint32_t)c2 << 16) | c1;
+    pat[1] = ((uint32_t)c1 << 16) | c2;
     for (int y = y0; y <= y1; y++) {
-        volatile uint16_t* b = GVRAM + y * GVRAM_STR;
-        for (int x = x0; x <= x1; x++) {
+        volatile uint16_t* b = GVRAM + y * (uint32_t)GVRAM_STR;
+        int x = x0;
+        if (x & 1) {
             b[x] = ((x + y) & 1) ? c1 : c2;
+            x++;
         }
+        int n = (x1 - x + 1) / 2;
+        fill_long((volatile uint32_t*)(b + x), pat[y & 1], n);
+        if ((x1 - x + 1) & 1)
+            b[x1] = ((x1 + y) & 1) ? c1 : c2;
     }
 }
 
@@ -253,9 +414,9 @@ static void draw_char8(int px, int py, char ch, uint8_t fg, uint8_t bg) {
         int yy = py + r;
         if (yy < 0 || yy >= DISP_H)
             continue;
-        volatile uint16_t* row = GVRAM + yy * GVRAM_STR;
+        volatile uint16_t* row = GVRAM + yy * (uint32_t)GVRAM_STR;
         uint8_t bits = g[r];
-        for (int b = 0; b < 5; b++) { /* Spleen is 5px wide */
+        for (int b = 0; b < 5; b++) {
             int xx = px + b;
             if (xx >= 0 && xx < DISP_W)
                 row[xx] = (bits & (0x80 >> b)) ? fg : bg;
@@ -266,11 +427,10 @@ static void draw_char8(int px, int py, char ch, uint8_t fg, uint8_t bg) {
 static void draw_text(int px, int py, const char* s, uint8_t fg, uint8_t bg) {
     while (*s) {
         draw_char8(px, py, *s++, fg, bg);
-        px += 6; /* 5px + 1px gap */
+        px += 6;
     }
 }
 
-/* Draw char, skipping pixels covered by windows above zmap[zpos] */
 static void draw_char8_clip(int px, int py, char ch, uint8_t fg, uint8_t bg,
                             int zpos) {
     uint8_t c = (uint8_t)ch;
@@ -302,8 +462,23 @@ static void draw_char8_clip(int px, int py, char ch, uint8_t fg, uint8_t bg,
     }
 }
 
+static int win_overlap(int zpos) {
+    Win* w = &wins[zmap[zpos]];
+    for (int k = zpos + 1; k < 3; k++) {
+        Win* ow = &wins[zmap[k]];
+        if (w->x < ow->x + ow->w && w->x + w->w > ow->x &&
+            w->y < ow->y + ow->h && w->y + w->h > ow->y)
+            return 1;
+    }
+    return 0;
+}
+
 static void draw_text_clip(int px, int py, const char* s, uint8_t fg,
                            uint8_t bg, int zpos) {
+    if (!win_overlap(zpos)) {
+        draw_text(px, py, s, fg, bg);
+        return;
+    }
     while (*s) {
         draw_char8_clip(px, py, *s++, fg, bg, zpos);
         px += 6;
@@ -327,71 +502,90 @@ static void draw_content_dirty(Win* w) {
 }
 
 static void draw_frame(Win* w, int is_fg) {
-    /* Window frame: Black */
-    fill_rect(w->x, w->y, w->x + w->w - 1, w->y + w->h - 1, C_BLACK);
-    /* Content area: White (classic Mac) */
+    uint16_t t_bg = is_fg ? C_GRAY_L : C_WHITE;
+
+    /* Interior fills (no overdraw) */
+    fill_rect(w->x + 1, w->y + 1, w->x + w->w - 2, w->y + TITLE_H - 2, t_bg);
     fill_rect(w->x + 1, w->y + TITLE_H, w->x + w->w - 2, w->y + w->h - 2,
               C_WHITE);
 
-    /* Title bar background */
-    uint16_t t_bg = is_fg ? C_GRAY_L : C_WHITE;
-    fill_rect(w->x + 1, w->y + 1, w->x + w->w - 2, w->y + TITLE_H - 2, t_bg);
-
-    /* Bottom line of title bar (MacOS style separation) */
-    fill_rect(w->x + 1, w->y + TITLE_H - 1, w->x + w->w - 2, w->y + TITLE_H - 1,
+    /* Border lines (1px black) */
+    fill_rect(w->x, w->y, w->x + w->w - 1, w->y, C_BLACK);
+    fill_rect(w->x, w->y + w->h - 1, w->x + w->w - 1, w->y + w->h - 1,
               C_BLACK);
+    fill_rect(w->x, w->y + 1, w->x, w->y + w->h - 2, C_BLACK);
+    fill_rect(w->x + w->w - 1, w->y + 1, w->x + w->w - 1, w->y + w->h - 2,
+              C_BLACK);
+    fill_rect(w->x + 1, w->y + TITLE_H - 1, w->x + w->w - 2,
+              w->y + TITLE_H - 1, C_BLACK);
 
     int tw = (int)strlen(w->title) * 6;
     int tx = w->x + (w->w - tw) / 2;
 
-    /* Foreground: 5 horizontal lines */
     if (is_fg) {
         for (int i = 0; i < 5; i++) {
             int ly = w->y + 2 + i * 2;
-            /* Left of title (with clean margin) */
             if (tx > w->x + 12)
                 fill_rect(w->x + 4, ly, tx - 8, ly, C_BLACK);
-            /* Right of title (with clean margin) */
             if (tx + tw + 8 < w->x + w->w - 4)
                 fill_rect(tx + tw + 8, ly, w->x + w->w - 5, ly, C_BLACK);
         }
     }
 
-    /* Title text */
     draw_text(tx, w->y + 2, w->title, C_BLACK, t_bg);
 }
 
 /* MacOS 7 style marching ants outline */
 static void draw_march_outline(int x, int y, int w, int h) {
-    int offset = (int)(frame & 7); /* Animate every frame */
     uint16_t colors[2] = {C_WHITE, C_BLACK};
-    /* Walk perimeter: top → right → bottom → left */
+    int offset = (int)(frame & 7);
     int peri = 0;
-    /* Top edge (left to right) */
-    for (int i = 0; i < w; i++, peri++) {
-        int px = x + i;
-        if (px >= 0 && px < DISP_W && y >= 0 && y < DISP_H)
-            GVRAM[y * GVRAM_STR + px] = colors[((peri + offset) >> 2) & 1];
-    }
-    /* Right edge (top to bottom) */
-    for (int i = 1; i < h; i++, peri++) {
-        int py = y + i;
-        if (x + w - 1 >= 0 && x + w - 1 < DISP_W && py >= 0 && py < DISP_H)
-            GVRAM[py * GVRAM_STR + x + w - 1] =
+
+    if (x >= 0 && y >= 0 && x + w <= DISP_W && y + h <= DISP_H) {
+        /* Fast path: fully visible, no bounds checking */
+        volatile uint16_t* row;
+        /* Top edge */
+        row = GVRAM + y * (uint32_t)GVRAM_STR + x;
+        for (int i = 0; i < w; i++, peri++)
+            row[i] = colors[((peri + offset) >> 2) & 1];
+        /* Right edge */
+        for (int i = 1; i < h; i++, peri++)
+            GVRAM[(uint32_t)(y + i) * GVRAM_STR + x + w - 1] =
                 colors[((peri + offset) >> 2) & 1];
-    }
-    /* Bottom edge (right to left) */
-    for (int i = w - 2; i >= 0; i--, peri++) {
-        int px = x + i;
-        if (px >= 0 && px < DISP_W && y + h - 1 >= 0 && y + h - 1 < DISP_H)
-            GVRAM[(y + h - 1) * GVRAM_STR + px] =
+        /* Bottom edge */
+        row = GVRAM + (uint32_t)(y + h - 1) * GVRAM_STR + x;
+        for (int i = w - 2; i >= 0; i--, peri++)
+            row[i] = colors[((peri + offset) >> 2) & 1];
+        /* Left edge */
+        for (int i = h - 2; i >= 1; i--, peri++)
+            GVRAM[(uint32_t)(y + i) * GVRAM_STR + x] =
                 colors[((peri + offset) >> 2) & 1];
-    }
-    /* Left edge (bottom to top) */
-    for (int i = h - 2; i >= 1; i--, peri++) {
-        int py = y + i;
-        if (x >= 0 && x < DISP_W && py >= 0 && py < DISP_H)
-            GVRAM[py * GVRAM_STR + x] = colors[((peri + offset) >> 2) & 1];
+    } else {
+        /* Slow path: per-pixel bounds check */
+        for (int i = 0; i < w; i++, peri++) {
+            int px = x + i;
+            if (px >= 0 && px < DISP_W && y >= 0 && y < DISP_H)
+                GVRAM[y * (uint32_t)GVRAM_STR + px] =
+                    colors[((peri + offset) >> 2) & 1];
+        }
+        for (int i = 1; i < h; i++, peri++) {
+            int py = y + i;
+            if (x + w - 1 >= 0 && x + w - 1 < DISP_W && py >= 0 && py < DISP_H)
+                GVRAM[py * (uint32_t)GVRAM_STR + x + w - 1] =
+                    colors[((peri + offset) >> 2) & 1];
+        }
+        for (int i = w - 2; i >= 0; i--, peri++) {
+            int px = x + i;
+            if (px >= 0 && px < DISP_W && y + h - 1 >= 0 && y + h - 1 < DISP_H)
+                GVRAM[(uint32_t)(y + h - 1) * GVRAM_STR + px] =
+                    colors[((peri + offset) >> 2) & 1];
+        }
+        for (int i = h - 2; i >= 1; i--, peri++) {
+            int py = y + i;
+            if (x >= 0 && x < DISP_W && py >= 0 && py < DISP_H)
+                GVRAM[py * (uint32_t)GVRAM_STR + x] =
+                    colors[((peri + offset) >> 2) & 1];
+        }
     }
 }
 
@@ -403,29 +597,46 @@ static void ol_save(int x, int y, int w, int h) {
     ol_w = w;
     ol_h = h;
     int idx = 0;
-    for (int i = 0; i < w && idx < OL_MAX; i++) {
-        int px = x + i;
-        ol_buf[idx++] = (px >= 0 && px < SW && y >= 0 && y < SH)
-                            ? GVRAM[y * GVRAM_STR + px]
-                            : 0;
-    }
-    for (int i = 0; i < w && idx < OL_MAX; i++) {
-        int px = x + i, py = y + h - 1;
-        ol_buf[idx++] = (px >= 0 && px < SW && py >= 0 && py < SH)
-                            ? GVRAM[py * GVRAM_STR + px]
-                            : 0;
-    }
-    for (int i = 1; i < h - 1 && idx < OL_MAX; i++) {
-        int py = y + i;
-        ol_buf[idx++] = (x >= 0 && x < SW && py >= 0 && py < SH)
-                            ? GVRAM[py * GVRAM_STR + x]
-                            : 0;
-    }
-    for (int i = 1; i < h - 1 && idx < OL_MAX; i++) {
-        int py = y + i, px = x + w - 1;
-        ol_buf[idx++] = (px >= 0 && px < SW && py >= 0 && py < SH)
-                            ? GVRAM[py * GVRAM_STR + px]
-                            : 0;
+
+    if (x >= 0 && y >= 0 && x + w <= SW && y + h <= SH) {
+        /* Fast path: fully visible, no bounds checking */
+        volatile uint16_t* p;
+        p = GVRAM + y * (uint32_t)GVRAM_STR + x;
+        for (int i = 0; i < w && idx < OL_MAX; i++, idx++)
+            ol_buf[idx] = p[i];
+        p = GVRAM + (uint32_t)(y + h - 1) * GVRAM_STR + x;
+        for (int i = 0; i < w && idx < OL_MAX; i++, idx++)
+            ol_buf[idx] = p[i];
+        for (int i = 1; i < h - 1 && idx < OL_MAX; i++, idx++)
+            ol_buf[idx] = GVRAM[(uint32_t)(y + i) * GVRAM_STR + x];
+        for (int i = 1; i < h - 1 && idx < OL_MAX; i++, idx++)
+            ol_buf[idx] = GVRAM[(uint32_t)(y + i) * GVRAM_STR + x + w - 1];
+    } else {
+        /* Slow path: per-pixel bounds check */
+        for (int i = 0; i < w && idx < OL_MAX; i++) {
+            int px = x + i;
+            ol_buf[idx++] = (px >= 0 && px < SW && y >= 0 && y < SH)
+                                ? GVRAM[y * (uint32_t)GVRAM_STR + px]
+                                : 0;
+        }
+        for (int i = 0; i < w && idx < OL_MAX; i++) {
+            int px = x + i, py = y + h - 1;
+            ol_buf[idx++] = (px >= 0 && px < SW && py >= 0 && py < SH)
+                                ? GVRAM[py * (uint32_t)GVRAM_STR + px]
+                                : 0;
+        }
+        for (int i = 1; i < h - 1 && idx < OL_MAX; i++) {
+            int py = y + i;
+            ol_buf[idx++] = (x >= 0 && x < SW && py >= 0 && py < SH)
+                                ? GVRAM[py * (uint32_t)GVRAM_STR + x]
+                                : 0;
+        }
+        for (int i = 1; i < h - 1 && idx < OL_MAX; i++) {
+            int py = y + i, px = x + w - 1;
+            ol_buf[idx++] = (px >= 0 && px < SW && py >= 0 && py < SH)
+                                ? GVRAM[py * (uint32_t)GVRAM_STR + px]
+                                : 0;
+        }
     }
     ol_valid = 1;
 }
@@ -435,29 +646,46 @@ static void ol_restore(void) {
         return;
     int x = ol_x, y = ol_y, w = ol_w, h = ol_h;
     int idx = 0;
-    for (int i = 0; i < w && idx < OL_MAX; i++) {
-        int px = x + i;
-        if (px >= 0 && px < SW && y >= 0 && y < SH)
-            GVRAM[y * GVRAM_STR + px] = ol_buf[idx];
-        idx++;
-    }
-    for (int i = 0; i < w && idx < OL_MAX; i++) {
-        int px = x + i, py = y + h - 1;
-        if (px >= 0 && px < SW && py >= 0 && py < SH)
-            GVRAM[py * GVRAM_STR + px] = ol_buf[idx];
-        idx++;
-    }
-    for (int i = 1; i < h - 1 && idx < OL_MAX; i++) {
-        int py = y + i;
-        if (x >= 0 && x < SW && py >= 0 && py < SH)
-            GVRAM[py * GVRAM_STR + x] = ol_buf[idx];
-        idx++;
-    }
-    for (int i = 1; i < h - 1 && idx < OL_MAX; i++) {
-        int py = y + i, px = x + w - 1;
-        if (px >= 0 && px < SW && py >= 0 && py < SH)
-            GVRAM[py * GVRAM_STR + px] = ol_buf[idx];
-        idx++;
+
+    if (x >= 0 && y >= 0 && x + w <= SW && y + h <= SH) {
+        /* Fast path: fully visible, no bounds checking */
+        volatile uint16_t* p;
+        p = GVRAM + y * (uint32_t)GVRAM_STR + x;
+        for (int i = 0; i < w && idx < OL_MAX; i++, idx++)
+            p[i] = ol_buf[idx];
+        p = GVRAM + (uint32_t)(y + h - 1) * GVRAM_STR + x;
+        for (int i = 0; i < w && idx < OL_MAX; i++, idx++)
+            p[i] = ol_buf[idx];
+        for (int i = 1; i < h - 1 && idx < OL_MAX; i++, idx++)
+            GVRAM[(uint32_t)(y + i) * GVRAM_STR + x] = ol_buf[idx];
+        for (int i = 1; i < h - 1 && idx < OL_MAX; i++, idx++)
+            GVRAM[(uint32_t)(y + i) * GVRAM_STR + x + w - 1] = ol_buf[idx];
+    } else {
+        /* Slow path: per-pixel bounds check */
+        for (int i = 0; i < w && idx < OL_MAX; i++) {
+            int px = x + i;
+            if (px >= 0 && px < SW && y >= 0 && y < SH)
+                GVRAM[y * (uint32_t)GVRAM_STR + px] = ol_buf[idx];
+            idx++;
+        }
+        for (int i = 0; i < w && idx < OL_MAX; i++) {
+            int px = x + i, py = y + h - 1;
+            if (px >= 0 && px < SW && py >= 0 && py < SH)
+                GVRAM[py * (uint32_t)GVRAM_STR + px] = ol_buf[idx];
+            idx++;
+        }
+        for (int i = 1; i < h - 1 && idx < OL_MAX; i++) {
+            int py = y + i;
+            if (x >= 0 && x < SW && py >= 0 && py < SH)
+                GVRAM[py * (uint32_t)GVRAM_STR + x] = ol_buf[idx];
+            idx++;
+        }
+        for (int i = 1; i < h - 1 && idx < OL_MAX; i++) {
+            int py = y + i, px = x + w - 1;
+            if (px >= 0 && px < SW && py >= 0 && py < SH)
+                GVRAM[py * (uint32_t)GVRAM_STR + px] = ol_buf[idx];
+            idx++;
+        }
     }
     ol_valid = 0;
 }
@@ -500,7 +728,7 @@ static void wait_vsync(void) {
 }
 
 /* ================================================================
- * Main
+ * Main (cooperative — all IOCS + rendering in single loop)
  * ================================================================ */
 
 int main(void) {
@@ -558,6 +786,8 @@ int main(void) {
                 dox = mx - wins[hit].x;
                 doy = my - wins[hit].y;
                 bring_to_front(hit);
+                save_win_bitmap(wins[hit].x, wins[hit].y,
+                                wins[hit].w, wins[hit].h);
                 fill_stipple(wins[hit].x, wins[hit].y,
                              wins[hit].x + wins[hit].w - 1,
                              wins[hit].y + wins[hit].h - 1, C_WHITE,
@@ -580,7 +810,29 @@ int main(void) {
         }
         if (!left && drag >= 0) {
             ol_restore();
-            draw_frame(&wins[drag], 1);
+            int wx = wins[drag].x, wy = wins[drag].y;
+            int ww = wins[drag].w, wh = wins[drag].h;
+            if (win_save_valid && wx >= 0 && wy >= 0 &&
+                wx + ww <= SW && wy + wh <= SH) {
+                restore_win_bitmap(wx, wy, ww, wh);
+                /* Redraw title bar with foreground style */
+                fill_rect(wx + 1, wy + 1, wx + ww - 2,
+                          wy + TITLE_H - 2, C_GRAY_L);
+                int tw = (int)strlen(wins[drag].title) * 6;
+                int tx = wx + (ww - tw) / 2;
+                for (int li = 0; li < 5; li++) {
+                    int ly = wy + 2 + li * 2;
+                    if (tx > wx + 12)
+                        fill_rect(wx + 4, ly, tx - 8, ly, C_BLACK);
+                    if (tx + tw + 8 < wx + ww - 4)
+                        fill_rect(tx + tw + 8, ly, wx + ww - 5, ly,
+                                  C_BLACK);
+                }
+                draw_text(tx, wy + 2, wins[drag].title, C_BLACK,
+                          C_GRAY_L);
+            } else {
+                draw_frame(&wins[drag], 1);
+            }
             memset(wins[drag].prev, 0xFF, sizeof(wins[drag].prev));
             draw_content_dirty(&wins[drag]);
             drag = -1;
@@ -623,7 +875,6 @@ int main(void) {
             strcpy(wins[2].line[2], "                        ");
         }
 
-        if (need_full || drag >= 0 || (frame % 11 == 0)) {
         if (need_full) {
             fill_stipple(0, 0, DISP_W - 1, DISP_H - 1, C_WHITE, C_GRAY_M);
             for (int i = 0; i < 3; i++) {
@@ -634,8 +885,12 @@ int main(void) {
             }
             need_full = 0;
         } else if (drag >= 0) {
-            ol_restore();
-            ol_save(wins[drag].x, wins[drag].y, wins[drag].w, wins[drag].h);
+            int moved = (ol_x != wins[drag].x || ol_y != wins[drag].y);
+            if (moved) {
+                ol_restore();
+                ol_save(wins[drag].x, wins[drag].y, wins[drag].w,
+                        wins[drag].h);
+            }
             draw_march_outline(wins[drag].x, wins[drag].y, wins[drag].w,
                                wins[drag].h);
         } else {
@@ -652,7 +907,6 @@ int main(void) {
                 }
             }
         }
-        } /* render gate */
     }
 
     ol_restore();
