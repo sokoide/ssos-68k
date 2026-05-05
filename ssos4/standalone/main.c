@@ -5,10 +5,8 @@
  * Exit: ESC key
  *
  * Architecture:
- *   Thread 1 (main, pri=4):   Rendering loop (VRAM writes only here)
- *   Thread 2 (timer, pri=8):  Timer window data
- *   Thread 3 (keyboard, pri=8): Keyboard window data
- *   Thread 4 (mouse, pri=8):  Mouse window data
+ *   Thread 1 (main, pri=8):   Rendering loop + mouse IOCS (V-sync rate)
+ *   Thread 2 (data, pri=8):   Timer/Keyboard window data + IOCS calls
  */
 
 #include "../os/kernel/kernel.h"
@@ -745,31 +743,15 @@ static void wait_vsync(void) {
 }
 
 /* ================================================================
- * Worker Threads (preemptive, each updates one window's data)
+ * Data Thread — Timer/Keyboard window text + IOCS (non-time-critical)
  * ================================================================ */
 
-static void* timer_thread(void* arg) {
+static void* data_thread(void* arg) {
     (void)arg;
     for (;;) {
         if (exit_flag) for (;;) s4_task_sleep(0x7FFFFFFF);
-        uint32_t f = frame;
-        uint32_t sec = f / 57;
-        uint32_t frac = (f % 57) * 100 / 57;
-        sprintf(wins[0].line[0], "Vsync: %lu", f);
-        pad(wins[0].line[0], 24);
-        sprintf(wins[0].line[1], "Time: %lu.%02lu", sec, frac);
-        pad(wins[0].line[1], 24);
-        sprintf(wins[0].line[2], "Sw:%lu", s4_switch_count);
-        pad(wins[0].line[2], 24);
-        s4_task_sleep(57);
-    }
-    return NULL;
-}
 
-static void* keyboard_thread(void* arg) {
-    (void)arg;
-    for (;;) {
-        if (exit_flag) for (;;) s4_task_sleep(0x7FFFFFFF);
+        /* Keyboard */
         if (_iocs_b_keysns() > 0) {
             int key = _iocs_b_keyinp();
             if ((key & 0xFF) == 0x1B) {
@@ -790,30 +772,20 @@ static void* keyboard_thread(void* arg) {
             strcpy(wins[1].line[1], "                        ");
         }
         strcpy(wins[1].line[2], "                        ");
-        s4_task_sleep(16);
-    }
-    return NULL;
-}
 
-static void* mouse_thread(void* arg) {
-    (void)arg;
-    for (;;) {
-        if (exit_flag) for (;;) s4_task_sleep(0x7FFFFFFF);
-        int dt = _iocs_ms_getdt();
-        {
-            int pos = _iocs_ms_curgt();
-            mx = (int16_t)((pos >> 16) & 0xFFFF);
-            my = (int16_t)(pos & 0xFFFF);
-        }
-        mb_left = (dt & 0x0200) != 0;
-        mb_right = (dt & 0x0001) != 0;
+        /* Timer */
+        uint32_t f = frame;
+        uint32_t sec = f / 57;
+        uint32_t frac = (f % 57) * 100 / 57;
+        sprintf(wins[0].line[0], "Vsync: %lu", f);
+        pad(wins[0].line[0], 24);
+        sprintf(wins[0].line[1], "Time: %lu.%02lu", sec, frac);
+        pad(wins[0].line[1], 24);
+        sprintf(wins[0].line[2], "Sw:%lu", s4_switch_count);
+        pad(wins[0].line[2], 24);
 
-        sprintf(wins[2].line[0], "X:%3d Y:%3d", (int)mx, (int)my);
-        pad(wins[2].line[0], 24);
-        sprintf(wins[2].line[1], "L=%s R=%s", mb_left ? "DN" : "UP", mb_right ? "DN" : "UP");
-        pad(wins[2].line[1], 24);
-        strcpy(wins[2].line[2], "                        ");
-        s4_task_sleep(16);
+        /* Sleep 40 ticks = 200ms at 200Hz */
+        s4_task_sleep(40);
     }
     return NULL;
 }
@@ -864,19 +836,11 @@ int main(void) {
     wins[2] = (Win){80, 120, WIN_W, WIN_H, "Mouse", {{{0}}}, {{0}}};
     ol_valid = 0;
 
-    /* Create worker threads */
-    uint16_t t_timer = s4_task_create(&(S4TaskInfo){
-        .entry = timer_thread, .pri = 8, .ctx_level = 0, .stack_size = 0, .stack = NULL
+    /* Create single data worker thread (batches all IOCS calls) */
+    uint16_t t_data = s4_task_create(&(S4TaskInfo){
+        .entry = data_thread, .pri = 8, .ctx_level = 0, .stack_size = 0, .stack = NULL
     });
-    uint16_t t_key = s4_task_create(&(S4TaskInfo){
-        .entry = keyboard_thread, .pri = 8, .ctx_level = 0, .stack_size = 0, .stack = NULL
-    });
-    uint16_t t_mouse = s4_task_create(&(S4TaskInfo){
-        .entry = mouse_thread, .pri = 8, .ctx_level = 0, .stack_size = 0, .stack = NULL
-    });
-    s4_task_start(t_timer);
-    s4_task_start(t_key);
-    s4_task_start(t_mouse);
+    s4_task_start(t_data);
 
     /* Main rendering loop */
     for (;;) {
@@ -886,8 +850,23 @@ int main(void) {
         if (exit_flag)
             break;
 
-        int cur_mx = mx, cur_my = my;
-        int left = mb_left;
+        int cur_mx, cur_my, left;
+        {
+            int dt = _iocs_ms_getdt();
+            int pos = _iocs_ms_curgt();
+            cur_mx = (int16_t)((pos >> 16) & 0xFFFF);
+            cur_my = (int16_t)(pos & 0xFFFF);
+            left = (dt & 0x0200) != 0;
+            mb_left = left;
+            mb_right = (dt & 0x0001) != 0;
+        }
+
+        /* Update mouse window text */
+        sprintf(wins[2].line[0], "X:%3d Y:%3d", cur_mx, cur_my);
+        pad(wins[2].line[0], 24);
+        sprintf(wins[2].line[1], "L=%s R=%s", left ? "DN" : "UP",
+                mb_right ? "DN" : "UP");
+        pad(wins[2].line[1], 24);
 
         if (left && drag < 0) {
             int hit = hit_test(cur_mx, cur_my);

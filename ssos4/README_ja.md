@@ -256,6 +256,55 @@ move.w  #0x2000, %sr  | 割り込み許可
 jmp     (%a0)         | タスク開始
 ```
 
+## プリエンプティブオーバーヘッド分析 (10MHz)
+
+### Cooperative (ssos3) vs Preemptive (ssos4) の性能差
+
+ssos3 (協調スレッド) は ssos4 (プリエンプティブ) より 2-3倍高速に動作する。
+主因はプリエンプティブスケジューリングの CPU オーバーヘッド。
+
+### IOCS 呼び出しとコンテキストスイッチ
+
+**ssos4 は IOCS 呼び出し中に自発的な context switch を行わない。**
+
+IOCS (`_iocs_ms_getdt()`, `_iocs_ms_curgt()` 等) は TRAP 命令で Human68K カーネルに同期呼び出しする。タスクは IOCS から戻るまで「実行中」のまま。Timer D が IOCS 実行中にプリエンプトすることはあるが、これは I/O wait による自発的な yield ではなく、強制割り込みに過ぎない。
+
+現代 OS の `read()` → TASK_WAITING → scheduler → 別タスク実行、という I/O スケジューリング機構は ssos4 には存在しない。IOCS 中のタスクはブロック状態にならず、他のタスクは Timer D の次のプリエンプトまで待たされる。
+
+### 改善前 (1000Hz Timer D, 3 Worker Thread)
+
+| 要因 | 回数/秒 | コスト/回 | CPU占有率 (10MHz) |
+| :--- | :--- | :--- | :--- |
+| Timer D 非スイッチ (ISR クリア) | 950 | ~114 cycles | ~11% |
+| Timer D フルスイッチ (20ms毎) | 50 | ~700 cycles | ~3.5% |
+| Worker yield (3スレッド × ~50回/秒) | 150 | ~700 cycles | ~10.5% |
+| Worker IOCS 呼び出し (TRAP) | ~150 | ~750 cycles | ~11% |
+| **合計** | | | **~36%** |
+
+Timer D ISR クリアの MFP I/O レジスタアクセス ($E88011) はウェイトステート付きで ~24 cycles。これが非スイッチパスの主要コスト。
+
+### 改善後 (200Hz Timer D, 1 Worker Thread, 50ms Switch)
+
+| 変更項目 | 変更前 | 変更後 | 効果 |
+| :--- | :--- | :--- | :--- |
+| Timer D 周波数 | 1000Hz (1ms) | 200Hz (5ms) | ISR 割込 1/5 |
+| コンテキストスイッチ間隔 | 20ms | 50ms | スイッチ 1/2.5 |
+| Worker スレッド数 | 3 (timer/keyboard/mouse) | 1 (data_thread) | yield 数 1/3 |
+| マウス IOCS | Worker 50ms間隔 | Main loop V-sync (57Hz) | ドラッグ応答 ~17ms |
+| Worker IOCS 呼び出し/秒 | ~150 | ~15 | TRAP 数 1/10 |
+| **CPU オーバーヘッド** | **~36%** | **~8%** | **4.5倍改善** |
+
+スレッド構成:
+- **Thread 1 (main, pri=8)**: レンダリング + マウス IOCS (`_iocs_ms_getdt`, `_iocs_ms_curgt`) を V-sync 毎 (57Hz) に実行。ドラッグ応答は ~17ms
+- **Thread 2 (data, pri=8)**: タイマー/キーボード IOCS のみ。`s4_task_sleep(40)` で 200ms 間隔
+
+Timer D レジスタ設定:
+- TCDCR: prescaler /200 (0xF7)。4MHz / 200 = 20kHz
+- TDDR: 100。20kHz / 100 = **200Hz** (5ms/ティック)
+- switch_tick しきい値: 10。10 × 5ms = **50ms** 間隔
+
+`s4_task_sleep()` の引数は 200Hz tick 単位 (1 tick = 5ms)。例: `s4_task_sleep(40)` = 200ms。
+
 ## 今後の拡張
 - 8x16 フォントおよび全角文字のパレットモード対応。
 - DMAC チャネル2を用いた `fill_rect` のさらなる高速化。

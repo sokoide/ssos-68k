@@ -65,16 +65,16 @@ s4_set_interrupts:
 		| TACR - event count mode (V-DISP)
 		move.b	#0x08, 0xe88019
 
-		| TCDCR - Timer D prescaler /50
+		| TCDCR - Timer D prescaler /200
 		move.b	0xe8801d, d0
-		or.b	#0xF4, d0
+		or.b	#0xF7, d0
 		move.b	d0, 0xe8801d
 
 		| TADR - Timer A data
 		move.b	#1, 0xe8801f
 
-		| TDDR - Timer D: 4MHz / 50 / 80 = 1000Hz (1ms)
-		move.b	#80, 0xe88025
+		| TDDR - Timer D: 4MHz / 200 / 100 = 200Hz (5ms)
+		move.b	#100, 0xe88025
 
 		| Enable interrupts - level 2
 		move.w	#0x2000, %sr
@@ -250,7 +250,7 @@ s4_timerd_handler:
 
 		lea		s4_switch_tick, a0
 		addq.b	#1, (a0)
-		cmpi.b	#20, (a0)
+		cmpi.b	#10, (a0)
 		bne.s	.no_switch
 
 		| Switch tick: restore minimal, do full save
