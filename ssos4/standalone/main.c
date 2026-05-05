@@ -147,52 +147,49 @@ typedef struct {
 } DMA_REG;
 
 #define dma_ch2 ((volatile DMA_REG*)0xE84080)
-#define DMA_FILL_THRESHOLD 64
-static uint16_t dma_fill_buf[512];
-
-/* XFR_INF structure for array chain mode (6 bytes per entry) */
-typedef struct {
+/* XFR_INF structure for array chain mode (6 bytes per entry, packed!) */
+typedef struct __attribute__((packed)) {
     uint8_t* mar;  /* Memory Address Register (4 bytes) */
     uint16_t mtc;  /* Memory Transfer Count (2 bytes) */
 } XFR_INF;
 
-static int dma_copy_row(volatile uint16_t* dst, int count) {
+#define DMA_FILL_THRESHOLD 64
+static uint16_t dma_fill_buf[512];
+
+/* One-time DMAC CH2 setup for fill operations (call once before first row) */
+static void dma_fill_init(void) {
+    volatile DMA_REG* ch = dma_ch2;
+    ch->ccr = 0x00;
+    ch->csr = 0xFF;
+    ch->dcr = 0x08;
+    ch->ocr = 0x99;
+    ch->scr = 0x05;
+    ch->mfc = 0x05;
+    ch->dfc = 0x05;
+}
+
+/* Transfer one row via DMA (call dma_fill_init first) */
+static int dma_fill_row(volatile uint16_t* dst, int count) {
     volatile DMA_REG* ch = dma_ch2;
     static XFR_INF xfr_table;
-    int timeout = 10000;  /* Safety timeout */
+    int timeout = 10000;
 
-    /* Build XFR_INF entry for this row */
     xfr_table.mar = (uint8_t*)dma_fill_buf;
     xfr_table.mtc = (uint16_t)count;
+    ch->csr = 0xFF;
+    ch->dar = (uint8_t*)dst;
+    ch->bar = (uint8_t*)&xfr_table;
+    ch->btc = 1;
+    ch->ccr = 0x80;
 
-    /* Program DMAC for array chain mode */
-    ch->ccr = 0x00;           /* Stop channel */
-    ch->csr = 0xFF;           /* Clear all status bits */
-    ch->dcr = 0x08;           /* Dest direction: increment, 16-bit port */
-    ch->ocr = 0x99;           /* Array chain mode (256-color GVRAM) */
-    ch->scr = 0x05;           /* Device function code: supervisor data */
-    ch->mfc = 0x05;           /* Memory function code: supervisor data */
-    ch->dfc = 0x05;           /* Device function code: supervisor data */
-    ch->dar = (uint8_t*)dst;  /* Destination: VRAM */
-    ch->bar = (uint8_t*)&xfr_table;  /* Base of array chain table */
-    ch->btc = 1;              /* One entry in array chain */
-
-    ch->ccr = 0x80;           /* Start channel */
-
-    /* Wait for completion (COC bit) or error with timeout */
     while (!(ch->csr & 0x10) && --timeout > 0) {
         if (ch->csr & 0x02) {
-            /* Error detected - return error code */
             ch->csr = 0xFF;
-            ch->ccr = 0x00;
             return -1;
         }
     }
-
-    ch->csr = 0xFF;           /* Clear status */
-    ch->ccr = 0x00;           /* Stop channel */
-
-    return (timeout > 0) ? 0 : -2;  /* 0=success, -1=error, -2=timeout */
+    ch->csr = 0xFF;
+    return (timeout > 0) ? 0 : -2;
 }
 
 static inline void fill_long(volatile uint32_t* dst, uint32_t val,
@@ -222,13 +219,15 @@ static void fill_rect(int x0, int y0, int x1, int y1, uint8_t c) {
     if (w > DMA_FILL_THRESHOLD && h > 4) {
         for (int i = 0; i < w; i++)
             dma_fill_buf[i] = cw;
+        dma_fill_init();
         for (int y = y0; y <= y1; y++) {
             volatile uint16_t* b = GVRAM + y * (uint32_t)GVRAM_STR;
-            if (dma_copy_row(b + x0, w) != 0) {
+            if (dma_fill_row(b + x0, w) != 0) {
                 dma_error = 1;
                 break;
             }
         }
+        dma_ch2->ccr = 0x00;
         if (dma_error) {
             /* DMA failed - fall back to CPU for this and future calls */
             for (int y = y0; y <= y1; y++) {
@@ -263,6 +262,8 @@ static void fill_stipple(int x0, int y0, int x1, int y1, uint8_t c1,
         y1 = DISP_H - 1;
     if (x0 > x1 || y0 > y1)
         return;
+
+    /* CPU stipple: fill_long with pre-computed even/odd row patterns */
     uint32_t pat[2];
     pat[0] = ((uint32_t)c2 << 16) | c1; /* even y: c2,c1,c2,c1... */
     pat[1] = ((uint32_t)c1 << 16) | c2; /* odd y:  c1,c2,c1,c2... */
