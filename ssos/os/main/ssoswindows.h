@@ -4,7 +4,7 @@
 typedef struct {
     bool is_dragging;
     Layer* dragged_layer;
-    uint16_t drag_offset_x, drag_offset_y;
+    int16_t drag_offset_x, drag_offset_y;
     int16_t drag_frame_x, drag_frame_y;
     int16_t drag_old_frame_x, drag_old_frame_y;
     bool prev_lclick;  // Previous mouse left click state

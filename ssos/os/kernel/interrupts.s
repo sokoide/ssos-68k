@@ -106,7 +106,7 @@ set_interrupts:
 | TCDCR - prescaler *, /50
 | only set D timer
 	move.b	0xe8801d, d0
-	or.b	0xF4, d0
+	ori.b	#0xF4, d0
 	move.b	d0, 0xe8801d
 | TCDCR - prescaler /200, /50
 	/* move.b	#0x74, 0xe8801d */
@@ -303,6 +303,7 @@ restore_interrupts:
 	movem.l (sp)+, d2-d7/a2-a6
 	rts
 
+	.globl nop_handler
 nop_handler:
     rte
 
@@ -550,9 +551,10 @@ cs_start_new_task:
 
 	| Build exception frame for RTE
 	| M68000 RTE pops: (sp)+ -> SR, then (sp)+ -> PC
-	| So we push PC first (ends up at lower address), then SR
-	move.l	a0, -(sp)		| Push PC (task entry point)
-	move.w	#0x2000, -(sp)		| Push SR (supervisor, interrupts enabled)
+	| Must keep SP even: reserve 6 bytes, fill at even offsets
+	subq.l	#6, sp			| Reserve 6 bytes for SR(2) + PC(4)
+	move.l	a0, 2(sp)		| Store PC at sp+2 (even, 2 bytes above SR)
+	move.w	#0x2000, (sp)		| Store SR at sp (even address)
 
 	| Note: For a new task, registers will have garbage values
 	| This is acceptable - the task function will initialize what it needs

@@ -293,12 +293,9 @@ void ss_damage_draw_regions() {
 }
 
 // Optimize damage regions by removing occluded areas
-// TEMPORARILY DISABLED: Hybrid scanline-based occlusion optimization
+// Currently a no-op; occlusion optimization can be re-enabled when needed
 void ss_damage_optimize_for_occlusion() {
-    // DISABLED FOR DEBUGGING: The occlusion optimization might be blocking
-    // layer 1 updates This ensures all damage regions are processed to debug
-    // the issue
-    return;
+    // Placeholder for future occlusion optimization
 }
 
 // Check if two damage rectangles overlap

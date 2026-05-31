@@ -29,7 +29,7 @@ void ss_wait_for_clear_vram_completion() {
 void ss_fill_rect_v(uint16_t* offscreen, uint16_t w, uint16_t h, uint16_t color,
                     int x0, int y0, int x1, int y1) {
     // Create 32-bit color value for faster writes (2 pixels at once)
-    uint32_t color32 = (color & 0xFF) | ((color & 0xFF) << 16);
+    uint32_t color32 = color | ((uint32_t)color << 16);
 
     for (int y = y0; y <= y1; y++) {
         uint16_t* row_start = &offscreen[y * w + x0];
@@ -63,7 +63,7 @@ void ss_draw_rect_v(uint16_t* offscreen, uint16_t w, uint16_t h, uint16_t color,
                     int x0, int y0, int x1, int y1) {
     // Draw horizontal lines (top and bottom)
     int width = x1 - x0 + 1;
-    uint32_t color32 = (color & 0xFF) | ((color & 0xFF) << 16);
+    uint32_t color32 = color | ((uint32_t)color << 16);
 
     // Top horizontal line
     uint16_t* top_line = &offscreen[y0 * w + x0];
@@ -231,7 +231,7 @@ void ss_memset_32(uint32_t* dst, uint32_t value, size_t count) {
 void ss_fill_rect_v_fast_aligned(uint16_t* offscreen, uint16_t w, uint16_t h,
                                  uint16_t color, int x0, int y0, int x1, int y1) {
     // Enhanced version with cache alignment considerations
-    uint32_t color32 = (color & 0xFF) | ((color & 0xFF) << 16);
+    uint32_t color32 = color | ((uint32_t)color << 16);
 
     for (int y = y0; y <= y1; y++) {
         uint16_t* row_start = &offscreen[y * w + x0];

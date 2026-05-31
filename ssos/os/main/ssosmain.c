@@ -67,18 +67,30 @@ void ssosmain() {
     int scancode = 0;
     char szMessage[256];
     uint32_t prev_counter = 0;
+    int saved_crtmod = 0;
+    uint32_t saved_copy_vec = 0;
+    uint32_t saved_nmi_vec = 0;
 
-    // init OS
-    _iocs_crtmod(16); // 768x512 dots, 16 colors, 1 screen
+    // Save original CRTMOD mode for restoration on exit
+    saved_crtmod = _iocs_crtmod(-1);
+    if (saved_crtmod < 0) saved_crtmod = 16;
+
+    // init OS (order: G_CLR_ON before CRTMOD per reference)
     _iocs_g_clr_on(); // clear gvram, reset palette, access page 0
+    _iocs_crtmod(16); // 768x512 dots, 16 colors, 1 screen
     _iocs_b_curoff(); // stop cursor
 
     _iocs_ms_init();
     _iocs_skey_mod(0, 0, 0);
     _iocs_ms_curon();
 
-    ss_clear_vram_fast();
-    ss_wait_for_clear_vram_completion();
+    // Protect COPY key (trap #12, vector 0x2c, addr 0xB0)
+    // and NMI (autovector 7, vector 0x1f, addr 0x7C)
+    extern void nop_handler(void);
+    saved_copy_vec = *(volatile uint32_t*)0xB0;
+    saved_nmi_vec = *(volatile uint32_t*)0x7C;
+    *(volatile uint32_t*)0xB0 = (uint32_t)nop_handler;
+    *(volatile uint32_t*)0x7C = (uint32_t)nop_handler;
 
     ss_mem_init_info();
     ss_mem_init();
@@ -274,13 +286,18 @@ void ssosmain() {
 
 CLEANUP:
     ss_damage_cleanup(); // Cleanup damage buffer
-    // uninit
+
+    // Restore COPY key and NMI vectors
+    *(volatile uint32_t*)0xB0 = saved_copy_vec;
+    *(volatile uint32_t*)0x7C = saved_nmi_vec;
+
+    // Restore Human68k standard functions
+    while (_iocs_b_keysns() > 0) { _iocs_b_keyinp(); } // flush keyboard
     _iocs_ms_curof();
     _iocs_skey_mod(-1, 0, 0);
     _iocs_b_curon();  // enable cursor
-    _iocs_g_clr_on(); // clear graphics, reset palette to the default,
-                      // access page 0
-    _iocs_crtmod(16); // 768x512 dots, 16 colors, 1 screen
+    _iocs_g_clr_on(); // clear graphics, reset palette to default, access page 0
+    _iocs_crtmod(saved_crtmod); // restore original screen mode
 
     // Restore original stack before returning to Human68k
     if (ss_old_main_sp != NULL) {

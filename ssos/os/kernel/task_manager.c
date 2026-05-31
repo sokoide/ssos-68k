@@ -643,16 +643,19 @@ uint16_t ss_ter_tsk(uint16_t id) {
         return E_OBJ;
     }
 
+    // Determine which queue task belongs to before changing state
+    bool in_ready_queue = (tcb->state == TS_READY);
+    bool in_wait_queue = (tcb->state == TS_WAIT);
+
     // Transition task to DORMANT state
     tcb->state = TS_DORMANT;
     tcb->wait_factor = TWFCT_NON;
 
-    // Remove from ready queue or wait queue
-    if (tcb->wait_factor == TWFCT_NON && tcb->prev == NULL && tcb->next == NULL) {
-        // Task not in any queue - already dormant or nonexistent
-    } else {
-        // Remove from appropriate queue
+    // Remove from appropriate queues based on pre-transition state
+    if (in_ready_queue) {
         ss_remove_from_ready_queue(tcb);
+    }
+    if (in_wait_queue) {
         ss_wait_queue_remove(tcb);
     }
 
