@@ -51,4 +51,8 @@ uint16_t s4_task_sleep(uint32_t ms);
 void     s4_task_yield(void);
 void     s4_process_wakeups(void);
 
+/* Stack debugging */
+uint32_t s4_stack_check(uint16_t id);
+void     s4_stack_canary_init(uint16_t id);
+
 #endif /* S4_SCHEDULER_H */

@@ -16,6 +16,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <unistd.h>
 
 #pragma warning disable format
 #include <x68k/iocs.h>
@@ -97,6 +98,19 @@ static int drag = -1, dox, doy;
 static uint16_t win_save_buf[WIN_W * WIN_H];
 static int win_save_valid;
 static int need_full = 1;
+
+/* COPY key (trap #12) and NMI (autovector 7) vector save */
+static uint32_t saved_copy_vec;
+static uint32_t saved_nmi_vec;
+extern void s4_nop_handler(void);
+
+/* TRAP #14 exception handler support */
+extern void s4_init_trap14(void);
+extern void s4_restore_trap14(void);
+extern uint16_t s4_trapbuf_flag;
+extern uint16_t s4_trapbuf_sr;
+extern uint32_t s4_trapbuf_pc;
+extern char* s4_trapbuf_msg;
 
 /* Main task TCB — registers main()'s context with the scheduler
    so preemptive context switching works to/from main */
@@ -797,6 +811,9 @@ static void* data_thread(void* arg) {
 int main(void) {
     int ssp = _iocs_b_super(0);
 
+    /* Initialize TRAP #14 exception handler FIRST */
+    s4_init_trap14();
+
     s4_mem_init(local_memory, sizeof(local_memory));
     s4_sched_init();
 
@@ -820,6 +837,10 @@ int main(void) {
     _iocs_b_curoff();
     _iocs_skeyset(0);
 
+    /* NEW: Clear GVRAM ($C00000) to prevent garbage display */
+    volatile uint32_t* gvramp = (volatile uint32_t*)0xC00000;
+    for (int i = 0; i < (512 * 512) / 2; i++) gvramp[i] = 0;
+
     {
         volatile uint32_t* tp = (volatile uint32_t*)0xE00000;
         for (int i = 0; i < 0x1000; i++) tp[i] = 0;
@@ -829,6 +850,12 @@ int main(void) {
     _iocs_skey_mod(0, 0, 0);
     _iocs_ms_curon();
     _iocs_ms_limit(0, DISP_W - 1, 0, DISP_H - 1);
+
+    /* Protect COPY key (trap #12) and NMI (autovector 7) */
+    saved_copy_vec = *(volatile uint32_t*)0xB0;
+    saved_nmi_vec = *(volatile uint32_t*)0x7C;
+    *(volatile uint32_t*)0xB0 = (uint32_t)s4_nop_handler;
+    *(volatile uint32_t*)0x7C = (uint32_t)s4_nop_handler;
 
     /* Window init */
     wins[0] = (Win){30, 15, WIN_W, WIN_H, "Timer", {{{0}}}, {{0}}};
@@ -966,8 +993,30 @@ int main(void) {
         }
     }
 
+    /* Check if exception was caught by TRAP #14 handler */
+    if (s4_trapbuf_flag != 0) {
+        char buf[128];
+        _iocs_b_print("\r\n=== EXCEPTION CAUGHT (TRAP #14) ===\r\n");
+        sprintf(buf, "Type: %s (code=%d)\r\n", s4_trapbuf_msg, s4_trapbuf_flag);
+        _iocs_b_print(buf);
+        sprintf(buf, "PC: 0x%08X\r\n", s4_trapbuf_pc);
+        _iocs_b_print(buf);
+        sprintf(buf, "SR: 0x%04X\r\n", s4_trapbuf_sr);
+        _iocs_b_print(buf);
+        _iocs_b_print("====================================\r\n");
+        _iocs_b_super(ssp);
+        _exit(1);
+    }
+
     /* Restore interrupts to Human68K state */
     s4_restore_interrupts();
+
+    /* Restore TRAP #14 exception handler */
+    s4_restore_trap14();
+
+    /* Restore COPY key and NMI vectors */
+    *(volatile uint32_t*)0xB0 = saved_copy_vec;
+    *(volatile uint32_t*)0x7C = saved_nmi_vec;
 
     ol_restore();
     _iocs_ms_curof();
@@ -976,7 +1025,7 @@ int main(void) {
     _iocs_b_curon();
     _iocs_b_print("SSOS4 terminated.\r\n");
     _iocs_b_super(ssp);
-    return 0;
+    _exit(0);
 }
 
 #endif /* LOCAL_MODE */

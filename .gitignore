@@ -1,6 +1,8 @@
 # SSOS
 tags
 *.x
+*.X
+*.bin
 *.o
 *.elf
 *.lst
@@ -19,6 +21,7 @@ Thumbs.db
 *~
 
 # VSCode / Claude / MCP / Codex / Gemini
+.ai-handoff.md
 .vscode/
 .claude/
 .serena/

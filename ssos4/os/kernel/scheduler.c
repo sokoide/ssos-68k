@@ -9,6 +9,42 @@ void* s4_curr_task;
 void* s4_scheduled_task;
 uint16_t s4_task_count;
 
+/* Stack canary magic number */
+#define STACK_CANARY 0xDEADCAFE
+
+/* Write canary at bottom of each task stack, return remaining bytes */
+uint32_t s4_stack_check(uint16_t id) {
+    if (id == 0 || id > S4_MAX_TASKS) return 0;
+    S4Task* tcb = &tcb_table[id - 1];
+    if (tcb->stack_size == 0) return 0;
+
+    /* Bottom of stack = stack_base - stack_size + 4 */
+    uint8_t* bottom = (uint8_t*)((uintptr_t)tcb->stack_base - tcb->stack_size + 4);
+    uint32_t* canary = (uint32_t*)bottom;
+
+    /* Scan from bottom upward to find first non-canary word */
+    uint32_t used = 0;
+    for (uint32_t offset = 0; offset < tcb->stack_size; offset += 4) {
+        if (*(uint32_t*)(bottom + offset) != STACK_CANARY) {
+            used = tcb->stack_size - offset;
+            break;
+        }
+    }
+    return tcb->stack_size - used;  /* remaining bytes */
+}
+
+/* Write canary pattern to entire task stack */
+void s4_stack_canary_init(uint16_t id) {
+    if (id == 0 || id > S4_MAX_TASKS) return;
+    S4Task* tcb = &tcb_table[id - 1];
+    if (tcb->stack_size == 0) return;
+
+    uint8_t* bottom = (uint8_t*)((uintptr_t)tcb->stack_base - tcb->stack_size + 4);
+    for (uint32_t offset = 0; offset < tcb->stack_size; offset += 4) {
+        *(uint32_t*)(bottom + offset) = STACK_CANARY;
+    }
+}
+
 void s4_sched_init(void) {
     memset(tcb_table, 0, sizeof(tcb_table));
     memset(&ready_queue, 0, sizeof(ready_queue));
@@ -106,6 +142,11 @@ uint16_t s4_task_create(S4TaskInfo* info) {
     }
 
     tcb->context = tcb->stack_base;
+
+    /* Write canary at bottom of stack for overflow detection */
+    /* DISABLED: investigating crash */
+    /* s4_stack_canary_init(i + 1); */
+
     s4_task_count++;
 
     s4_enable_interrupts();
