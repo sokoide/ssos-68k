@@ -2,11 +2,11 @@
 
 ## Project Structure & Module Organization
 
-The SSOS sources live in `ssos/`, with `os/` split into `kernel/`, `main/`, `window/`, and `util/` for the core C modules. Boot loader assets sit under `ssos/boot/`, while the Human68K launcher is in `ssos/standalone/`. Unit tests and the native framework are contained in `ssos/tests/`, and repo-level references land in `docs/` with utilities in `tools/`. Build artifacts such as `.xdf`, `.elf`, and `.X` files are produced into `~/tmp`; keep that directory out of version control.
+SSOS has two OS variants in parallel directories: `ssos-preemptive/` (preemptive multitasking) and `ssos-cooperative/` (cooperative multitasking). Within each variant, `os/` is split into `kernel/`, `mem/`, `gfx/`, `win/`, `ipc/`, and `app/` for the core C modules. Boot loader assets sit under `boot/`, while the Human68K standalone launcher is in `standalone/`. Unit tests and the native framework are contained in `ssos/tests/`, and repo-level references land in `docs/` with utilities in `tools/`. Build artifacts such as `.xdf`, `.elf`, and `.X` files are produced into `~/tmp`; keep that directory out of version control.
 
 ## Build, Test, and Development Commands
 
-Configure the toolchain once per shell via `export XELF_BASE=/path/to/elf2x68k/m68k-xelf` and `. ~/.elf2x68k`. Build the bootable disk with `cd ssos && make`, or generate the Human68K binary with `make standalone`. Use `make compiledb` for `compile_commands.json`, `make dump` for disassembly, and `make readelf` to inspect ELF metadata. Run `make clean` before switching targets.
+Configure the toolchain once per shell via `export XELF_BASE=/path/to/elf2x68k/m68k-xelf` and `. ~/.elf2x68k`. Build either variant with `cd ssos-<variant> && make` (produces boot + OS kernel + standalone). Use `make standalone` within a variant directory for just the Human68K binary. Use `make compiledb` for `compile_commands.json`, `make dump` for disassembly, and `make readelf` to inspect ELF metadata. Run `make clean` before switching targets.
 
 ## Coding Style & Naming Conventions
 

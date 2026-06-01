@@ -1,5 +1,5 @@
 /*
- * SSOS4 Standalone — Preemptive Multithreading Windowed Demo
+ * SSOS Standalone — Preemptive Multithreading Windowed Demo
  * CRT: 512x512 256-color (crtmod 8)
  * Font: Spleen 5x8
  * Exit: ESC key
@@ -25,13 +25,13 @@
 #ifdef LOCAL_MODE
 
 static uint8_t local_memory[512 * 1024] __attribute__((aligned(4)));
-static uint8_t local_stack_mem[S4_MAX_TASKS * S4_TASK_STACK]
+static uint8_t local_stack_mem[SS_MAX_TASKS * SS_TASK_STACK]
     __attribute__((aligned(4)));
 
-uint8_t* s4_task_stack_base = local_stack_mem;
+uint8_t* ss_task_stack_base = local_stack_mem;
 
-/* s4_tick_counter, s4_vsync_counter, s4_switch_count defined in interrupts.s */
-extern uint32_t s4_switch_count;
+/* ss_tick_counter, ss_vsync_counter, ss_switch_count defined in interrupts.s */
+extern uint32_t ss_switch_count;
 
 #define GVRAM ((volatile uint16_t*)0xC00000)
 #define GVRAM_STR 512
@@ -41,36 +41,44 @@ extern uint32_t s4_switch_count;
 #define DISP_H 512
 
 /* Palette Indices (1 word per pixel, lower 8 bits = palette index) */
-#define C_WHITE   0
-#define C_BLACK   215
-#define C_GRAY_L  247
-#define C_GRAY_M  250
-#define C_GRAY_D  252
+#define C_WHITE 0
+#define C_BLACK 215
+#define C_GRAY_L 247
+#define C_GRAY_M 250
+#define C_GRAY_D 252
 
 /* X68k Palette Helper (GGGGG RRRRR BBBBB P) */
 #define PAL_RGB(r, g, b)                                                       \
-    (uint16_t)((((g) & 0x1F) << 11) | (((r) & 0x1F) << 6) | (((b) & 0x1F) << 1) | 1)
+    (uint16_t)((((g) & 0x1F) << 11) | (((r) & 0x1F) << 6) |                    \
+               (((b) & 0x1F) << 1) | 1)
 
 static void set_palette(void) {
     int i, r, g, b;
     int idx = 0;
     static const uint8_t cube_levels[] = {31, 25, 18, 12, 6, 0};
-    static const uint8_t system_levels[] = {29, 27, 23, 21, 17, 15, 10, 8, 4, 2};
+    static const uint8_t system_levels[] = {29, 27, 23, 21, 17,
+                                            15, 10, 8,  4,  2};
 
     /* 1. 6x6x6 Color Cube (Indices 0-215) */
     for (r = 0; r < 6; r++) {
         for (g = 0; g < 6; g++) {
             for (b = 0; b < 6; b++) {
-                _iocs_gpalet(idx++, PAL_RGB(cube_levels[r], cube_levels[g], cube_levels[b]));
+                _iocs_gpalet(idx++, PAL_RGB(cube_levels[r], cube_levels[g],
+                                            cube_levels[b]));
             }
         }
     }
 
     /* 2. 40 System Colors (Indices 216-255) */
-    for (i = 0; i < 10; i++) _iocs_gpalet(idx++, PAL_RGB(system_levels[i], 0, 0));
-    for (i = 0; i < 10; i++) _iocs_gpalet(idx++, PAL_RGB(0, system_levels[i], 0));
-    for (i = 0; i < 10; i++) _iocs_gpalet(idx++, PAL_RGB(0, 0, system_levels[i]));
-    for (i = 0; i < 10; i++) _iocs_gpalet(idx++, PAL_RGB(system_levels[i], system_levels[i], system_levels[i]));
+    for (i = 0; i < 10; i++)
+        _iocs_gpalet(idx++, PAL_RGB(system_levels[i], 0, 0));
+    for (i = 0; i < 10; i++)
+        _iocs_gpalet(idx++, PAL_RGB(0, system_levels[i], 0));
+    for (i = 0; i < 10; i++)
+        _iocs_gpalet(idx++, PAL_RGB(0, 0, system_levels[i]));
+    for (i = 0; i < 10; i++)
+        _iocs_gpalet(idx++, PAL_RGB(system_levels[i], system_levels[i],
+                                    system_levels[i]));
 }
 
 /* Layout for 8x8 font */
@@ -102,19 +110,19 @@ static int need_full = 1;
 /* COPY key (trap #12) and NMI (autovector 7) vector save */
 static uint32_t saved_copy_vec;
 static uint32_t saved_nmi_vec;
-extern void s4_nop_handler(void);
+extern void ss_nop_handler(void);
 
 /* TRAP #14 exception handler support */
-extern void s4_init_trap14(void);
-extern void s4_restore_trap14(void);
-extern uint16_t s4_trapbuf_flag;
-extern uint16_t s4_trapbuf_sr;
-extern uint32_t s4_trapbuf_pc;
-extern char* s4_trapbuf_msg;
+extern void ss_init_trap14(void);
+extern void ss_restore_trap14(void);
+extern uint16_t ss_trapbuf_flag;
+extern uint16_t ss_trapbuf_sr;
+extern uint32_t ss_trapbuf_pc;
+extern char* ss_trapbuf_msg;
 
 /* Main task TCB — registers main()'s context with the scheduler
    so preemptive context switching works to/from main */
-static S4Task main_tcb;
+static SSTask main_tcb;
 
 #define OL_MAX 1200
 static uint16_t ol_buf[OL_MAX];
@@ -126,45 +134,45 @@ static int ol_x, ol_y, ol_w, ol_h, ol_valid;
 
 /* DMAC HD63450 CH2 — register layout from working ssos dma.h */
 typedef struct {
-    uint8_t   csr;
-    uint8_t   cer;
-    uint16_t  spare1;
-    uint8_t   dcr;
-    uint8_t   ocr;
-    uint8_t   scr;
-    uint8_t   ccr;
-    uint16_t  spare2;
-    uint16_t  mtc;
-    uint8_t*  mar;
-    uint32_t  spare3;
-    uint8_t*  dar;
-    uint16_t  spare4;
-    uint16_t  btc;
-    uint8_t*  bar;
-    uint32_t  spare5;
-    uint8_t   spare6;
-    uint8_t   niv;
-    uint8_t   spare7;
-    uint8_t   eiv;
-    uint8_t   spare8;
-    uint8_t   mfc;
-    uint16_t  spare9;
-    uint8_t   spare10;
-    uint8_t   cpr;
-    uint16_t  spare11;
-    uint8_t   spare12;
-    uint8_t   dfc;
-    uint32_t  spare13;
-    uint16_t  spare14;
-    uint8_t   spare15;
-    uint8_t   bfc;
+    uint8_t csr;
+    uint8_t cer;
+    uint16_t spare1;
+    uint8_t dcr;
+    uint8_t ocr;
+    uint8_t scr;
+    uint8_t ccr;
+    uint16_t spare2;
+    uint16_t mtc;
+    uint8_t* mar;
+    uint32_t spare3;
+    uint8_t* dar;
+    uint16_t spare4;
+    uint16_t btc;
+    uint8_t* bar;
+    uint32_t spare5;
+    uint8_t spare6;
+    uint8_t niv;
+    uint8_t spare7;
+    uint8_t eiv;
+    uint8_t spare8;
+    uint8_t mfc;
+    uint16_t spare9;
+    uint8_t spare10;
+    uint8_t cpr;
+    uint16_t spare11;
+    uint8_t spare12;
+    uint8_t dfc;
+    uint32_t spare13;
+    uint16_t spare14;
+    uint8_t spare15;
+    uint8_t bfc;
 } DMA_REG;
 
 #define dma_ch2 ((volatile DMA_REG*)0xE84080)
 /* XFR_INF structure for array chain mode (6 bytes per entry, packed!) */
 typedef struct __attribute__((packed)) {
-    uint8_t* mar;  /* Memory Address Register (4 bytes) */
-    uint16_t mtc;  /* Memory Transfer Count (2 bytes) */
+    uint8_t* mar; /* Memory Address Register (4 bytes) */
+    uint16_t mtc; /* Memory Transfer Count (2 bytes) */
 } XFR_INF;
 
 #define DMA_FILL_THRESHOLD 64
@@ -210,8 +218,7 @@ static int dma_fill_row(volatile uint16_t* dst, int count) {
 static void save_win_bitmap(int x, int y, int w, int h) {
     volatile uint16_t* s = GVRAM + (uint32_t)y * GVRAM_STR + x;
     for (int row = 0; row < h; row++) {
-        for (int i = 0; i < w; i++)
-            win_save_buf[row * w + i] = s[i];
+        for (int i = 0; i < w; i++) win_save_buf[row * w + i] = s[i];
         s += GVRAM_STR;
     }
     win_save_valid = 1;
@@ -225,13 +232,11 @@ static void restore_win_bitmap(int x, int y, int w, int h) {
         if ((x & 1) == 0) {
             volatile uint32_t* dl = (volatile uint32_t*)d;
             uint32_t* sl = (uint32_t*)src;
-            for (int i = 0; i < w / 2; i++)
-                dl[i] = sl[i];
+            for (int i = 0; i < w / 2; i++) dl[i] = sl[i];
             if (w & 1)
                 d[w - 1] = src[w - 1];
         } else {
-            for (int i = 0; i < w; i++)
-                d[i] = src[i];
+            for (int i = 0; i < w; i++) d[i] = src[i];
         }
         d += GVRAM_STR;
     }
@@ -240,8 +245,7 @@ static void restore_win_bitmap(int x, int y, int w, int h) {
 
 static inline void fill_long(volatile uint32_t* dst, uint32_t val,
                              uint32_t count) {
-    for (uint32_t i = 0; i < count; i++)
-        dst[i] = val;
+    for (uint32_t i = 0; i < count; i++) dst[i] = val;
 }
 
 static void fill_rect(int x0, int y0, int x1, int y1, uint8_t c) {
@@ -263,8 +267,7 @@ static void fill_rect(int x0, int y0, int x1, int y1, uint8_t c) {
     /* Use DMA only for large rectangles (width > 64 AND height > 4) */
     /* Small rectangles: CPU setup cost < DMA transfer time */
     if (w > DMA_FILL_THRESHOLD && h > 4 && w <= 512) {
-        for (int i = 0; i < w; i++)
-            dma_fill_buf[i] = cw;
+        for (int i = 0; i < w; i++) dma_fill_buf[i] = cw;
         dma_fill_init();
         for (int y = y0; y <= y1; y++) {
             volatile uint16_t* b = GVRAM + y * (uint32_t)GVRAM_STR;
@@ -278,7 +281,8 @@ static void fill_rect(int x0, int y0, int x1, int y1, uint8_t c) {
             /* DMA failed - fall back to CPU for this and future calls */
             for (int y = y0; y <= y1; y++) {
                 volatile uint16_t* b = GVRAM + y * (uint32_t)GVRAM_STR;
-                fill_long((volatile uint32_t*)(b + x0), ((uint32_t)c << 16) | c, (uint32_t)w / 2);
+                fill_long((volatile uint32_t*)(b + x0), ((uint32_t)c << 16) | c,
+                          (uint32_t)w / 2);
                 if (w & 1)
                     b[x0 + w - 1] = cw;
             }
@@ -288,10 +292,12 @@ static void fill_rect(int x0, int y0, int x1, int y1, uint8_t c) {
         for (int y = y0; y <= y1; y++) {
             volatile uint16_t* b = GVRAM + y * (uint32_t)GVRAM_STR;
             int x = x0;
-            if (x & 1) b[x++] = cw;
+            if (x & 1)
+                b[x++] = cw;
             int n = (x1 - x + 1) / 2;
             fill_long((volatile uint32_t*)(b + x), c2, n);
-            if ((x1 - x + 1) & 1) b[x1] = cw;
+            if ((x1 - x + 1) & 1)
+                b[x1] = cw;
         }
     }
 }
@@ -471,8 +477,8 @@ static void draw_char8_clip(int px, int py, char ch, uint8_t fg, uint8_t bg,
             int covered = 0;
             for (int k = zpos + 1; k < 3; k++) {
                 Win* ow = &wins[zmap[k]];
-                if (xx >= ow->x && xx < ow->x + ow->w &&
-                    yy >= ow->y && yy < ow->y + ow->h) {
+                if (xx >= ow->x && xx < ow->x + ow->w && yy >= ow->y &&
+                    yy < ow->y + ow->h) {
                     covered = 1;
                     break;
                 }
@@ -532,13 +538,12 @@ static void draw_frame(Win* w, int is_fg) {
 
     /* Border lines (1px black) */
     fill_rect(w->x, w->y, w->x + w->w - 1, w->y, C_BLACK);
-    fill_rect(w->x, w->y + w->h - 1, w->x + w->w - 1, w->y + w->h - 1,
-              C_BLACK);
+    fill_rect(w->x, w->y + w->h - 1, w->x + w->w - 1, w->y + w->h - 1, C_BLACK);
     fill_rect(w->x, w->y + 1, w->x, w->y + w->h - 2, C_BLACK);
     fill_rect(w->x + w->w - 1, w->y + 1, w->x + w->w - 1, w->y + w->h - 2,
               C_BLACK);
-    fill_rect(w->x + 1, w->y + TITLE_H - 1, w->x + w->w - 2,
-              w->y + TITLE_H - 1, C_BLACK);
+    fill_rect(w->x + 1, w->y + TITLE_H - 1, w->x + w->w - 2, w->y + TITLE_H - 1,
+              C_BLACK);
 
     int tw = (int)strlen(w->title) * 6;
     int tx = w->x + (w->w - tw) / 2;
@@ -623,12 +628,10 @@ static void ol_save(int x, int y, int w, int h) {
         volatile uint16_t* p;
         /* Top edge */
         p = GVRAM + y * (uint32_t)GVRAM_STR + x;
-        for (int i = 0; i < w && idx < OL_MAX; i++, idx++)
-            ol_buf[idx] = p[i];
+        for (int i = 0; i < w && idx < OL_MAX; i++, idx++) ol_buf[idx] = p[i];
         /* Bottom edge */
         p = GVRAM + (uint32_t)(y + h - 1) * GVRAM_STR + x;
-        for (int i = 0; i < w && idx < OL_MAX; i++, idx++)
-            ol_buf[idx] = p[i];
+        for (int i = 0; i < w && idx < OL_MAX; i++, idx++) ol_buf[idx] = p[i];
         /* Left edge */
         for (int i = 1; i < h - 1 && idx < OL_MAX; i++, idx++)
             ol_buf[idx] = GVRAM[(uint32_t)(y + i) * GVRAM_STR + x];
@@ -676,12 +679,10 @@ static void ol_restore(void) {
         volatile uint16_t* p;
         /* Top edge */
         p = GVRAM + y * (uint32_t)GVRAM_STR + x;
-        for (int i = 0; i < w && idx < OL_MAX; i++, idx++)
-            p[i] = ol_buf[idx];
+        for (int i = 0; i < w && idx < OL_MAX; i++, idx++) p[i] = ol_buf[idx];
         /* Bottom edge */
         p = GVRAM + (uint32_t)(y + h - 1) * GVRAM_STR + x;
-        for (int i = 0; i < w && idx < OL_MAX; i++, idx++)
-            p[i] = ol_buf[idx];
+        for (int i = 0; i < w && idx < OL_MAX; i++, idx++) p[i] = ol_buf[idx];
         /* Left edge */
         for (int i = 1; i < h - 1 && idx < OL_MAX; i++, idx++)
             GVRAM[(uint32_t)(y + i) * GVRAM_STR + x] = ol_buf[idx];
@@ -750,10 +751,8 @@ static int hit_test(int hx, int hy) {
 
 static void wait_vsync(void) {
     volatile uint8_t* gpip = (volatile uint8_t*)0xE88001;
-    while (!(*gpip & 0x10))
-        ;
-    while (*gpip & 0x10)
-        ;
+    while (!(*gpip & 0x10));
+    while (*gpip & 0x10);
 }
 
 /* ================================================================
@@ -763,7 +762,9 @@ static void wait_vsync(void) {
 static void* data_thread(void* arg) {
     (void)arg;
     for (;;) {
-        if (exit_flag) for (;;) s4_task_sleep(0x7FFFFFFF); /* infinite sleep in 200Hz ticks */
+        if (exit_flag)
+            for (;;)
+                ss_task_sleep(0x7FFFFFFF); /* infinite sleep in 200Hz ticks */
 
         /* Keyboard */
         if (_iocs_b_keysns() > 0) {
@@ -795,11 +796,11 @@ static void* data_thread(void* arg) {
         pad(wins[0].line[0], 24);
         sprintf(wins[0].line[1], "Time: %lu.%02lu", sec, frac);
         pad(wins[0].line[1], 24);
-        sprintf(wins[0].line[2], "Sw:%lu", s4_switch_count);
+        sprintf(wins[0].line[2], "Sw:%lu", ss_switch_count);
         pad(wins[0].line[2], 24);
 
         /* Sleep 40 ticks = 200ms at 200Hz */
-        s4_task_sleep(40);
+        ss_task_sleep(40);
     }
     return NULL;
 }
@@ -812,22 +813,22 @@ int main(void) {
     int ssp = _iocs_b_super(0);
 
     /* Initialize TRAP #14 exception handler FIRST */
-    s4_init_trap14();
+    ss_init_trap14();
 
-    s4_mem_init(local_memory, sizeof(local_memory));
-    s4_sched_init();
+    ss_mem_init(local_memory, sizeof(local_memory));
+    ss_sched_init();
 
     /* Register main() as a task so the scheduler can context-switch
-       to/from it. Without this, s4_curr_task points to a worker task
+       to/from it. Without this, ss_curr_task points to a worker task
        that never actually runs, and preemptive switching breaks. */
-    main_tcb.state = S4_TS_READY;
+    main_tcb.state = SS_TS_READY;
     main_tcb.pri = 8;
     main_tcb.stack_base = (void*)1; /* sentinel: never matches saved SP */
-    s4_curr_task = &main_tcb;
-    s4_sched_enqueue(&main_tcb);
+    ss_curr_task = &main_tcb;
+    ss_sched_enqueue(&main_tcb);
 
     /* Enable Timer D interrupts for preemptive scheduling */
-    s4_set_interrupts();
+    ss_set_interrupts();
 
     /* Display setup */
     int old_mode = _iocs_crtmod(-1);
@@ -855,8 +856,8 @@ int main(void) {
     /* Protect COPY key (trap #12) and NMI (autovector 7) */
     saved_copy_vec = *(volatile uint32_t*)0xB0;
     saved_nmi_vec = *(volatile uint32_t*)0x7C;
-    *(volatile uint32_t*)0xB0 = (uint32_t)s4_nop_handler;
-    *(volatile uint32_t*)0x7C = (uint32_t)s4_nop_handler;
+    *(volatile uint32_t*)0xB0 = (uint32_t)ss_nop_handler;
+    *(volatile uint32_t*)0x7C = (uint32_t)ss_nop_handler;
 
     /* Window init */
     wins[0] = (Win){30, 15, WIN_W, WIN_H, "Timer", {{{0}}}, {{0}}};
@@ -865,10 +866,12 @@ int main(void) {
     ol_valid = 0;
 
     /* Create single data worker thread (batches all IOCS calls) */
-    uint16_t t_data = s4_task_create(&(S4TaskInfo){
-        .entry = data_thread, .pri = 8, .ctx_level = 0, .stack_size = 0, .stack = NULL
-    });
-    s4_task_start(t_data);
+    uint16_t t_data = ss_task_create(&(SSTaskInfo){.entry = data_thread,
+                                                   .pri = 8,
+                                                   .ctx_level = 0,
+                                                   .stack_size = 0,
+                                                   .stack = NULL});
+    ss_task_start(t_data);
 
     /* Main rendering loop */
     for (;;) {
@@ -904,12 +907,11 @@ int main(void) {
                 dox = cur_mx - wins[hit].x;
                 doy = cur_my - wins[hit].y;
                 bring_to_front(hit);
-                save_win_bitmap(wins[hit].x, wins[hit].y,
-                                wins[hit].w, wins[hit].h);
+                save_win_bitmap(wins[hit].x, wins[hit].y, wins[hit].w,
+                                wins[hit].h);
                 fill_stipple(wins[hit].x, wins[hit].y,
                              wins[hit].x + wins[hit].w - 1,
-                             wins[hit].y + wins[hit].h - 1, C_WHITE,
-                             C_GRAY_M);
+                             wins[hit].y + wins[hit].h - 1, C_WHITE, C_GRAY_M);
                 for (int i = 0; i < 3; i++) {
                     int idx = zmap[i];
                     if (idx == drag)
@@ -918,10 +920,9 @@ int main(void) {
                     memset(wins[idx].prev, 0xFF, sizeof(wins[idx].prev));
                     draw_content_dirty(&wins[idx]);
                 }
-                ol_save(wins[drag].x, wins[drag].y, wins[drag].w,
-                        wins[drag].h);
-                draw_march_outline(wins[drag].x, wins[drag].y,
-                                   wins[drag].w, wins[drag].h);
+                ol_save(wins[drag].x, wins[drag].y, wins[drag].w, wins[drag].h);
+                draw_march_outline(wins[drag].x, wins[drag].y, wins[drag].w,
+                                   wins[drag].h);
                 memset(wins[drag].prev, 0xFF, sizeof(wins[drag].prev));
                 need_full = 0;
             }
@@ -930,12 +931,12 @@ int main(void) {
             ol_restore();
             int wx = wins[drag].x, wy = wins[drag].y;
             int ww = wins[drag].w, wh = wins[drag].h;
-            if (win_save_valid && wx >= 0 && wy >= 0 &&
-                wx + ww <= SW && wy + wh <= SH) {
+            if (win_save_valid && wx >= 0 && wy >= 0 && wx + ww <= SW &&
+                wy + wh <= SH) {
                 restore_win_bitmap(wx, wy, ww, wh);
                 /* Redraw title bar with foreground style */
-                fill_rect(wx + 1, wy + 1, wx + ww - 2,
-                          wy + TITLE_H - 2, C_GRAY_L);
+                fill_rect(wx + 1, wy + 1, wx + ww - 2, wy + TITLE_H - 2,
+                          C_GRAY_L);
                 int tw = (int)strlen(wins[drag].title) * 6;
                 int tx = wx + (ww - tw) / 2;
                 for (int li = 0; li < 5; li++) {
@@ -943,11 +944,9 @@ int main(void) {
                     if (tx > wx + 12)
                         fill_rect(wx + 4, ly, tx - 8, ly, C_BLACK);
                     if (tx + tw + 8 < wx + ww - 4)
-                        fill_rect(tx + tw + 8, ly, wx + ww - 5, ly,
-                                  C_BLACK);
+                        fill_rect(tx + tw + 8, ly, wx + ww - 5, ly, C_BLACK);
                 }
-                draw_text(tx, wy + 2, wins[drag].title, C_BLACK,
-                          C_GRAY_L);
+                draw_text(tx, wy + 2, wins[drag].title, C_BLACK, C_GRAY_L);
             } else {
                 draw_frame(&wins[drag], 1);
             }
@@ -973,8 +972,7 @@ int main(void) {
             int moved = (ol_x != wins[drag].x || ol_y != wins[drag].y);
             if (moved) {
                 ol_restore();
-                ol_save(wins[drag].x, wins[drag].y, wins[drag].w,
-                        wins[drag].h);
+                ol_save(wins[drag].x, wins[drag].y, wins[drag].w, wins[drag].h);
             }
             draw_march_outline(wins[drag].x, wins[drag].y, wins[drag].w,
                                wins[drag].h);
@@ -984,8 +982,7 @@ int main(void) {
                 Win* w = &wins[idx];
                 for (int j = 0; j < 3; j++) {
                     if (memcmp(w->line[j], w->prev[j], 30) != 0) {
-                        draw_text_clip(w->x + 4,
-                                       w->y + CONTENT_Y + j * LINE_H,
+                        draw_text_clip(w->x + 4, w->y + CONTENT_Y + j * LINE_H,
                                        w->line[j], C_BLACK, C_WHITE, i);
                         memcpy(w->prev[j], w->line[j], 30);
                     }
@@ -995,14 +992,14 @@ int main(void) {
     }
 
     /* Check if exception was caught by TRAP #14 handler */
-    if (s4_trapbuf_flag != 0) {
+    if (ss_trapbuf_flag != 0) {
         char buf[128];
         _iocs_b_print("\r\n=== EXCEPTION CAUGHT (TRAP #14) ===\r\n");
-        sprintf(buf, "Type: %s (code=%d)\r\n", s4_trapbuf_msg, s4_trapbuf_flag);
+        sprintf(buf, "Type: %s (code=%d)\r\n", ss_trapbuf_msg, ss_trapbuf_flag);
         _iocs_b_print(buf);
-        sprintf(buf, "PC: 0x%08X\r\n", s4_trapbuf_pc);
+        sprintf(buf, "PC: 0x%08X\r\n", ss_trapbuf_pc);
         _iocs_b_print(buf);
-        sprintf(buf, "SR: 0x%04X\r\n", s4_trapbuf_sr);
+        sprintf(buf, "SR: 0x%04X\r\n", ss_trapbuf_sr);
         _iocs_b_print(buf);
         _iocs_b_print("====================================\r\n");
         _iocs_b_super(ssp);
@@ -1010,10 +1007,10 @@ int main(void) {
     }
 
     /* Restore interrupts to Human68K state */
-    s4_restore_interrupts();
+    ss_restore_interrupts();
 
     /* Restore TRAP #14 exception handler */
-    s4_restore_trap14();
+    ss_restore_trap14();
 
     /* Restore COPY key and NMI vectors */
     *(volatile uint32_t*)0xB0 = saved_copy_vec;
@@ -1024,7 +1021,7 @@ int main(void) {
     _iocs_skey_mod(-1, 0, 0);
     _iocs_crtmod(old_mode);
     _iocs_b_curon();
-    _iocs_b_print("SSOS4 terminated.\r\n");
+    _iocs_b_print("SSOS-Preemptive terminated.\r\n");
     _iocs_b_super(ssp);
     _exit(0);
 }

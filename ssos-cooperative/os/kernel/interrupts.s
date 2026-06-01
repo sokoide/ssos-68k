@@ -2,27 +2,27 @@
 
 		.section .text
 		.align	2
-		.globl	s4_set_interrupts, s4_restore_interrupts
-		.globl	s4_disable_interrupts, s4_enable_interrupts
-		.globl	s4_tick_counter, s4_vsync_counter
-		.globl	s4_vsync_flag
-		.globl	s4_save_data_base
-		.globl	s4_task_yield
-		.globl	s4_yield_count
-		.type	s4_set_interrupts, @function
+		.globl	ss_set_interrupts, ss_restore_interrupts
+		.globl	ss_disable_interrupts, ss_enable_interrupts
+		.globl	ss_tick_counter, ss_vsync_counter
+		.globl	ss_vsync_flag
+		.globl	ss_save_data_base
+		.globl	ss_task_yield
+		.globl	ss_yield_count
+		.type	ss_set_interrupts, @function
 
-s4_disable_interrupts:
+ss_disable_interrupts:
 		move.w	#0x2700, %sr
 		rts
 
-s4_enable_interrupts:
+ss_enable_interrupts:
 		move.w	#0x2000, %sr
 		rts
 
 		| ============================================================
-		| s4_set_interrupts - Initialize MFP and interrupt vectors
+		| ss_set_interrupts - Initialize MFP and interrupt vectors
 		| ============================================================
-s4_set_interrupts:
+ss_set_interrupts:
 		movem.l	d2-d7/a2-a6, -(sp)
 
 		| Disable interrupts
@@ -50,15 +50,15 @@ s4_set_interrupts:
 
 		| Set interrupt handlers
 		| Timer D handler
-		lea		s4_timerd_handler, a0
+		lea		ss_timerd_handler, a0
 		move.l	a0, 0x110
 
 		| V-DISP / Timer A handler
-		lea		s4_vdisp_handler, a0
+		lea		ss_vdisp_handler, a0
 		move.l	a0, 0x134
 
 		| NOP handlers for unused vectors
-		lea		s4_nop_handler, a0
+		lea		ss_nop_handler, a0
 		move.l	a0, 0x138
 		move.l	a0, 0x13c
 
@@ -88,7 +88,7 @@ s4_set_interrupts:
 	save_interrupts:
 		movem.l	d2-d7/a2-a6, -(sp)
 
-		lea		s4_save_data_base, a0
+		lea		ss_save_data_base, a0
 
 		| Timer A
 		move.l	0x134, d0
@@ -142,9 +142,9 @@ s4_set_interrupts:
 		rts
 
 		| ============================================================
-		| s4_restore_interrupts - Restore original interrupt state
+		| ss_restore_interrupts - Restore original interrupt state
 		| ============================================================
-s4_restore_interrupts:
+ss_restore_interrupts:
 		movem.l	d2-d7/a2-a6, -(sp)
 
 		move.w	#0x2700, %sr
@@ -155,7 +155,7 @@ s4_restore_interrupts:
 		move.b	#0x00, 0xe8800f
 		move.b	#0x00, 0xe88011
 
-		lea		s4_save_data_base, a0
+		lea		ss_save_data_base, a0
 
 		| Restore vectors
 		move.l	(a0), d0
@@ -200,12 +200,12 @@ s4_restore_interrupts:
 		| ============================================================
 		| Interrupt handlers
 		| ============================================================
-	.globl	s4_nop_handler
-s4_nop_handler:
+	.globl	ss_nop_handler
+ss_nop_handler:
 		rte
 
 		| V-DISP handler: increment vsync counter and set flag
-s4_vdisp_handler:
+ss_vdisp_handler:
 		movem.l	d0/a0, -(sp)
 
 		| Reset ISRA Timer A bit (clear bit 5)
@@ -214,8 +214,8 @@ s4_vdisp_handler:
 		and.b	#0xdf, d0
 		move.b	d0, (a0)
 
-		addq.l	#1, s4_vsync_counter
-		move.b	#1, s4_vsync_flag
+		addq.l	#1, ss_vsync_counter
+		move.b	#1, ss_vsync_flag
 
 		movem.l	(sp)+, d0/a0
 		rte
@@ -224,10 +224,10 @@ s4_vdisp_handler:
 		| TimerD handler - Cooperative: tick counter + wakeups only
 		| NO preemptive context switch. Tasks yield explicitly.
 		|
-		| S4Task struct offsets:
+		| SSTask struct offsets:
 		|   context    = 0   (void*)
-		|   prev       = 4   (S4Task*)
-		|   next       = 8   (S4Task*)
+		|   prev       = 4   (SSTask*)
+		|   next       = 8   (SSTask*)
 		|   stack_base = 12  (void*)
 		|   stack_size = 16  (uint32_t)
 		|   entry      = 20  (function pointer)
@@ -237,17 +237,17 @@ s4_vdisp_handler:
 		|   ctx_level  = 30  (uint8_t)
 		|   pad        = 31  (uint8_t)
 		| ============================================================
-		.extern s4_curr_task
-		.extern s4_scheduled_task
-		.extern s4_do_context_switch
-		.extern s4_do_wakeups
+		.extern ss_curr_task
+		.extern ss_scheduled_task
+		.extern ss_do_context_switch
+		.extern ss_do_wakeups
 
-s4_timerd_handler:
+ss_timerd_handler:
 		movem.l	d0-d7/a0-a6, -(sp)
-		addq.l	#1, s4_tick_counter
+		addq.l	#1, ss_tick_counter
 
 		| Wake sleeping tasks whose timer has expired
-		bsr	s4_do_wakeups
+		bsr	ss_do_wakeups
 
 		| Reset ISRB Timer D bit (clear bit 4)
 		move.l	#0xe88011, a0
@@ -259,13 +259,13 @@ s4_timerd_handler:
 		rte
 
 		| ============================================================
-		| s4_task_yield - Voluntary context switch (callable from C)
+		| ss_task_yield - Voluntary context switch (callable from C)
 		|
 		| This is the ONLY path for context switching in cooperative
 		| mode. The scheduler picks the next ready task and switches
 		| to it. The calling task resumes here when scheduled again.
 		| ============================================================
-s4_task_yield:
+ss_task_yield:
 		| Build manual resume frame: SR + return PC
 		pea		.yield_resume
 		move.w	#0x2000, -(sp)
@@ -273,21 +273,21 @@ s4_task_yield:
 		movem.l	d0-d7/a0-a6, -(sp)
 
 		| Save current SP to curr_task->context
-		move.l	s4_curr_task, a1
+		move.l	ss_curr_task, a1
 		move.l	sp, (a1)
 
 		| Count yield for diagnostics
-		addq.l	#1, s4_yield_count
+		addq.l	#1, ss_yield_count
 
 		| Call C scheduler to pick next task
-		bsr	s4_do_context_switch
+		bsr	ss_do_context_switch
 
 		| ---- Resume scheduled task ----
-		move.l	s4_scheduled_task, a1
+		move.l	ss_scheduled_task, a1
 		move.l	(a1), sp
 
 		| Check if this is a new (never-run) task
-		| New task: context was initialized to stack_base in s4_task_create
+		| New task: context was initialized to stack_base in ss_task_create
 		move.l	(a1), a0
 		move.l	12(a1), d0
 		cmp.l	a0, d0
@@ -313,20 +313,20 @@ s4_task_yield:
 		| ============================================================
 		.section .data
 		.even
-s4_tick_counter:
+ss_tick_counter:
 		dc.l	0
-s4_vsync_counter:
+ss_vsync_counter:
 		dc.l	0
-s4_vsync_flag:
+ss_vsync_flag:
 		dc.b	0
 		.even
-s4_yield_count:
+ss_yield_count:
 		dc.l	0
 		.even
 
 		.section .bss
 		.even
-s4_save_data_base:
+ss_save_data_base:
 		ds.b	1024
 
 		| ============================================================
@@ -344,58 +344,58 @@ s4_save_data_base:
 		|   1. Handler saves exception info to trapbuf (NO I/O here!)
 		|   2. Handler issues _ABORTJOB (do=-1) so Human68K invokes
 		|      the process abort vectors (0xFFF2 / 0xFFF1).
-		|   3. The abort handler (s4_trap14_abort) prints info and exits.
+		|   3. The abort handler (ss_trap14_abort) prints info and exits.
 		|   4. For exceptions we don't handle: chain to original handler.
 		| ============================================================
 
 		| --- trapbuf data (C-accessible via .globl) ---
 		.section .data
 		.even
-		.globl	s4_old_trap14
-		.globl	s4_trapbuf_flag
-		.globl	s4_trapbuf_sr
-		.globl	s4_trapbuf_pc
-		.globl	s4_trapbuf_msg
+		.globl	ss_old_trap14
+		.globl	ss_trapbuf_flag
+		.globl	ss_trapbuf_sr
+		.globl	ss_trapbuf_pc
+		.globl	ss_trapbuf_msg
 
-s4_old_trap14:
+ss_old_trap14:
 		dc.l	0
-s4_trapbuf_flag:
+ss_trapbuf_flag:
 		dc.w	0
-s4_trapbuf_sr:
+ss_trapbuf_sr:
 		dc.w	0
-s4_trapbuf_pc:
+ss_trapbuf_pc:
 		dc.l	0
-s4_trapbuf_msg:
+ss_trapbuf_msg:
 		dc.l	0
 
 		| --- String constants ---
 		.section .rodata
 		.even
-s4_msg_bus:
+ss_msg_bus:
 		.ascii	"Bus Error\0"
-s4_msg_addr:
+ss_msg_addr:
 		.ascii	"Address Error\0"
-s4_msg_ill:
+ss_msg_ill:
 		.ascii	"Illegal Instruction\0"
-s4_msg_banner:
+ss_msg_banner:
 		.ascii	"\r\n[TRAP14] \0"
-s4_msg_pc:
+ss_msg_pc:
 		.ascii	" PC=\0"
-s4_msg_crlf:
+ss_msg_crlf:
 		.ascii	"\r\n\0"
 
 		.section .data
 		.even
-s4_hex_buf:
+ss_hex_buf:
 		.ds.b	16
 
 		| --- TRAP #14 code ---
 		.section .text
 		.even
-		.globl	s4_trap14_handler
-		.globl	s4_trap14_abort
-		.globl	s4_init_trap14
-		.globl	s4_restore_trap14
+		.globl	ss_trap14_handler
+		.globl	ss_trap14_abort
+		.globl	ss_init_trap14
+		.globl	ss_restore_trap14
 
 		| ----------------------------------------------------------
 		| print_hex_long — print d0 as 8-digit hex via _B_PRINT
@@ -403,7 +403,7 @@ s4_hex_buf:
 		| ----------------------------------------------------------
 	print_hex_long:
 		movem.l	d2/a0-a1, -(sp)
-		lea		s4_hex_buf, a0
+		lea		ss_hex_buf, a0
 		move.l	d0, d2
 		moveq	#7, d1
 	.hex_loop:
@@ -427,7 +427,7 @@ s4_hex_buf:
 		| ----------------------------------------------------------
 		| TRAP #14 handler entry point
 		| ----------------------------------------------------------
-s4_trap14_handler:
+ss_trap14_handler:
 		| Save working registers (NOT d7/a6 — they hold params)
 		movem.l	d0-d1/a0-a1, -(sp)
 
@@ -446,35 +446,35 @@ s4_trap14_handler:
 
 	.handle:
 		| Save exception code
-		move.w	d7, s4_trapbuf_flag
+		move.w	d7, ss_trapbuf_flag
 
 		| Select message pointer
 		cmpi.w	#2, d0
 		bne.s	.not_bus
-		lea		s4_msg_bus, a0
+		lea		ss_msg_bus, a0
 		bra.s	.save_msg
 	.not_bus:
 		cmpi.w	#3, d0
 		bne.s	.not_addr
-		lea		s4_msg_addr, a0
+		lea		ss_msg_addr, a0
 		bra.s	.save_msg
 	.not_addr:
-		lea		s4_msg_ill, a0
+		lea		ss_msg_ill, a0
 	.save_msg:
-		move.l	a0, s4_trapbuf_msg
+		move.l	a0, ss_trapbuf_msg
 
 		| Extract SR and PC from parameter block at a6
 		move.l	a6, d0
 		btst	#0, d0
 		bne.s	.a6_unaligned
 
-		move.w	(a6), s4_trapbuf_sr
-		move.l	2(a6), s4_trapbuf_pc
+		move.w	(a6), ss_trapbuf_sr
+		move.l	2(a6), ss_trapbuf_pc
 		bra.s	.do_abort
 
 	.a6_unaligned:
-		move.w	#0xFFFF, s4_trapbuf_sr
-		move.l	a6, s4_trapbuf_pc
+		move.w	#0xFFFF, ss_trapbuf_sr
+		move.l	a6, ss_trapbuf_pc
 
 	.do_abort:
 		| Restore working registers before abort
@@ -482,7 +482,7 @@ s4_trap14_handler:
 
 		| Issue _ABORTJOB (do=-1) — this tells Human68K to
 		| invoke the process abort vectors (0xFFF2 / 0xFFF1)
-		| where we installed s4_trap14_abort.
+		| where we installed ss_trap14_abort.
 		IOCS	_ABORTJOB
 
 		| If abort somehow returns, rte back to Human68K
@@ -492,65 +492,65 @@ s4_trap14_handler:
 		| Restore working registers
 		movem.l	(sp)+, d0-d1/a0-a1
 		| Jump to original handler — it will do the rte
-		move.l	s4_old_trap14, a0
+		move.l	ss_old_trap14, a0
 		jmp		(a0)
 
 		| ----------------------------------------------------------
-		| s4_trap14_abort — called by Human68K after _ABORTJOB
+		| ss_trap14_abort — called by Human68K after _ABORTJOB
 		|
 		| Installed at process vectors 0xFFF2 (error abort) and
 		| 0xFFF1 (Ctrl-C abort) via _B_INTVCS.
 		| Must NOT return — _ABORTRST or exit() is required.
 		| ----------------------------------------------------------
-s4_trap14_abort:
+ss_trap14_abort:
 		| Restore original TRAP #14 vector so subsequent errors
 		| go to the default handler ("white window")
-		move.l	s4_old_trap14, d0
+		move.l	ss_old_trap14, d0
 		move.l	d0, 0xB8
 
 		| Print exception info via _B_PRINT (IOCS 0x21)
-		lea		s4_msg_banner, a1
+		lea		ss_msg_banner, a1
 		IOCS	_B_PRINT
 
-		move.l	s4_trapbuf_msg, a1
+		move.l	ss_trapbuf_msg, a1
 		IOCS	_B_PRINT
 
-		lea		s4_msg_pc, a1
+		lea		ss_msg_pc, a1
 		IOCS	_B_PRINT
 
-		move.l	s4_trapbuf_pc, d0
+		move.l	ss_trapbuf_pc, d0
 		bsr		print_hex_long
 
-		lea		s4_msg_crlf, a1
+		lea		ss_msg_crlf, a1
 		IOCS	_B_PRINT
 
 		| Exit — _ABORTRST (IOCS 0xFD) terminates the process
 		IOCS	_ABORTRST
 
 		| ----------------------------------------------------------
-		| s4_init_trap14 — install TRAP #14 handler + abort vectors
+		| ss_init_trap14 — install TRAP #14 handler + abort vectors
 		| ----------------------------------------------------------
-s4_init_trap14:
+ss_init_trap14:
 		move.w	#0x2700, %sr
 
 		| Save original TRAP #14 vector (0xB8 = vector 0x2e * 4)
-		move.l	0xB8, s4_old_trap14
+		move.l	0xB8, ss_old_trap14
 
 		| Install our TRAP #14 handler at 0xB8
-		lea		s4_trap14_handler, a0
+		lea		ss_trap14_handler, a0
 		move.l	a0, 0xB8
 
 		| Clear trapbuf
-		clr.w	s4_trapbuf_flag
-		clr.w	s4_trapbuf_sr
-		clr.l	s4_trapbuf_pc
+		clr.w	ss_trapbuf_flag
+		clr.w	ss_trapbuf_sr
+		clr.l	ss_trapbuf_pc
 
 		| Install abort handler at process vectors via _B_INTVCS
 		| Vector 0xFFF2 = error abort, 0xFFF1 = ctrl-C abort
-		lea		s4_trap14_abort, a0
+		lea		ss_trap14_abort, a0
 		move.w	#0xFFF2, d1
 		IOCS	_B_INTVCS
-		lea		s4_trap14_abort, a0
+		lea		ss_trap14_abort, a0
 		move.w	#0xFFF1, d1
 		IOCS	_B_INTVCS
 
@@ -558,13 +558,13 @@ s4_init_trap14:
 		rts
 
 		| ----------------------------------------------------------
-		| s4_restore_trap14 — restore original TRAP #14 handler
+		| ss_restore_trap14 — restore original TRAP #14 handler
 		| ----------------------------------------------------------
-s4_restore_trap14:
+ss_restore_trap14:
 		move.w	#0x2700, %sr
 
 		| Restore original TRAP #14 vector
-		move.l	s4_old_trap14, d0
+		move.l	ss_old_trap14, d0
 		move.l	d0, 0xB8
 
 		move.w	#0x2000, %sr

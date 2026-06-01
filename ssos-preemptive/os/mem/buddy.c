@@ -2,10 +2,10 @@
 #include <stdint.h>
 #include <string.h>
 
-static S3BuddySystem buddy;
+static SSBuddySystem buddy;
 
 static int order_to_index(uint8_t order) {
-    return order - S4_BUDDY_MIN_ORDER;
+    return order - SS_BUDDY_MIN_ORDER;
 }
 
 static uint32_t order_size(uint8_t order) {
@@ -13,7 +13,7 @@ static uint32_t order_size(uint8_t order) {
 }
 
 static uint32_t block_index(void* ptr) {
-    return ((uint8_t*)ptr - (uint8_t*)buddy.base) >> S4_BUDDY_MIN_ORDER;
+    return ((uint8_t*)ptr - (uint8_t*)buddy.base) >> SS_BUDDY_MIN_ORDER;
 }
 
 static void* block_buddy(void* ptr, uint8_t order) {
@@ -22,7 +22,7 @@ static void* block_buddy(void* ptr, uint8_t order) {
     return (uint8_t*)buddy.base + buddy_offset;
 }
 
-void s4_mem_init(void* base, uint32_t size) {
+void ss_mem_init(void* base, uint32_t size) {
     uint32_t i;
 
     memset(&buddy, 0, sizeof(buddy));
@@ -30,8 +30,8 @@ void s4_mem_init(void* base, uint32_t size) {
     buddy.total_size = size;
 
     /* Align size down to minimum block size */
-    size &= ~((uint32_t)order_size(S4_BUDDY_MIN_ORDER) - 1);
-    buddy.map_entries = size >> S4_BUDDY_MIN_ORDER;
+    size &= ~((uint32_t)order_size(SS_BUDDY_MIN_ORDER) - 1);
+    buddy.map_entries = size >> SS_BUDDY_MIN_ORDER;
 
     /* Use first portion of memory for order map */
     uint32_t map_size = buddy.map_entries;
@@ -39,26 +39,26 @@ void s4_mem_init(void* base, uint32_t size) {
     memset(buddy.order_map, 0xFF, map_size);
 
     /* Usable memory starts after the map */
-    uint32_t usable_start = ((map_size + order_size(S4_BUDDY_MIN_ORDER) - 1)
-                             & ~(order_size(S4_BUDDY_MIN_ORDER) - 1));
+    uint32_t usable_start = ((map_size + order_size(SS_BUDDY_MIN_ORDER) - 1)
+                             & ~(order_size(SS_BUDDY_MIN_ORDER) - 1));
     uint32_t usable_size = size - usable_start;
     uint8_t* usable_base = (uint8_t*)base + usable_start;
 
     /* Find largest order that fits */
-    uint8_t max_order = S4_BUDDY_MAX_ORDER;
-    while (max_order > S4_BUDDY_MIN_ORDER && order_size(max_order) > usable_size) {
+    uint8_t max_order = SS_BUDDY_MAX_ORDER;
+    while (max_order > SS_BUDDY_MIN_ORDER && order_size(max_order) > usable_size) {
         max_order--;
     }
 
     /* Split from top order down */
-    for (i = 0; i < S4_BUDDY_ORDERS; i++) {
+    for (i = 0; i < SS_BUDDY_ORDERS; i++) {
         buddy.free_lists[i] = NULL;
     }
 
     /* Add the entire usable region as blocks of the max possible order */
     uint32_t offset = 0;
     while (offset + order_size(max_order) <= usable_size) {
-        S3BuddyBlock* blk = (S3BuddyBlock*)(usable_base + offset);
+        SSBuddyBlock* blk = (SSBuddyBlock*)(usable_base + offset);
         int idx = order_to_index(max_order);
         blk->next = buddy.free_lists[idx];
         blk->order = max_order;
@@ -68,11 +68,11 @@ void s4_mem_init(void* base, uint32_t size) {
     }
 }
 
-static void split_block(S3BuddyBlock* blk, uint8_t from_order, uint8_t to_order) {
+static void split_block(SSBuddyBlock* blk, uint8_t from_order, uint8_t to_order) {
     uint8_t order = from_order;
     while (order > to_order) {
         order--;
-        S3BuddyBlock* buddy_blk = (S3BuddyBlock*)((uint8_t*)blk + order_size(order));
+        SSBuddyBlock* buddy_blk = (SSBuddyBlock*)((uint8_t*)blk + order_size(order));
         buddy_blk->order = order;
         int idx = order_to_index(order);
         buddy_blk->next = buddy.free_lists[idx];
@@ -83,32 +83,32 @@ static void split_block(S3BuddyBlock* blk, uint8_t from_order, uint8_t to_order)
     buddy.order_map[block_index(blk)] = to_order;
 }
 
-void* s4_alloc(uint32_t size) {
+void* ss_alloc(uint32_t size) {
     if (size == 0) return NULL;
 
     /* Add block header overhead */
-    size += sizeof(S3BuddyBlock);
+    size += sizeof(SSBuddyBlock);
     /* Round up to next power of 2 */
-    uint8_t order = S4_BUDDY_MIN_ORDER;
-    while (order_size(order) < size && order <= S4_BUDDY_MAX_ORDER) {
+    uint8_t order = SS_BUDDY_MIN_ORDER;
+    while (order_size(order) < size && order <= SS_BUDDY_MAX_ORDER) {
         order++;
     }
-    if (order > S4_BUDDY_MAX_ORDER) return NULL;
+    if (order > SS_BUDDY_MAX_ORDER) return NULL;
 
     int idx = order_to_index(order);
 
     /* Find a free block of sufficient order */
     uint8_t found_order = order;
-    while (found_order <= S4_BUDDY_MAX_ORDER) {
+    while (found_order <= SS_BUDDY_MAX_ORDER) {
         int fidx = order_to_index(found_order);
         if (buddy.free_lists[fidx] != NULL) break;
         found_order++;
     }
-    if (found_order > S4_BUDDY_MAX_ORDER) return NULL;
+    if (found_order > SS_BUDDY_MAX_ORDER) return NULL;
 
     /* Remove block from free list */
     int fidx = order_to_index(found_order);
-    S3BuddyBlock* blk = buddy.free_lists[fidx];
+    SSBuddyBlock* blk = buddy.free_lists[fidx];
     buddy.free_lists[fidx] = blk->next;
 
     /* Split if necessary */
@@ -123,13 +123,13 @@ void* s4_alloc(uint32_t size) {
     buddy.order_map[block_index(blk)] = 0xFF;
 
     /* Return pointer past the block header */
-    return (void*)((uint8_t*)blk + sizeof(S3BuddyBlock));
+    return (void*)((uint8_t*)blk + sizeof(SSBuddyBlock));
 }
 
-void s4_free(void* ptr) {
+void ss_free(void* ptr) {
     if (ptr == NULL) return;
 
-    S3BuddyBlock* blk = (S3BuddyBlock*)((uint8_t*)ptr - sizeof(S3BuddyBlock));
+    SSBuddyBlock* blk = (SSBuddyBlock*)((uint8_t*)ptr - sizeof(SSBuddyBlock));
     /* Recover order from the map - for allocated blocks we need to find it */
     /* We store the order in the block header during alloc */
     /* Actually we marked it 0xFF. We need to recover the original order.
@@ -142,7 +142,7 @@ void s4_free(void* ptr) {
 
     /* Find the block's order by checking map entries */
     /* For allocated blocks, we stored order before the user pointer */
-    /* Actually let's fix: store order in the S3BuddyBlock struct */
+    /* Actually let's fix: store order in the SSBuddyBlock struct */
     /* blk->order was set during alloc, but we overwrite it with 0xFF */
     /* Solution: store in a separate field */
 
@@ -152,8 +152,8 @@ void s4_free(void* ptr) {
     int oidx = order_to_index(order);
 
     /* Try to coalesce with buddy */
-    while (order < S4_BUDDY_MAX_ORDER) {
-        S3BuddyBlock* buddy_blk = (S3BuddyBlock*)block_buddy(blk, order);
+    while (order < SS_BUDDY_MAX_ORDER) {
+        SSBuddyBlock* buddy_blk = (SSBuddyBlock*)block_buddy(blk, order);
 
         /* Check if buddy is free and same order */
         uint32_t buddy_idx = block_index(buddy_blk);
@@ -163,7 +163,7 @@ void s4_free(void* ptr) {
         if (buddy_order != order) break;
 
         /* Remove buddy from its free list */
-        S3BuddyBlock** pp = &buddy.free_lists[oidx];
+        SSBuddyBlock** pp = &buddy.free_lists[oidx];
         while (*pp != NULL && *pp != buddy_blk) {
             pp = &(*pp)->next;
         }
@@ -184,20 +184,20 @@ void s4_free(void* ptr) {
     buddy.order_map[block_index(blk)] = order;
 }
 
-void* s4_alloc_aligned(uint32_t size, uint32_t align) {
+void* ss_alloc_aligned(uint32_t size, uint32_t align) {
     /* For buddy system, alignment is inherent based on block size */
     (void)align;
-    return s4_alloc(size);
+    return ss_alloc(size);
 }
 
-uint32_t s4_mem_total(void) {
+uint32_t ss_mem_total(void) {
     return buddy.total_size;
 }
 
-uint32_t s4_mem_free_bytes(void) {
+uint32_t ss_mem_free_bytes(void) {
     uint32_t total = 0;
-    for (int i = 0; i < S4_BUDDY_ORDERS; i++) {
-        S3BuddyBlock* blk = buddy.free_lists[i];
+    for (int i = 0; i < SS_BUDDY_ORDERS; i++) {
+        SSBuddyBlock* blk = buddy.free_lists[i];
         while (blk) {
             total += order_size(blk->order);
             blk = blk->next;

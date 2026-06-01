@@ -2,40 +2,40 @@
 #include "kernel.h"
 #include <string.h>
 
-S4WorkQueue s4_main_work_queue;
+SSWorkQueue ss_main_work_queue;
 
-void s4_work_init(S4WorkQueue* q) {
-    memset(q, 0, sizeof(S4WorkQueue));
+void ss_work_init(SSWorkQueue* q) {
+    memset(q, 0, sizeof(SSWorkQueue));
 }
 
-int16_t s4_work_enqueue(S4WorkQueue* q, void (*handler)(void*), void* arg) {
-    if (q->count >= S4_WORK_QUEUE_SIZE) return S4_ERR_LIMIT;
+int16_t ss_work_enqueue(SSWorkQueue* q, void (*handler)(void*), void* arg) {
+    if (q->count >= SS_WORK_QUEUE_SIZE) return SS_ERR_LIMIT;
 
-    s4_disable_interrupts();
+    ss_disable_interrupts();
 
-    S4WorkItem* item = &q->items[q->tail];
+    SSWorkItem* item = &q->items[q->tail];
     item->handler = handler;
     item->arg = arg;
 
-    q->tail = (q->tail + 1) % S4_WORK_QUEUE_SIZE;
+    q->tail = (q->tail + 1) % SS_WORK_QUEUE_SIZE;
     q->count++;
 
-    s4_enable_interrupts();
-    return S4_OK;
+    ss_enable_interrupts();
+    return SS_OK;
 }
 
-void s4_work_drain(S4WorkQueue* q) {
+void ss_work_drain(SSWorkQueue* q) {
     while (q->count > 0) {
-        s4_disable_interrupts();
+        ss_disable_interrupts();
         if (q->count == 0) {
-            s4_enable_interrupts();
+            ss_enable_interrupts();
             break;
         }
 
-        S4WorkItem item = q->items[q->head];
-        q->head = (q->head + 1) % S4_WORK_QUEUE_SIZE;
+        SSWorkItem item = q->items[q->head];
+        q->head = (q->head + 1) % SS_WORK_QUEUE_SIZE;
         q->count--;
-        s4_enable_interrupts();
+        ss_enable_interrupts();
 
         if (item.handler) {
             item.handler(item.arg);

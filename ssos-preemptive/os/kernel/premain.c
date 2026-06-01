@@ -12,6 +12,6 @@ void clear_bss(void) {
 
 void premain(void) {
     clear_bss();
-    s4_init();
-    s4_run();
+    ss_init();
+    ss_run();
 }

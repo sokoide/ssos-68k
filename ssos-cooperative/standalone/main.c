@@ -26,13 +26,13 @@
 #ifdef LOCAL_MODE
 
 static uint8_t local_memory[512 * 1024] __attribute__((aligned(4)));
-static uint8_t local_stack_mem[S4_MAX_TASKS * S4_TASK_STACK]
+static uint8_t local_stack_mem[SS_MAX_TASKS * SS_TASK_STACK]
     __attribute__((aligned(4)));
 
-uint8_t* s4_task_stack_base = local_stack_mem;
+uint8_t* ss_task_stack_base = local_stack_mem;
 
-/* s4_tick_counter, s4_vsync_counter, s4_yield_count defined in interrupts.s */
-extern uint32_t s4_yield_count;
+/* ss_tick_counter, ss_vsync_counter, ss_yield_count defined in interrupts.s */
+extern uint32_t ss_yield_count;
 
 #define GVRAM ((volatile uint16_t*)0xC00000)
 #define GVRAM_STR 512
@@ -103,19 +103,19 @@ static int need_full = 1;
 /* COPY key (trap #12) and NMI (autovector 7) vector save */
 static uint32_t saved_copy_vec;
 static uint32_t saved_nmi_vec;
-extern void s4_nop_handler(void);
+extern void ss_nop_handler(void);
 
 /* TRAP #14 exception handler support */
-extern void s4_init_trap14(void);
-extern void s4_restore_trap14(void);
-extern uint16_t s4_trapbuf_flag;
-extern uint16_t s4_trapbuf_sr;
-extern uint32_t s4_trapbuf_pc;
-extern char* s4_trapbuf_msg;
+extern void ss_init_trap14(void);
+extern void ss_restore_trap14(void);
+extern uint16_t ss_trapbuf_flag;
+extern uint16_t ss_trapbuf_sr;
+extern uint32_t ss_trapbuf_pc;
+extern char* ss_trapbuf_msg;
 
 /* Main task TCB — registers main()'s context with the scheduler
    so cooperative yield/sleep works to/from main */
-static S4Task main_tcb;
+static SSTask main_tcb;
 
 #define OL_MAX 1200
 static uint16_t ol_buf[OL_MAX];
@@ -764,7 +764,7 @@ static void wait_vsync(void) {
 static void* data_thread(void* arg) {
     (void)arg;
     for (;;) {
-        if (exit_flag) for (;;) s4_task_sleep(0x7FFFFFFF); /* infinite sleep in 200Hz ticks */
+        if (exit_flag) for (;;) ss_task_sleep(0x7FFFFFFF); /* infinite sleep in 200Hz ticks */
 
         /* Keyboard */
         if (_iocs_b_keysns() > 0) {
@@ -796,11 +796,11 @@ static void* data_thread(void* arg) {
         pad(wins[0].line[0], 24);
         sprintf(wins[0].line[1], "Time: %lu.%02lu", sec, frac);
         pad(wins[0].line[1], 24);
-        sprintf(wins[0].line[2], "Yld:%lu", s4_yield_count);
+        sprintf(wins[0].line[2], "Yld:%lu", ss_yield_count);
         pad(wins[0].line[2], 24);
 
         /* Sleep 40 ticks = 200ms at 200Hz */
-        s4_task_sleep(40);
+        ss_task_sleep(40);
     }
     return NULL;
 }
@@ -813,22 +813,22 @@ int main(void) {
     int ssp = _iocs_b_super(0);
 
     /* Initialize TRAP #14 exception handler FIRST */
-    s4_init_trap14();
+    ss_init_trap14();
 
-    s4_mem_init(local_memory, sizeof(local_memory));
-    s4_sched_init();
+    ss_mem_init(local_memory, sizeof(local_memory));
+    ss_sched_init();
 
     /* Register main() as a task so the scheduler can context-switch
-       to/from it. Without this, s4_curr_task points to a worker task
+       to/from it. Without this, ss_curr_task points to a worker task
        that never actually runs, and preemptive switching breaks. */
-    main_tcb.state = S4_TS_READY;
+    main_tcb.state = SS_TS_READY;
     main_tcb.pri = 8;
     main_tcb.stack_base = (void*)1; /* sentinel: never matches saved SP */
-    s4_curr_task = &main_tcb;
-    s4_sched_enqueue(&main_tcb);
+    ss_curr_task = &main_tcb;
+    ss_sched_enqueue(&main_tcb);
 
     /* Enable Timer D interrupts for tick counting and wakeups */
-    s4_set_interrupts();
+    ss_set_interrupts();
 
     /* Display setup */
     int old_mode = _iocs_crtmod(-1);
@@ -856,8 +856,8 @@ int main(void) {
     /* Protect COPY key (trap #12) and NMI (autovector 7) */
     saved_copy_vec = *(volatile uint32_t*)0xB0;
     saved_nmi_vec = *(volatile uint32_t*)0x7C;
-    *(volatile uint32_t*)0xB0 = (uint32_t)s4_nop_handler;
-    *(volatile uint32_t*)0x7C = (uint32_t)s4_nop_handler;
+    *(volatile uint32_t*)0xB0 = (uint32_t)ss_nop_handler;
+    *(volatile uint32_t*)0x7C = (uint32_t)ss_nop_handler;
 
     /* Window init */
     wins[0] = (Win){30, 15, WIN_W, WIN_H, "Timer", {{{0}}}, {{0}}};
@@ -866,10 +866,10 @@ int main(void) {
     ol_valid = 0;
 
     /* Create single data worker thread (batches all IOCS calls) */
-    uint16_t t_data = s4_task_create(&(S4TaskInfo){
+    uint16_t t_data = ss_task_create(&(SSTaskInfo){
         .entry = data_thread, .pri = 8, .ctx_level = 0, .stack_size = 0, .stack = NULL
     });
-    s4_task_start(t_data);
+    ss_task_start(t_data);
 
     /* Main rendering loop */
     for (;;) {
@@ -995,18 +995,18 @@ int main(void) {
         }
 
         /* Cooperative: yield to let data_thread run */
-        s4_task_yield();
+        ss_task_yield();
     }
 
     /* Check if exception was caught by TRAP #14 handler */
-    if (s4_trapbuf_flag != 0) {
+    if (ss_trapbuf_flag != 0) {
         char buf[128];
         _iocs_b_print("\r\n=== EXCEPTION CAUGHT (TRAP #14) ===\r\n");
-        sprintf(buf, "Type: %s (code=%d)\r\n", s4_trapbuf_msg, s4_trapbuf_flag);
+        sprintf(buf, "Type: %s (code=%d)\r\n", ss_trapbuf_msg, ss_trapbuf_flag);
         _iocs_b_print(buf);
-        sprintf(buf, "PC: 0x%08X\r\n", s4_trapbuf_pc);
+        sprintf(buf, "PC: 0x%08X\r\n", ss_trapbuf_pc);
         _iocs_b_print(buf);
-        sprintf(buf, "SR: 0x%04X\r\n", s4_trapbuf_sr);
+        sprintf(buf, "SR: 0x%04X\r\n", ss_trapbuf_sr);
         _iocs_b_print(buf);
         _iocs_b_print("====================================\r\n");
         _iocs_b_super(ssp);
@@ -1014,10 +1014,10 @@ int main(void) {
     }
 
     /* Restore interrupts to Human68K state */
-    s4_restore_interrupts();
+    ss_restore_interrupts();
 
     /* Restore TRAP #14 exception handler */
-    s4_restore_trap14();
+    ss_restore_trap14();
 
     /* Restore COPY key and NMI vectors */
     *(volatile uint32_t*)0xB0 = saved_copy_vec;

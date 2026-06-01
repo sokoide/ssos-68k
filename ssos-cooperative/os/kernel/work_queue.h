@@ -1,26 +1,26 @@
-#ifndef S4_WORK_QUEUE_H
-#define S4_WORK_QUEUE_H
+#ifndef SS_WORK_QUEUE_H
+#define SS_WORK_QUEUE_H
 
 #include <stdint.h>
 
-#define S4_WORK_QUEUE_SIZE 32
+#define SS_WORK_QUEUE_SIZE 32
 
 typedef struct {
     void (*handler)(void* arg);
     void* arg;
-} S4WorkItem;
+} SSWorkItem;
 
 typedef struct {
-    S4WorkItem items[S4_WORK_QUEUE_SIZE];
+    SSWorkItem items[SS_WORK_QUEUE_SIZE];
     volatile uint16_t head;
     volatile uint16_t tail;
     volatile uint16_t count;
-} S4WorkQueue;
+} SSWorkQueue;
 
-void     s4_work_init(S4WorkQueue* q);
-int16_t  s4_work_enqueue(S4WorkQueue* q, void (*handler)(void*), void* arg);
-void     s4_work_drain(S4WorkQueue* q);
+void     ss_work_init(SSWorkQueue* q);
+int16_t  ss_work_enqueue(SSWorkQueue* q, void (*handler)(void*), void* arg);
+void     ss_work_drain(SSWorkQueue* q);
 
-extern S4WorkQueue s4_main_work_queue;
+extern SSWorkQueue ss_main_work_queue;
 
-#endif /* S4_WORK_QUEUE_H */
+#endif /* SS_WORK_QUEUE_H */

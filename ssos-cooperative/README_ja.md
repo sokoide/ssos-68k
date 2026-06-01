@@ -1,10 +1,10 @@
-# SSOS4 アーキテクチャ概説
+# SSOS Cooperative アーキテクチャ概説
 
-SSOS4 は X68000 実機およびエミュレータ上で動作する、プリエンプティブマルチタスク対応のベアメタル OS プロトタイプです。
+SSOS Cooperative は X68000 実機およびエミュレータ上で動作する、**コーペラティブマルチタスク**対応のベアメタル OS プロトタイプです。タスクの切り替えは明示的な `ss_task_yield()` 呼び出しによってのみ行われ、プリエンプションは発生しません。プリエンプティブ版は `ssos-preemptive/` を参照してください。
 
 ## グラフィックモード設定
 
-SSOS4 では、標準的な IOCS `_CRTMOD` 呼び出しにより画面モードを設定しています。
+SSOS では、標準的な IOCS `_CRTMOD` 呼び出しにより画面モードを設定しています。
 
 ### IOCS `_CRTMOD` モード一覧
 
@@ -180,38 +180,39 @@ pixel(x, y) = GVRAM[y * GVRAM_STR + x]  /* uint16_t write */
 
 | コンポーネント | 役割 |
 | :--- | :--- |
-| `s4_trap14_handler` | 例外発生時に Human68K が TRAP #14 で呼び出す。d7=エラーコード、a6=パラメータブロック(SR+PC) を trapbuf に保存し `_ABORTJOB` でプロセス abort。**ハンドラ内では I/O を行わない**。 |
-| `s4_trap14_abort` | abort 後に Human68K が呼び出す (ベクタ 0xFFF2/0xFFF1)。元の TRAP #14 ベクタを復元し、エラー種別・PC を表示して `_ABORTRST` で終了。 |
-| `s4_init_trap14` | 0xB8 にハンドラ設置 + `_B_INTVCS` で 0xFFF2/0xFFF1 に abort ハンドラ設置。 |
-| `s4_restore_trap14` | 0xB8 を元のベクタに復元。 |
+| `ss_trap14_handler` | 例外発生時に Human68K が TRAP #14 で呼び出す。d7=エラーコード、a6=パラメータブロック(SR+PC) を trapbuf に保存し `_ABORTJOB` でプロセス abort。**ハンドラ内では I/O を行わない**。 |
+| `ss_trap14_abort` | abort 後に Human68K が呼び出す (ベクタ 0xFFF2/0xFFF1)。元の TRAP #14 ベクタを復元し、エラー種別・PC を表示して `_ABORTRST` で終了。 |
+| `ss_init_trap14` | 0xB8 にハンドラ設置 + `_B_INTVCS` で 0xFFF2/0xFFF1 に abort ハンドラ設置。 |
+| `ss_restore_trap14` | 0xB8 を元のベクタに復元。 |
 
 ### 注意: `rts` と `rte`
 
 TRAP #14 は CPU の trap 命令で SR+PC がスタックに push されるため、ハンドラは **`rte` で戻らなければならない**。`rts` だと SR がスタックに残りスタック破壊→クラッシュする。
 
-## プリエンティブコンテキストスイッチ
+## コーペラティブコンテキストスイッチ
 
-### resume_type による復帰方法の選択
+### 設計方針
 
-TCB の `pad` フィールド (offset 31) を `resume_type` として使用し、3種類の復帰パスを切り替える:
+Timer D 割り込み (200Hz) はティック加算と `ss_do_wakeups()` (`ss_task_sleep` で待機中のタスクを起床) のみを行い、強制コンテキストスイッチは行わない。タスクの切り替えはタスク自身が `ss_task_yield()` を呼び出した時のみ発生する。
 
-| resume_type | 場面 | 復帰方法 |
-| :--- | :--- | :--- |
-| 0 | タイマ割り込みによるプリエンプション | `movem.l` → **`rte`** (CPU frame安全) |
-| 1 | `s4_task_yield` による自発的 yield | `movem.l` → `move.w (sp)+,%sr` → `move.l (sp)+,%a0` → **`jmp (%a0)`** |
-| (新規タスク) | context == stack_base | `move.w #0x2000,%sr` → **`jmp entry`** |
+### `ss_task_yield` の動作
+
+1. 現在タスクの全レジスタ (d0-d7/a0-a6) をスタックに保存
+2. `ss_do_context_switch()` で次タスクを選択 (ラウンドロビン)
+3. `ss_yield_count` をインクリメント
+4. 新タスクの保存されたレジスタを復元して復帰
 
 ### スレッド構成
 
-- **Thread 1 (main, pri=8)**: レンダリング + マウス IOCS を V-sync 毎 (57Hz) に実行
-- **Thread 2 (data, pri=8)**: タイマー/キーボード IOCS のみ。`s4_task_sleep(40)` で 200ms 間隔
+- **Thread 1 (main, pri=8)**: レンダリング + マウス IOCS を V-sync 毎 (57Hz) に実行。各ループ末尾で `ss_task_yield()`
+- **Thread 2 (data, pri=8)**: タイマー/キーボード IOCS のみ。`ss_task_sleep(40)` で 200ms 間隔。起床後 `ss_task_yield()`
 
 ### Timer D 設定
 
 - TCDCR: prescaler /200 (0xF7)。4MHz / 200 = 20kHz
 - TDDR: 100。20kHz / 100 = **200Hz** (5ms/ティック)
-- switch_tick しきい値: 10。10 × 5ms = **50ms** 間隔
-- `s4_task_sleep()` の引数は 200Hz tick 単位 (1 tick = 5ms)。例: `s4_task_sleep(40)` = 200ms。
+- ハンドラ内容: ティック加算 → `ss_do_wakeups()` → `ss_yield_count` 加算 → RTE (コンテキストスイッチなし)
+- `ss_task_sleep()` の引数は 200Hz tick 単位 (1 tick = 5ms)。例: `ss_task_sleep(40)` = 200ms。
 
 ## セキュリティ・安全機能
 

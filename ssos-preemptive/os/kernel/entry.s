@@ -12,7 +12,7 @@ entry:
 	clr.l	-(sp)
 
 	| Set up interrupt handlers
-	bsr	s4_set_interrupts
+	bsr	ss_set_interrupts
 
 	| Jump to C initialization
 	jmp	premain

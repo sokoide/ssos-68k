@@ -1,20 +1,20 @@
-#ifndef S4_SCHEDULER_H
-#define S4_SCHEDULER_H
+#ifndef SS_SCHEDULER_H
+#define SS_SCHEDULER_H
 
 #include "kernel.h"
 
-typedef struct S4Task S4Task;
-struct S4Task {
+typedef struct SSTask SSTask;
+struct SSTask {
     void*    context;      /* Saved stack pointer */
-    S4Task*  prev;
-    S4Task*  next;
+    SSTask*  prev;
+    SSTask*  next;
     void*    stack_base;
     uint32_t stack_size;
     void*    (*entry)(void*);
     uint32_t wait_until;
     uint8_t  state;
     uint8_t  pri;
-    uint8_t  ctx_level;    /* S4_CTX_MINIMAL/NORMAL/FULL */
+    uint8_t  ctx_level;    /* SS_CTX_MINIMAL/NORMAL/FULL */
     uint8_t  pad;
 };
 
@@ -24,35 +24,35 @@ typedef struct {
     uint8_t ctx_level;
     uint16_t stack_size;
     void*    stack;        /* NULL = auto-allocate */
-} S4TaskInfo;
+} SSTaskInfo;
 
 typedef struct {
     uint16_t pri_bitmap;           /* bit 15 = pri 0 (highest) */
-    S4Task*  heads[S4_MAX_PRI];
-    S4Task*  tails[S4_MAX_PRI];
-} S4ReadyQueue;
+    SSTask*  heads[SS_MAX_PRI];
+    SSTask*  tails[SS_MAX_PRI];
+} SSReadyQueue;
 
-extern S4Task tcb_table[];
-extern S4ReadyQueue ready_queue;
-extern void* s4_curr_task;
-extern void* s4_scheduled_task;
-extern uint8_t* s4_task_stack_base;
+extern SSTask tcb_table[];
+extern SSReadyQueue ready_queue;
+extern void* ss_curr_task;
+extern void* ss_scheduled_task;
+extern uint8_t* ss_task_stack_base;
 
-void    s4_sched_init(void);
-void    s4_sched_enqueue(S4Task* tcb);
-void    s4_sched_dequeue(S4Task* tcb);
-S4Task* s4_sched_pick(void);
+void    ss_sched_init(void);
+void    ss_sched_enqueue(SSTask* tcb);
+void    ss_sched_dequeue(SSTask* tcb);
+SSTask* ss_sched_pick(void);
 
-uint16_t s4_task_create(S4TaskInfo* info);
-uint16_t s4_task_start(uint16_t id);
-void     s4_do_context_switch(void);
-void     s4_do_wakeups(void);
-uint16_t s4_task_sleep(uint32_t ticks);
-void     s4_task_yield(void);
-void     s4_process_wakeups(void);
+uint16_t ss_task_create(SSTaskInfo* info);
+uint16_t ss_task_start(uint16_t id);
+void     ss_do_context_switch(void);
+void     ss_do_wakeups(void);
+uint16_t ss_task_sleep(uint32_t ticks);
+void     ss_task_yield(void);
+void     ss_process_wakeups(void);
 
 /* Stack debugging */
-uint32_t s4_stack_check(uint16_t id);
-void     s4_stack_canary_init(uint16_t id);
+uint32_t ss_stack_check(uint16_t id);
+void     ss_stack_canary_init(uint16_t id);
 
-#endif /* S4_SCHEDULER_H */
+#endif /* SS_SCHEDULER_H */

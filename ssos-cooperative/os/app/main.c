@@ -6,33 +6,33 @@
 #include "../win/win.h"
 #include "../ipc/ipc.h"
 
-uint8_t* s4_task_stack_base;
+uint8_t* ss_task_stack_base;
 
-void s4_init(void) {
-    s4_mem_init((void*)&__ssosram_start, (uintptr_t)&__ssosram_size);
-    s4_task_stack_base = (uint8_t*)s4_alloc(S4_MAX_TASKS * S4_TASK_STACK);
+void ss_init(void) {
+    ss_mem_init((void*)&__ssosram_start, (uintptr_t)&__ssosram_size);
+    ss_task_stack_base = (uint8_t*)ss_alloc(SS_MAX_TASKS * SS_TASK_STACK);
 
-    s4_sched_init();
-    s4_work_init(&s4_main_work_queue);
-    s4_ipc_init();
+    ss_sched_init();
+    ss_work_init(&ss_main_work_queue);
+    ss_ipc_init();
 
-    s4_gfx_init();
-    s4_win_init();
+    ss_gfx_init();
+    ss_win_init();
 }
 
-void s4_run(void) {
+void ss_run(void) {
     /* Create demo windows */
-    uint16_t w1 = s4_win_create(50, 50, 300, 200, 1);
-    uint16_t w2 = s4_win_create(200, 150, 300, 200, 2);
+    uint16_t w1 = ss_win_create(50, 50, 300, 200, 1);
+    uint16_t w2 = ss_win_create(200, 150, 300, 200, 2);
     (void)w1; (void)w2;
 
     /* Initial render */
-    s4_win_render_all();
+    ss_win_render_all();
 
     /* Main loop — cooperative: yield each iteration */
     while (1) {
-        s4_work_drain(&s4_main_work_queue);
-        s4_process_wakeups();
-        s4_task_yield();
+        ss_work_drain(&ss_main_work_queue);
+        ss_process_wakeups();
+        ss_task_yield();
     }
 }

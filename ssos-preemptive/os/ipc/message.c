@@ -3,80 +3,80 @@
 #include "../kernel/scheduler.h"
 #include <string.h>
 
-static S4MsgQueue msg_queues[S4_MAX_TASKS];
+static SSMsgQueue msg_queues[SS_MAX_TASKS];
 
-void s4_ipc_init(void) {
+void ss_ipc_init(void) {
     memset(msg_queues, 0, sizeof(msg_queues));
 }
 
-int16_t s4_send(uint16_t target, S3Message* msg) {
-    if (target == 0 || target > S4_MAX_TASKS) return S4_ERR_ID;
-    if (msg == NULL) return S4_ERR_PARAM;
+int16_t ss_send(uint16_t target, SSMessage* msg) {
+    if (target == 0 || target > SS_MAX_TASKS) return SS_ERR_ID;
+    if (msg == NULL) return SS_ERR_PARAM;
 
-    S4MsgQueue* q = &msg_queues[target - 1];
+    SSMsgQueue* q = &msg_queues[target - 1];
 
-    s4_disable_interrupts();
-    if (q->count >= S4_MSG_MAX) {
-        s4_enable_interrupts();
-        return S4_ERR_LIMIT;
+    ss_disable_interrupts();
+    if (q->count >= SS_MSG_MAX) {
+        ss_enable_interrupts();
+        return SS_ERR_LIMIT;
     }
 
-    S3Message* slot = &q->msgs[q->tail];
-    memcpy(slot, msg, sizeof(S3Message));
+    SSMessage* slot = &q->msgs[q->tail];
+    memcpy(slot, msg, sizeof(SSMessage));
     slot->receiver = target;
 
-    q->tail = (q->tail + 1) % S4_MSG_MAX;
+    q->tail = (q->tail + 1) % SS_MSG_MAX;
     q->count++;
-    s4_enable_interrupts();
+    ss_enable_interrupts();
 
-    return S4_OK;
+    return SS_OK;
 }
 
-int16_t s4_recv(S3Message* msg) {
-    if (msg == NULL) return S4_ERR_PARAM;
+int16_t ss_recv(SSMessage* msg) {
+    if (msg == NULL) return SS_ERR_PARAM;
 
     /* Determine current task's queue */
-    S4Task* curr = (S4Task*)s4_curr_task;
-    if (curr == NULL) return S4_ERR_STATE;
+    SSTask* curr = (SSTask*)ss_curr_task;
+    if (curr == NULL) return SS_ERR_STATE;
 
     uint16_t id = (uint16_t)((curr - tcb_table) + 1);
-    S4MsgQueue* q = &msg_queues[id - 1];
+    SSMsgQueue* q = &msg_queues[id - 1];
 
     /* Block until message available */
     while (q->count == 0) {
-        s4_task_yield();
+        ss_task_yield();
     }
 
-    s4_disable_interrupts();
+    ss_disable_interrupts();
     if (q->count == 0) {
-        s4_enable_interrupts();
-        return S4_ERR_STATE;
+        ss_enable_interrupts();
+        return SS_ERR_STATE;
     }
 
-    memcpy(msg, &q->msgs[q->head], sizeof(S3Message));
-    q->head = (q->head + 1) % S4_MSG_MAX;
+    memcpy(msg, &q->msgs[q->head], sizeof(SSMessage));
+    q->head = (q->head + 1) % SS_MSG_MAX;
     q->count--;
-    s4_enable_interrupts();
+    ss_enable_interrupts();
 
-    return S4_OK;
+    return SS_OK;
 }
 
-int16_t s4_recv_nb(S3Message* msg) {
-    if (msg == NULL) return S4_ERR_PARAM;
+int16_t ss_recv_nb(SSMessage* msg) {
+    if (msg == NULL) return SS_ERR_PARAM;
 
-    S4Task* curr = (S4Task*)s4_curr_task;
-    if (curr == NULL) return S4_ERR_STATE;
+    SSTask* curr = (SSTask*)ss_curr_task;
+    if (curr == NULL) return SS_ERR_STATE;
 
     uint16_t id = (uint16_t)((curr - tcb_table) + 1);
-    S4MsgQueue* q = &msg_queues[id - 1];
+    SSMsgQueue* q = &msg_queues[id - 1];
 
-    if (q->count == 0) return S4_ERR_LIMIT;
+    if (q->count == 0) return SS_ERR_LIMIT;
 
-    s4_disable_interrupts();
-    memcpy(msg, &q->msgs[q->head], sizeof(S3Message));
-    q->head = (q->head + 1) % S4_MSG_MAX;
+    ss_disable_interrupts();
+    memcpy(msg, &q->msgs[q->head], sizeof(SSMessage));
+    q->head = (q->head + 1) % SS_MSG_MAX;
     q->count--;
-    s4_enable_interrupts();
+    ss_enable_interrupts();
 
-    return S4_OK;
+    return SS_OK;
 }
