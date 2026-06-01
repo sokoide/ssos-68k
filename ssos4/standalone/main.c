@@ -1,6 +1,6 @@
 /*
  * SSOS4 Standalone — Preemptive Multithreading Windowed Demo
- * CRT: 512x512 256-color (crtmod 9)
+ * CRT: 256x256 256-color (crtmod 10)
  * Font: Spleen 5x8
  * Exit: ESC key
  *
@@ -35,10 +35,10 @@ extern uint32_t s4_switch_count;
 
 #define GVRAM ((volatile uint16_t*)0xC00000)
 #define GVRAM_STR 512
-#define SW 512
-#define SH 512
-#define DISP_W 512
-#define DISP_H 512
+#define SW 256
+#define SH 256
+#define DISP_W 256
+#define DISP_H 256
 
 /* Palette Indices (1 byte per pixel in Mode 9) */
 #define C_WHITE   0
@@ -831,7 +831,7 @@ int main(void) {
 
     /* Display setup */
     int old_mode = _iocs_crtmod(-1);
-    _iocs_crtmod(9);
+    _iocs_crtmod(10);
     _iocs_g_clr_on();
     set_palette();
     _iocs_b_curoff();
@@ -839,7 +839,7 @@ int main(void) {
 
     /* NEW: Clear GVRAM ($C00000) to prevent garbage display */
     volatile uint32_t* gvramp = (volatile uint32_t*)0xC00000;
-    for (int i = 0; i < (512 * 512) / 2; i++) gvramp[i] = 0;
+    for (int i = 0; i < (256 * 256) / 2; i++) gvramp[i] = 0;
 
     {
         volatile uint32_t* tp = (volatile uint32_t*)0xE00000;
@@ -858,9 +858,9 @@ int main(void) {
     *(volatile uint32_t*)0x7C = (uint32_t)s4_nop_handler;
 
     /* Window init */
-    wins[0] = (Win){30, 15, WIN_W, WIN_H, "Timer", {{{0}}}, {{0}}};
-    wins[1] = (Win){180, 60, WIN_W, WIN_H, "Keyboard", {{{0}}}, {{0}}};
-    wins[2] = (Win){80, 120, WIN_W, WIN_H, "Mouse", {{{0}}}, {{0}}};
+    wins[0] = (Win){5, 5, WIN_W, WIN_H, "Timer", {{{0}}}, {{0}}};
+    wins[1] = (Win){8, 60, WIN_W, WIN_H, "Keyboard", {{{0}}}, {{0}}};
+    wins[2] = (Win){11, 115, WIN_W, WIN_H, "Mouse", {{{0}}}, {{0}}};
     ol_valid = 0;
 
     /* Create single data worker thread (batches all IOCS calls) */
