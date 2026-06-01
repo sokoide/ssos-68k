@@ -223,6 +223,8 @@ ss_vdisp_handler:
 		| ============================================================
 		| TimerD handler - Cooperative: tick counter + wakeups only
 		| NO preemptive context switch. Tasks yield explicitly.
+		| Saves only caller-saved d0-d1/a0-a1 (4 regs, 16 bytes)
+		| instead of full save (15 regs, 60 bytes).
 		|
 		| SSTask struct offsets:
 		|   context    = 0   (void*)
@@ -243,7 +245,10 @@ ss_vdisp_handler:
 		.extern ss_do_wakeups
 
 ss_timerd_handler:
-		movem.l	d0-d7/a0-a6, -(sp)
+		| Save only caller-saved regs (d0-d1/a0-a1).
+		| Callee-saved d2-d7/a2-a6 preserved by C ABI.
+		| No context switch in cooperative mode.
+		movem.l	d0-d1/a0-a1, -(sp)
 		addq.l	#1, ss_tick_counter
 
 		| Wake sleeping tasks whose timer has expired
@@ -255,7 +260,7 @@ ss_timerd_handler:
 		andi.b	#0xef, d0
 		move.b	d0, (a0)
 
-		movem.l	(sp)+, d0-d7/a0-a6
+		movem.l	(sp)+, d0-d1/a0-a1
 		rte
 
 		| ============================================================
