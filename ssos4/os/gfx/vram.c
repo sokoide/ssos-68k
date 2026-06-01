@@ -2,18 +2,10 @@
 #include <stdint.h>
 #include <string.h>
 
-static S3Vram vram;
-static S3DmaChannel dma;
+static S4Vram vram;
+static S4DmaChannel dma;
 
-/* 8x16 font (ASCII 0x20-0x7E) - minimal set */
-static const uint8_t font8x16[][16] = {
-    /* Space (0x20) */
-    {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
-     0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00},
-    /* Will use IOCS font for now */
-};
-
-void s4_dma_init(void) {
+void s4_dmac_init(void) {
     /* HD63450 CH2 base at $E84080 */
     dma.csr = (volatile uint8_t*)(S4_DMA_CH2_BASE + 0x00);
     dma.ccr = (volatile uint8_t*)(S4_DMA_CH2_BASE + 0x07);
@@ -23,7 +15,7 @@ void s4_dma_init(void) {
     dma.niv = (volatile uint8_t*)(S4_DMA_CH2_BASE + 0x25);
 }
 
-void s4_dma_fill(volatile void* dst, uint16_t value, uint16_t count) {
+void s4_fill(volatile void* dst, uint16_t value, uint16_t count) {
     /* CPU-optimized fill (DMA fallback for reliability) */
     volatile uint32_t* dst32 = (volatile uint32_t*)dst;
     uint32_t val32 = ((uint32_t)value << 16) | value;
@@ -48,11 +40,11 @@ void s4_dma_wait(void) {
 
 void s4_gfx_init(void) {
     vram.draw_page = S4_GVRAM_PAGE0;
-    vram.display_page = S4_GVRAM_PAGE1;
+    vram.display_page = S4_GVRAM_PAGE0;
     vram.draw_idx = 0;
-    vram.display_idx = 1;
+    vram.display_idx = 0;
 
-    s4_dma_init();
+    s4_dmac_init();
     s4_gfx_clear(0);
 }
 
@@ -74,17 +66,16 @@ void s4_gfx_flip(void) {
 
 void s4_gfx_clear(uint16_t color) {
     /* Clear the draw page with the specified color */
-    /* In 16-color mode, each pixel is represented across 4 planes */
-    /* For simplicity, fill all planes with 0 (black) */
+    /* In 256-color mode, each pixel is 1 uint16_t */
     uint32_t page_size = S4_PAGE_SIZE;
-    s4_dma_fill((volatile void*)vram.draw_page, color, (uint16_t)(page_size / 2));
+    s4_fill((volatile void*)vram.draw_page, color, (uint16_t)(page_size / 2));
 }
 
 void s4_gfx_rect(int x, int y, int w, int h, uint16_t color) {
     /* Draw a filled rectangle on the draw page
-     * x,y: top-left corner (must be word-aligned for 16-color mode)
+     * x,y: top-left corner
      * w,h: dimensions in pixels
-     * color: 16-bit color value */
+     * color: 16-bit color value (256-color mode: 1 pixel = 1 uint16_t) */
     if (x < 0) { w += x; x = 0; }
     if (y < 0) { h += y; y = 0; }
     if (x + w > S4_SCREEN_W) w = S4_SCREEN_W - x;
@@ -96,12 +87,16 @@ void s4_gfx_rect(int x, int y, int w, int h, uint16_t color) {
 
     for (int row = y; row < y + h; row++) {
         volatile uint32_t* row_ptr = (volatile uint32_t*)
-            ((uint8_t*)vram.draw_page + row * S4_BYTES_PER_LINE + (x / 16) * S4_PLANES * 2);
-        int words = (w + 15) / 16;
+            ((uint8_t*)vram.draw_page + row * S4_BYTES_PER_LINE + x * 2);
 
-        for (int i = 0; i < words; i++) {
-            *row_ptr++ = val32; /* plane 0,1 */
-            *row_ptr++ = val32; /* plane 2,3 */
+        for (int i = 0; i < w / 2; i++) {
+            *row_ptr++ = val32;
+        }
+
+        /* Handle odd width */
+        if (w % 2 == 1) {
+            volatile uint16_t* ptr16 = (volatile uint16_t*)row_ptr;
+            *ptr16 = color;
         }
     }
 }

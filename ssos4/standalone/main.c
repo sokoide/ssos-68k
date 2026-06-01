@@ -40,7 +40,7 @@ extern uint32_t s4_switch_count;
 #define DISP_W 512
 #define DISP_H 512
 
-/* Palette Indices (1 byte per pixel in Mode 9) */
+/* Palette Indices (1 word per pixel, lower 8 bits = palette index) */
 #define C_WHITE   0
 #define C_BLACK   215
 #define C_GRAY_L  247
@@ -262,7 +262,7 @@ static void fill_rect(int x0, int y0, int x1, int y1, uint8_t c) {
 
     /* Use DMA only for large rectangles (width > 64 AND height > 4) */
     /* Small rectangles: CPU setup cost < DMA transfer time */
-    if (w > DMA_FILL_THRESHOLD && h > 4) {
+    if (w > DMA_FILL_THRESHOLD && h > 4 && w <= 512) {
         for (int i = 0; i < w; i++)
             dma_fill_buf[i] = cw;
         dma_fill_init();
@@ -763,7 +763,7 @@ static void wait_vsync(void) {
 static void* data_thread(void* arg) {
     (void)arg;
     for (;;) {
-        if (exit_flag) for (;;) s4_task_sleep(0x7FFFFFFF);
+        if (exit_flag) for (;;) s4_task_sleep(0x7FFFFFFF); /* infinite sleep in 200Hz ticks */
 
         /* Keyboard */
         if (_iocs_b_keysns() > 0) {
@@ -789,8 +789,8 @@ static void* data_thread(void* arg) {
 
         /* Timer */
         uint32_t f = frame;
-        uint32_t sec = f / 57;
-        uint32_t frac = (f % 57) * 100 / 57;
+        uint32_t sec = f / 55;
+        uint32_t frac = (f % 55) * 100 / 55;
         sprintf(wins[0].line[0], "Vsync: %lu", f);
         pad(wins[0].line[0], 24);
         sprintf(wins[0].line[1], "Time: %lu.%02lu", sec, frac);
@@ -841,6 +841,7 @@ int main(void) {
     volatile uint32_t* gvramp = (volatile uint32_t*)0xC00000;
     for (int i = 0; i < (512 * 512) / 2; i++) gvramp[i] = 0;
 
+    /* Clear visible TVRAM (16KB) to prevent text garbage */
     {
         volatile uint32_t* tp = (volatile uint32_t*)0xE00000;
         for (int i = 0; i < 0x1000; i++) tp[i] = 0;

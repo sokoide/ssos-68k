@@ -196,13 +196,13 @@ void s4_do_context_switch(void) {
     s4_curr_task = next;
 }
 
-uint16_t s4_task_sleep(uint32_t ms) {
+uint16_t s4_task_sleep(uint32_t ticks) {
     S4Task* curr = (S4Task*)s4_curr_task;
     if (curr == NULL) return S4_ERR_STATE;
 
     s4_disable_interrupts();
     curr->state = S4_TS_WAIT;
-    curr->wait_until = s4_tick_counter + ms;
+    curr->wait_until = s4_tick_counter + ticks;
     s4_sched_dequeue(curr);
     /* Yield immediately — rte restores interrupts (SR=0x2000) */
     s4_task_yield();
