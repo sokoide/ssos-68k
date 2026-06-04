@@ -34,8 +34,8 @@ typedef struct {
 
 extern SSTask tcb_table[];
 extern SSReadyQueue ready_queue;
-extern void* ss_curr_task;
-extern void* ss_scheduled_task;
+extern SSTask* ss_curr_task;
+extern SSTask* ss_scheduled_task;
 extern uint8_t* ss_task_stack_base;
 
 void    ss_sched_init(void);

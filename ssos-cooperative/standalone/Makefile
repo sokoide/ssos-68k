@@ -6,7 +6,8 @@ TARGET=	standalone.x
 SRCS=	main.c \
 		../os/kernel/scheduler.c \
 		../os/mem/buddy.c \
-		../os/mem/slab.c
+		../os/mem/slab.c \
+		../os/gfx/vram.c
 ASRCS=	../os/kernel/interrupts.s
 
 OBJDIR=obj
@@ -21,7 +22,7 @@ LD=m68k-xelf-ld
 OBJDUMP=m68k-xelf-objdump
 READELF=m68k-xelf-readelf
 
-INCLUDE=-I$(XELF_BASE)/m68k-elf/include -I../include -I../os/kernel -I../os/mem
+INCLUDE=-I$(XELF_BASE)/m68k-elf/include -I../include -I../os/kernel -I../os/mem -I../os/gfx
 LIB=-L$(XELF_BASE)/m68k-elf/lib
 
 CCFLAGS=$(INCLUDE) -O2 -g -DLOCAL_MODE
@@ -50,6 +51,9 @@ $(OBJDIR)/%.o: ../os/kernel/%.s | $(OBJDIR)
 	$(AS) --strip-local-absolute $< -o $@ -m68000 --register-prefix-optional --traditional-format -I../include -I../os/kernel
 
 $(OBJDIR)/%.o: ../os/mem/%.c | $(OBJDIR)
+	$(CC) -Wa,-adhlns="$@.lst" -c $< -o $@ $(CCFLAGS)
+
+$(OBJDIR)/%.o: ../os/gfx/%.c | $(OBJDIR)
 	$(CC) -Wa,-adhlns="$@.lst" -c $< -o $@ $(CCFLAGS)
 
 clean:

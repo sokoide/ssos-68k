@@ -5,8 +5,8 @@
 
 SSTask tcb_table[SS_MAX_TASKS];
 SSReadyQueue ready_queue;
-void* ss_curr_task;
-void* ss_scheduled_task;
+SSTask* ss_curr_task;
+SSTask* ss_scheduled_task;
 uint16_t ss_task_count;
 
 /* Stack canary magic number */
@@ -143,9 +143,7 @@ uint16_t ss_task_create(SSTaskInfo* info) {
 
     tcb->context = tcb->stack_base;
 
-    /* Write canary at bottom of stack for overflow detection */
-    /* DISABLED: investigating crash */
-    /* ss_stack_canary_init(i + 1); */
+    ss_stack_canary_init(i + 1);
 
     ss_task_count++;
 
@@ -176,11 +174,9 @@ uint16_t ss_task_start(uint16_t id) {
 }
 
 void ss_do_context_switch(void) {
-    SSTask* curr = (SSTask*)ss_curr_task;
+    SSTask* curr = ss_curr_task;
     if (curr == NULL) return;
 
-    /* Round-robin: move current task to tail BEFORE picking next.
-       This ensures ss_sched_pick() returns a different task. */
     if (curr->state == SS_TS_READY) {
         ss_sched_dequeue(curr);
         ss_sched_enqueue(curr);
@@ -197,7 +193,7 @@ void ss_do_context_switch(void) {
 }
 
 uint16_t ss_task_sleep(uint32_t ticks) {
-    SSTask* curr = (SSTask*)ss_curr_task;
+    SSTask* curr = ss_curr_task;
     if (curr == NULL) return SS_ERR_STATE;
 
     ss_disable_interrupts();
