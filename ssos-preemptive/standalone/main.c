@@ -471,9 +471,9 @@ int main(void) {
     *(volatile uint32_t*)0xB0 = (uint32_t)ss_nop_handler;
     *(volatile uint32_t*)0x7C = (uint32_t)ss_nop_handler;
 
-    wins[0] = (Win){30, 15, WIN_W, WIN_H, "Timer", {{{0}}}, {{0}}};
-    wins[1] = (Win){180, 60, WIN_W, WIN_H, "Keyboard", {{{0}}}, {{0}}};
-    wins[2] = (Win){80, 120, WIN_W, WIN_H, "Mouse", {{{0}}}, {{0}}};
+    wins[0] = (Win){30, 15, WIN_W, WIN_H, "Timer"};
+    wins[1] = (Win){180, 60, WIN_W, WIN_H, "Keyboard"};
+    wins[2] = (Win){80, 120, WIN_W, WIN_H, "Mouse"};
     ol_valid = 0;
 
     uint16_t t_data = ss_task_create(&(SSTaskInfo){.entry = data_thread,
@@ -623,8 +623,6 @@ int main(void) {
     _iocs_b_curon();
 
     _iocs_b_print("SSOS-Preemptive terminated.\r\n");
-    /* Flush DOS keyboard buffer before exit */
-    _dos_kflush(0xFF0C);
     _iocs_b_super(ssp);
     _exit(0);
 }
