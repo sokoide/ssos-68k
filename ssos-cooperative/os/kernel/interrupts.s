@@ -245,10 +245,11 @@ ss_vdisp_handler:
 		.extern ss_do_wakeups
 
 ss_timerd_handler:
-		| Save only caller-saved regs (d0-d1/a0-a1).
-		| Callee-saved d2-d7/a2-a6 preserved by C ABI.
-		| No context switch in cooperative mode.
-		movem.l	d0-d1/a0-a1, -(sp)
+		| Save ALL registers before calling ss_do_wakeups.
+		| The C compiler may optimize callee-saved register
+		| preservation in ss_do_wakeups/ss_sched_enqueue,
+		| so the ISR must save everything to be safe.
+		movem.l	d0-d7/a0-a6, -(sp)
 		addq.l	#1, ss_tick_counter
 
 		| Wake sleeping tasks whose timer has expired
@@ -260,7 +261,7 @@ ss_timerd_handler:
 		andi.b	#0xef, d0
 		move.b	d0, (a0)
 
-		movem.l	(sp)+, d0-d1/a0-a1
+		movem.l	(sp)+, d0-d7/a0-a6
 		rte
 
 		| ============================================================
