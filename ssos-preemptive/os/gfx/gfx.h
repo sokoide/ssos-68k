@@ -80,7 +80,7 @@ void ss_gfx_clear(uint16_t color);
 void ss_gfx_rect(int x, int y, int w, int h, uint16_t color);
 void ss_gfx_hline(int x, int y, int w, uint16_t color);
 void ss_fill_long(volatile uint32_t* dst, uint32_t val, uint32_t count);
-void ss_gfx_fill_stipple(int x0, int y0, int x1, int y1, uint16_t c1, uint16_t c2);
+void ss_gfx_fill_stipple(int x, int y, int w, int h, uint16_t c1, uint16_t c2);
 void ss_gfx_char(int x, int y, char ch, uint16_t fg, uint16_t bg);
 void ss_gfx_draw_text(int x, int y, const char* str, uint16_t fg, uint16_t bg);
 void ss_gfx_char_clip(int x, int y, char ch, uint16_t fg, uint16_t bg,

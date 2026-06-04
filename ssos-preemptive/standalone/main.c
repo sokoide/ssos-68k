@@ -81,8 +81,10 @@ typedef struct {
     char prev[3][30];
 } Win;
 
-static Win wins[3];
-static int zmap[3] = {0, 1, 2};
+#define NUM_WINS 3
+
+static Win wins[NUM_WINS];
+static int zmap[NUM_WINS] = {0, 1, 2};
 static volatile uint32_t frame = 0;
 static volatile int last_key = -1;
 static volatile int mx = SS_SCREEN_W / 2, my = SS_SCREEN_H / 2;
@@ -142,7 +144,7 @@ static void restore_win_bitmap(int x, int y, int w, int h) {
 
 static int win_overlap(int zpos) {
     Win* w = &wins[zmap[zpos]];
-    for (int k = zpos + 1; k < 3; k++) {
+    for (int k = zpos + 1; k < NUM_WINS; k++) {
         Win* ow = &wins[zmap[k]];
         if (w->x < ow->x + ow->w && w->x + w->w > ow->x &&
             w->y < ow->y + ow->h && w->y + w->h > ow->y)
@@ -159,13 +161,13 @@ static void draw_text_clip(int px, int py, const char* s, uint16_t fg,
         ss_gfx_draw_text(px, py, s, fg, bg);
         return;
     }
-    int clips[3][4];
-    for (int i = 0; i < 3; i++) {
+    int clips[NUM_WINS][4];
+    for (int i = 0; i < NUM_WINS; i++) {
         Win* w = &wins[zmap[i]];
         clips[i][0] = w->x; clips[i][1] = w->y;
         clips[i][2] = w->w; clips[i][3] = w->h;
     }
-    ss_gfx_draw_text_clip(px, py, s, fg, bg, (const int*)clips, 3, zpos);
+    ss_gfx_draw_text_clip(px, py, s, fg, bg, (const int*)clips, NUM_WINS, zpos);
 }
 
 /* ---- Window frame drawing ---- */
@@ -355,15 +357,15 @@ static void ol_restore(void) {
 
 static void bring_to_front(int idx) {
     int p = -1;
-    for (int i = 0; i < 3; i++)
+    for (int i = 0; i < NUM_WINS; i++)
         if (zmap[i] == idx) { p = i; break; }
-    if (p < 0 || p == 2) return;
-    for (int i = p; i < 2; i++) zmap[i] = zmap[i + 1];
-    zmap[2] = idx;
+    if (p < 0 || p == NUM_WINS - 1) return;
+    for (int i = p; i < NUM_WINS - 1; i++) zmap[i] = zmap[i + 1];
+    zmap[NUM_WINS - 1] = idx;
 }
 
 static int hit_test(int hx, int hy) {
-    for (int i = 2; i >= 0; i--) {
+    for (int i = NUM_WINS - 1; i >= 0; i--) {
         Win* w = &wins[zmap[i]];
         if (hx >= w->x && hx < w->x + w->w && hy >= w->y && hy < w->y + w->h)
             return zmap[i];
@@ -515,13 +517,12 @@ int main(void) {
                 save_win_bitmap(wins[hit].x, wins[hit].y, wins[hit].w,
                                 wins[hit].h);
                 ss_gfx_fill_stipple(wins[hit].x, wins[hit].y,
-                                    wins[hit].x + wins[hit].w - 1,
-                                    wins[hit].y + wins[hit].h - 1,
+                                    wins[hit].w, wins[hit].h,
                                     C_WHITE, C_GRAY_M);
-                for (int i = 0; i < 3; i++) {
+                for (int i = 0; i < NUM_WINS; i++) {
                     int idx = zmap[i];
                     if (idx == drag) continue;
-                    draw_frame(&wins[idx], (i == 2));
+                    draw_frame(&wins[idx], (i == NUM_WINS - 1));
                     memset(wins[idx].prev, 0xFF, sizeof(wins[idx].prev));
                     draw_content_dirty(&wins[idx]);
                 }
@@ -563,11 +564,11 @@ int main(void) {
         }
 
         if (need_full) {
-            ss_gfx_fill_stipple(0, 0, SS_SCREEN_W - 1, SS_SCREEN_H - 1,
+            ss_gfx_fill_stipple(0, 0, SS_SCREEN_W, SS_SCREEN_H,
                                 C_WHITE, C_GRAY_M);
-            for (int i = 0; i < 3; i++) {
+            for (int i = 0; i < NUM_WINS; i++) {
                 int idx = zmap[i];
-                draw_frame(&wins[idx], (i == 2));
+                draw_frame(&wins[idx], (i == NUM_WINS - 1));
                 memset(wins[idx].prev, 0xFF, sizeof(wins[idx].prev));
                 draw_content_dirty(&wins[idx]);
             }
@@ -581,7 +582,7 @@ int main(void) {
             draw_march_outline(wins[drag].x, wins[drag].y, wins[drag].w,
                                wins[drag].h);
         } else {
-            for (int i = 0; i < 3; i++) {
+            for (int i = 0; i < NUM_WINS; i++) {
                 int idx = zmap[i];
                 Win* w = &wins[idx];
                 for (int j = 0; j < 3; j++) {

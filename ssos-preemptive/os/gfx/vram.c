@@ -110,9 +110,12 @@ const uint8_t ss_font_data[][SS_FONT_H] = {
 };
 
 void ss_fill_long(volatile uint32_t* dst, uint32_t val, uint32_t count) {
-    for (uint32_t i = 0; i < count; i++) {
-        dst[i] = val;
+    while (count >= 4) {
+        *dst++ = val; *dst++ = val;
+        *dst++ = val; *dst++ = val;
+        count -= 4;
     }
+    while (count--) *dst++ = val;
 }
 
 static void dma_fill_init(void) {
@@ -186,17 +189,15 @@ void ss_gfx_rect(int x, int y, int w, int h, uint16_t color) {
     if (w > SS_DMA_FILL_THRESHOLD && h > 4) {
         ss_dma_fill_setup(color, w);
         dma_fill_init();
-        for (int row = y; row < y + h; row++) {
+        int ok = 1;
+        for (int row = y; row < y + h && ok; row++) {
             volatile uint16_t* b = ss_draw_page + row * (uint32_t)SS_SCREEN_W + x;
-            if (ss_dma_fill_row(b, w) != 0) {
-                goto cpu_fill;
-            }
+            if (ss_dma_fill_row(b, w) != 0) ok = 0;
         }
         dma_ch2->ccr = 0x00;
-        return;
+        if (ok) return;
     }
 
-cpu_fill:
     for (int row = y; row < y + h; row++) {
         volatile uint16_t* b = ss_draw_page + row * (uint32_t)SS_SCREEN_W;
         int cx = x;
@@ -215,28 +216,31 @@ void ss_gfx_hline(int x, int y, int w, uint16_t color) {
     ss_gfx_rect(x, y, w, 1, color);
 }
 
-void ss_gfx_fill_stipple(int x0, int y0, int x1, int y1, uint16_t c1, uint16_t c2) {
-    if (x0 < 0) x0 = 0;
-    if (y0 < 0) y0 = 0;
-    if (x1 >= SS_SCREEN_W) x1 = SS_SCREEN_W - 1;
-    if (y1 >= SS_SCREEN_H) y1 = SS_SCREEN_H - 1;
-    if (x0 > x1 || y0 > y1) return;
+void ss_gfx_fill_stipple(int x, int y, int w, int h, uint16_t c1, uint16_t c2) {
+    if (x < 0) { w += x; x = 0; }
+    if (y < 0) { h += y; y = 0; }
+    if (x + w > SS_SCREEN_W) w = SS_SCREEN_W - x;
+    if (y + h > SS_SCREEN_H) h = SS_SCREEN_H - y;
+    if (w <= 0 || h <= 0) return;
+
+    int x1 = x + w - 1;
+    int y1 = y + h - 1;
 
     uint32_t pat[2];
     pat[0] = ((uint32_t)c2 << 16) | c1;
     pat[1] = ((uint32_t)c1 << 16) | c2;
 
-    for (int y = y0; y <= y1; y++) {
-        volatile uint16_t* b = ss_draw_page + y * (uint32_t)SS_SCREEN_W;
-        int x = x0;
-        if (x & 1) {
-            b[x] = ((x + y) & 1) ? c1 : c2;
-            x++;
+    for (int yy = y; yy <= y1; yy++) {
+        volatile uint16_t* b = ss_draw_page + yy * (uint32_t)SS_SCREEN_W;
+        int xx = x;
+        if (xx & 1) {
+            b[xx] = ((xx + yy) & 1) ? c1 : c2;
+            xx++;
         }
-        int n = (x1 - x + 1) / 2;
-        ss_fill_long((volatile uint32_t*)(b + x), pat[y & 1], (uint32_t)n);
-        if ((x1 - x + 1) & 1) {
-            b[x1] = ((x1 + y) & 1) ? c1 : c2;
+        int n = (x1 - xx + 1) / 2;
+        ss_fill_long((volatile uint32_t*)(b + xx), pat[yy & 1], (uint32_t)n);
+        if ((x1 - xx + 1) & 1) {
+            b[x1] = ((x1 + yy) & 1) ? c1 : c2;
         }
     }
 }
