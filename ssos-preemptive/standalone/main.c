@@ -8,10 +8,10 @@
  *   Thread 1 (main, pri=8):   Rendering loop + mouse IOCS (V-sync rate)
  *   Thread 2 (data, pri=8):   Timer/Keyboard window data + IOCS calls
  */
-
 #include "../os/kernel/kernel.h"
 #include "../os/kernel/scheduler.h"
 #include "../os/mem/memory.h"
+#include "../os/gfx/gfx.h"
 
 #include <stdint.h>
 #include <stdio.h>
@@ -30,24 +30,15 @@ static uint8_t local_stack_mem[SS_MAX_TASKS * SS_TASK_STACK]
 
 uint8_t* ss_task_stack_base = local_stack_mem;
 
-/* ss_tick_counter, ss_vsync_counter, ss_switch_count defined in interrupts.s */
 extern uint32_t ss_switch_count;
 
-#define GVRAM ((volatile uint16_t*)0xC00000)
-#define GVRAM_STR 512
-#define SW 512
-#define SH 512
-#define DISP_W 512
-#define DISP_H 512
-
-/* Palette Indices (1 word per pixel, lower 8 bits = palette index) */
+/* Palette Indices */
 #define C_WHITE 0
 #define C_BLACK 215
 #define C_GRAY_L 247
 #define C_GRAY_M 250
 #define C_GRAY_D 252
 
-/* X68k Palette Helper (GGGGG RRRRR BBBBB P) */
 #define PAL_RGB(r, g, b)                                                       \
     (uint16_t)((((g) & 0x1F) << 11) | (((r) & 0x1F) << 6) |                    \
                (((b) & 0x1F) << 1) | 1)
@@ -57,19 +48,14 @@ static void set_palette(void) {
     int idx = 0;
     static const uint8_t cube_levels[] = {31, 25, 18, 12, 6, 0};
     static const uint8_t system_levels[] = {29, 27, 23, 21, 17,
-                                            15, 10, 8,  4,  2};
+                                             15, 10, 8,  4,  2};
 
-    /* 1. 6x6x6 Color Cube (Indices 0-215) */
-    for (r = 0; r < 6; r++) {
-        for (g = 0; g < 6; g++) {
-            for (b = 0; b < 6; b++) {
+    for (r = 0; r < 6; r++)
+        for (g = 0; g < 6; g++)
+            for (b = 0; b < 6; b++)
                 _iocs_gpalet(idx++, PAL_RGB(cube_levels[r], cube_levels[g],
                                             cube_levels[b]));
-            }
-        }
-    }
 
-    /* 2. 40 System Colors (Indices 216-255) */
     for (i = 0; i < 10; i++)
         _iocs_gpalet(idx++, PAL_RGB(system_levels[i], 0, 0));
     for (i = 0; i < 10; i++)
@@ -81,12 +67,12 @@ static void set_palette(void) {
                                     system_levels[i]));
 }
 
-/* Layout for 8x8 font */
+/* Window layout */
 #define TITLE_H 12
 #define CONTENT_Y 14
 #define LINE_H 10
 #define WIN_W 240
-#define WIN_H (CONTENT_Y + 3 * LINE_H + 4) /* 48 */
+#define WIN_H (CONTENT_Y + 3 * LINE_H + 4)
 
 typedef struct {
     int x, y, w, h;
@@ -99,7 +85,7 @@ static Win wins[3];
 static int zmap[3] = {0, 1, 2};
 static volatile uint32_t frame = 0;
 static volatile int last_key = -1;
-static volatile int mx = DISP_W / 2, my = DISP_H / 2;
+static volatile int mx = SS_SCREEN_W / 2, my = SS_SCREEN_H / 2;
 static volatile uint8_t mb_left, mb_right;
 static volatile int exit_flag = 0;
 static int drag = -1, dox, doy;
@@ -107,12 +93,10 @@ static uint16_t win_save_buf[WIN_W * WIN_H];
 static int win_save_valid;
 static int need_full = 1;
 
-/* COPY key (trap #12) and NMI (autovector 7) vector save */
 static uint32_t saved_copy_vec;
 static uint32_t saved_nmi_vec;
 extern void ss_nop_handler(void);
 
-/* TRAP #14 exception handler support */
 extern void ss_init_trap14(void);
 extern void ss_restore_trap14(void);
 extern uint16_t ss_trapbuf_flag;
@@ -120,374 +104,41 @@ extern uint16_t ss_trapbuf_sr;
 extern uint32_t ss_trapbuf_pc;
 extern char* ss_trapbuf_msg;
 
-/* Main task TCB — registers main()'s context with the scheduler
-   so preemptive context switching works to/from main */
 static SSTask main_tcb;
 
 #define OL_MAX 1200
 static uint16_t ol_buf[OL_MAX];
 static int ol_x, ol_y, ol_w, ol_h, ol_valid;
 
-/* ================================================================
- * Drawing
- * ================================================================ */
+/* ---- GVRAM bitmap save/restore (direct page 0 access) ---- */
 
-/* DMAC HD63450 CH2 — register layout from working ssos dma.h */
-typedef struct {
-    uint8_t csr;
-    uint8_t cer;
-    uint16_t spare1;
-    uint8_t dcr;
-    uint8_t ocr;
-    uint8_t scr;
-    uint8_t ccr;
-    uint16_t spare2;
-    uint16_t mtc;
-    uint8_t* mar;
-    uint32_t spare3;
-    uint8_t* dar;
-    uint16_t spare4;
-    uint16_t btc;
-    uint8_t* bar;
-    uint32_t spare5;
-    uint8_t spare6;
-    uint8_t niv;
-    uint8_t spare7;
-    uint8_t eiv;
-    uint8_t spare8;
-    uint8_t mfc;
-    uint16_t spare9;
-    uint8_t spare10;
-    uint8_t cpr;
-    uint16_t spare11;
-    uint8_t spare12;
-    uint8_t dfc;
-    uint32_t spare13;
-    uint16_t spare14;
-    uint8_t spare15;
-    uint8_t bfc;
-} DMA_REG;
-
-#define dma_ch2 ((volatile DMA_REG*)0xE84080)
-/* XFR_INF structure for array chain mode (6 bytes per entry, packed!) */
-typedef struct __attribute__((packed)) {
-    uint8_t* mar; /* Memory Address Register (4 bytes) */
-    uint16_t mtc; /* Memory Transfer Count (2 bytes) */
-} XFR_INF;
-
-#define DMA_FILL_THRESHOLD 64
-static uint16_t dma_fill_buf[512];
-
-/* One-time DMAC CH2 setup for fill operations (call once before first row) */
-static void dma_fill_init(void) {
-    volatile DMA_REG* ch = dma_ch2;
-    ch->ccr = 0x00;
-    ch->csr = 0xFF;
-    ch->dcr = 0x08;
-    ch->ocr = 0x99;
-    ch->scr = 0x05;
-    ch->mfc = 0x05;
-    ch->dfc = 0x05;
-}
-
-/* Transfer one row via DMA (call dma_fill_init first) */
-static int dma_fill_row(volatile uint16_t* dst, int count) {
-    volatile DMA_REG* ch = dma_ch2;
-    static XFR_INF xfr_table;
-    int timeout = 10000;
-
-    xfr_table.mar = (uint8_t*)dma_fill_buf;
-    xfr_table.mtc = (uint16_t)count;
-    ch->csr = 0xFF;
-    ch->dar = (uint8_t*)dst;
-    ch->bar = (uint8_t*)&xfr_table;
-    ch->btc = 1;
-    ch->ccr = 0x80;
-
-    while (!(ch->csr & 0x10) && --timeout > 0) {
-        if (ch->csr & 0x02) {
-            ch->csr = 0xFF;
-            return -1;
-        }
-    }
-    ch->csr = 0xFF;
-    return (timeout > 0) ? 0 : -2;
-}
-
-/* Save window VRAM bitmap to RAM buffer (before stipple erases it) */
 static void save_win_bitmap(int x, int y, int w, int h) {
-    volatile uint16_t* s = GVRAM + (uint32_t)y * GVRAM_STR + x;
+    volatile uint16_t* s = ss_draw_page + (uint32_t)y * SS_SCREEN_W + x;
     for (int row = 0; row < h; row++) {
         for (int i = 0; i < w; i++) win_save_buf[row * w + i] = s[i];
-        s += GVRAM_STR;
+        s += SS_SCREEN_W;
     }
     win_save_valid = 1;
 }
 
-/* Restore saved bitmap to VRAM (move.l when aligned) */
 static void restore_win_bitmap(int x, int y, int w, int h) {
-    volatile uint16_t* d = GVRAM + (uint32_t)y * GVRAM_STR + x;
+    volatile uint16_t* d = ss_draw_page + (uint32_t)y * SS_SCREEN_W + x;
     for (int row = 0; row < h; row++) {
         uint16_t* src = win_save_buf + row * w;
         if ((x & 1) == 0) {
             volatile uint32_t* dl = (volatile uint32_t*)d;
             uint32_t* sl = (uint32_t*)src;
             for (int i = 0; i < w / 2; i++) dl[i] = sl[i];
-            if (w & 1)
-                d[w - 1] = src[w - 1];
+            if (w & 1) d[w - 1] = src[w - 1];
         } else {
             for (int i = 0; i < w; i++) d[i] = src[i];
         }
-        d += GVRAM_STR;
+        d += SS_SCREEN_W;
     }
     win_save_valid = 0;
 }
 
-static inline void fill_long(volatile uint32_t* dst, uint32_t val,
-                             uint32_t count) {
-    for (uint32_t i = 0; i < count; i++) dst[i] = val;
-}
-
-static void fill_rect(int x0, int y0, int x1, int y1, uint8_t c) {
-    if (x0 < 0)
-        x0 = 0;
-    if (y0 < 0)
-        y0 = 0;
-    if (x1 >= DISP_W)
-        x1 = DISP_W - 1;
-    if (y1 >= DISP_H)
-        y1 = DISP_H - 1;
-    if (x0 > x1 || y0 > y1)
-        return;
-    int w = x1 - x0 + 1;
-    int h = y1 - y0 + 1;
-    uint16_t cw = c;
-    int dma_error = 0;
-
-    /* Use DMA only for large rectangles (width > 64 AND height > 4) */
-    /* Small rectangles: CPU setup cost < DMA transfer time */
-    if (w > DMA_FILL_THRESHOLD && h > 4 && w <= 512) {
-        for (int i = 0; i < w; i++) dma_fill_buf[i] = cw;
-        dma_fill_init();
-        for (int y = y0; y <= y1; y++) {
-            volatile uint16_t* b = GVRAM + y * (uint32_t)GVRAM_STR;
-            if (dma_fill_row(b + x0, w) != 0) {
-                dma_error = 1;
-                break;
-            }
-        }
-        dma_ch2->ccr = 0x00;
-        if (dma_error) {
-            /* DMA failed - fall back to CPU for this and future calls */
-            for (int y = y0; y <= y1; y++) {
-                volatile uint16_t* b = GVRAM + y * (uint32_t)GVRAM_STR;
-                fill_long((volatile uint32_t*)(b + x0), ((uint32_t)c << 16) | c,
-                          (uint32_t)w / 2);
-                if (w & 1)
-                    b[x0 + w - 1] = cw;
-            }
-        }
-    } else {
-        uint32_t c2 = ((uint32_t)c << 16) | c;
-        for (int y = y0; y <= y1; y++) {
-            volatile uint16_t* b = GVRAM + y * (uint32_t)GVRAM_STR;
-            int x = x0;
-            if (x & 1)
-                b[x++] = cw;
-            int n = (x1 - x + 1) / 2;
-            fill_long((volatile uint32_t*)(b + x), c2, n);
-            if ((x1 - x + 1) & 1)
-                b[x1] = cw;
-        }
-    }
-}
-
-static void fill_stipple(int x0, int y0, int x1, int y1, uint8_t c1,
-                         uint8_t c2) {
-    if (x0 < 0)
-        x0 = 0;
-    if (y0 < 0)
-        y0 = 0;
-    if (x1 >= DISP_W)
-        x1 = DISP_W - 1;
-    if (y1 >= DISP_H)
-        y1 = DISP_H - 1;
-    if (x0 > x1 || y0 > y1)
-        return;
-
-    /* CPU stipple: fill_long with pre-computed even/odd row patterns */
-    uint32_t pat[2];
-    pat[0] = ((uint32_t)c2 << 16) | c1; /* even y: c2,c1,c2,c1... */
-    pat[1] = ((uint32_t)c1 << 16) | c2; /* odd y:  c1,c2,c1,c2... */
-    for (int y = y0; y <= y1; y++) {
-        volatile uint16_t* b = GVRAM + y * (uint32_t)GVRAM_STR;
-        int x = x0;
-        if (x & 1) {
-            b[x] = ((x + y) & 1) ? c1 : c2;
-            x++;
-        }
-        int n = (x1 - x + 1) / 2;
-        fill_long((volatile uint32_t*)(b + x), pat[y & 1], n);
-        if ((x1 - x + 1) & 1)
-            b[x1] = ((x1 + y) & 1) ? c1 : c2;
-    }
-}
-
-/* Spleen 5x8 Font Data (ASCII 0x20 - 0x7E) */
-static const uint8_t spleen_5x8[][8] = {
-    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, /* 0x20 Space */
-    {0x20, 0x20, 0x20, 0x20, 0x20, 0x00, 0x20, 0x00}, /* 0x21 ! */
-    {0x50, 0x50, 0x50, 0x00, 0x00, 0x00, 0x00, 0x00}, /* 0x22 " */
-    {0x00, 0x50, 0xF8, 0x50, 0x50, 0xF8, 0x50, 0x00}, /* 0x23 # */
-    {0x20, 0x70, 0xA0, 0x60, 0x30, 0x30, 0xE0, 0x20}, /* 0x24 $ */
-    {0x10, 0x90, 0xA0, 0x20, 0x40, 0x50, 0x90, 0x80}, /* 0x25 % */
-    {0x20, 0x50, 0x50, 0x60, 0xA8, 0x90, 0x68, 0x00}, /* 0x26 & */
-    {0x20, 0x20, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00}, /* 0x27 ' */
-    {0x10, 0x20, 0x40, 0x40, 0x40, 0x40, 0x20, 0x10}, /* 0x28 ( */
-    {0x40, 0x20, 0x10, 0x10, 0x10, 0x10, 0x20, 0x40}, /* 0x29 ) */
-    {0x00, 0x00, 0x90, 0x60, 0xF0, 0x60, 0x90, 0x00}, /* 0x2A * */
-    {0x00, 0x00, 0x20, 0x20, 0xF8, 0x20, 0x20, 0x00}, /* 0x2B + */
-    {0x00, 0x00, 0x00, 0x00, 0x00, 0x20, 0x20, 0x40}, /* 0x2C , */
-    {0x00, 0x00, 0x00, 0x00, 0xF0, 0x00, 0x00, 0x00}, /* 0x2D - */
-    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x20, 0x00}, /* 0x2E . */
-    {0x10, 0x10, 0x20, 0x20, 0x40, 0x40, 0x80, 0x80}, /* 0x2F / */
-    {0x00, 0x60, 0x90, 0xB0, 0xD0, 0x90, 0x60, 0x00}, /* 0x30 0 */
-    {0x00, 0x20, 0x60, 0x20, 0x20, 0x20, 0x70, 0x00}, /* 0x31 1 */
-    {0x00, 0x60, 0x90, 0x10, 0x60, 0x80, 0xF0, 0x00}, /* 0x32 2 */
-    {0x00, 0x60, 0x90, 0x20, 0x10, 0x90, 0x60, 0x00}, /* 0x33 3 */
-    {0x00, 0x80, 0xA0, 0xA0, 0xF0, 0x20, 0x20, 0x00}, /* 0x34 4 */
-    {0x00, 0xF0, 0x80, 0xE0, 0x10, 0x10, 0xE0, 0x00}, /* 0x35 5 */
-    {0x00, 0x60, 0x80, 0xE0, 0x90, 0x90, 0x60, 0x00}, /* 0x36 6 */
-    {0x00, 0xF0, 0x90, 0x10, 0x20, 0x40, 0x40, 0x00}, /* 0x37 7 */
-    {0x00, 0x60, 0x90, 0x60, 0x90, 0x90, 0x60, 0x00}, /* 0x38 8 */
-    {0x00, 0x60, 0x90, 0x90, 0x70, 0x10, 0x60, 0x00}, /* 0x39 9 */
-    {0x00, 0x00, 0x00, 0x20, 0x00, 0x00, 0x20, 0x00}, /* 0x3A : */
-    {0x00, 0x00, 0x00, 0x20, 0x00, 0x20, 0x20, 0x40}, /* 0x3B ; */
-    {0x00, 0x10, 0x20, 0x40, 0x40, 0x20, 0x10, 0x00}, /* 0x3C < */
-    {0x00, 0x00, 0x00, 0xF0, 0x00, 0xF0, 0x00, 0x00}, /* 0x3D = */
-    {0x00, 0x40, 0x20, 0x10, 0x10, 0x20, 0x40, 0x00}, /* 0x3E > */
-    {0x60, 0x90, 0x10, 0x20, 0x40, 0x00, 0x40, 0x00}, /* 0x3F ? */
-    {0x00, 0x60, 0x90, 0xB0, 0xB0, 0x80, 0x70, 0x00}, /* 0x40 @ */
-    {0x00, 0x60, 0x90, 0x90, 0xF0, 0x90, 0x90, 0x00}, /* 0x41 A */
-    {0x00, 0xE0, 0x90, 0xE0, 0x90, 0x90, 0xE0, 0x00}, /* 0x42 B */
-    {0x00, 0x70, 0x80, 0x80, 0x80, 0x80, 0x70, 0x00}, /* 0x43 C */
-    {0x00, 0xE0, 0x90, 0x90, 0x90, 0x90, 0xE0, 0x00}, /* 0x44 D */
-    {0x00, 0x70, 0x80, 0xE0, 0x80, 0x80, 0x70, 0x00}, /* 0x45 E */
-    {0x00, 0x70, 0x80, 0x80, 0xE0, 0x80, 0x80, 0x00}, /* 0x46 F */
-    {0x00, 0x70, 0x80, 0xB0, 0x90, 0x90, 0x70, 0x00}, /* 0x47 G */
-    {0x00, 0x90, 0x90, 0xF0, 0x90, 0x90, 0x90, 0x00}, /* 0x48 H */
-    {0x00, 0x70, 0x20, 0x20, 0x20, 0x20, 0x70, 0x00}, /* 0x49 I */
-    {0x00, 0x70, 0x20, 0x20, 0x20, 0x20, 0xC0, 0x00}, /* 0x4A J */
-    {0x00, 0x90, 0x90, 0xE0, 0x90, 0x90, 0x90, 0x00}, /* 0x4B K */
-    {0x00, 0x80, 0x80, 0x80, 0x80, 0x80, 0x70, 0x00}, /* 0x4C L */
-    {0x00, 0x90, 0xF0, 0xF0, 0x90, 0x90, 0x90, 0x00}, /* 0x4D M */
-    {0x00, 0x90, 0xD0, 0xD0, 0xB0, 0xB0, 0x90, 0x00}, /* 0x4E N */
-    {0x00, 0x60, 0x90, 0x90, 0x90, 0x90, 0x60, 0x00}, /* 0x4F O */
-    {0x00, 0xE0, 0x90, 0x90, 0xE0, 0x80, 0x80, 0x00}, /* 0x50 P */
-    {0x00, 0x60, 0x90, 0x90, 0x90, 0x90, 0x60, 0x30}, /* 0x51 Q */
-    {0x00, 0xE0, 0x90, 0x90, 0xE0, 0x90, 0x90, 0x00}, /* 0x52 R */
-    {0x00, 0x70, 0x80, 0x60, 0x10, 0x10, 0xE0, 0x00}, /* 0x53 S */
-    {0x00, 0xF8, 0x20, 0x20, 0x20, 0x20, 0x20, 0x00}, /* 0x54 T */
-    {0x00, 0x90, 0x90, 0x90, 0x90, 0x90, 0x70, 0x00}, /* 0x55 U */
-    {0x00, 0x90, 0x90, 0x90, 0x90, 0x60, 0x60, 0x00}, /* 0x56 V */
-    {0x00, 0x90, 0x90, 0x90, 0xF0, 0xF0, 0x90, 0x00}, /* 0x57 W */
-    {0x00, 0x90, 0x90, 0x60, 0x60, 0x90, 0x90, 0x00}, /* 0x58 X */
-    {0x00, 0x90, 0x90, 0x90, 0x70, 0x10, 0xE0, 0x00}, /* 0x59 Y */
-    {0x00, 0xF0, 0x10, 0x20, 0x40, 0x80, 0xF0, 0x00}, /* 0x5A Z */
-    {0x70, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x70}, /* 0x5B [ */
-    {0x80, 0x80, 0x40, 0x40, 0x20, 0x20, 0x10, 0x10}, /* 0x5C \ */
-    {0x70, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x70}, /* 0x5D ] */
-    {0x00, 0x20, 0x50, 0x88, 0x00, 0x00, 0x00, 0x00}, /* 0x5E ^ */
-    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xF0}, /* 0x5F _ */
-    {0x40, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, /* 0x60 ` */
-    {0x00, 0x00, 0x60, 0x10, 0x70, 0x90, 0x70, 0x00}, /* 0x61 a */
-    {0x80, 0x80, 0xE0, 0x90, 0x90, 0x90, 0xE0, 0x00}, /* 0x62 b */
-    {0x00, 0x00, 0x70, 0x80, 0x80, 0x80, 0x70, 0x00}, /* 0x63 c */
-    {0x10, 0x10, 0x70, 0x90, 0x90, 0x90, 0x70, 0x00}, /* 0x64 d */
-    {0x00, 0x00, 0x70, 0x90, 0xF0, 0x80, 0x70, 0x00}, /* 0x65 e */
-    {0x30, 0x40, 0x40, 0xE0, 0x40, 0x40, 0x40, 0x00}, /* 0x66 f */
-    {0x00, 0x00, 0x70, 0x90, 0x90, 0x60, 0x10, 0xE0}, /* 0x67 g */
-    {0x80, 0x80, 0xE0, 0x90, 0x90, 0x90, 0x90, 0x00}, /* 0x68 h */
-    {0x00, 0x20, 0x00, 0x60, 0x20, 0x20, 0x30, 0x00}, /* 0x69 i */
-    {0x00, 0x20, 0x00, 0x20, 0x20, 0x20, 0x20, 0xC0}, /* 0x6A j */
-    {0x80, 0x80, 0x90, 0xA0, 0xC0, 0xA0, 0x90, 0x00}, /* 0x6B k */
-    {0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x30, 0x00}, /* 0x6C l */
-    {0x00, 0x00, 0x90, 0xF0, 0xF0, 0x90, 0x90, 0x00}, /* 0x6D m */
-    {0x00, 0x00, 0xE0, 0x90, 0x90, 0x90, 0x90, 0x00}, /* 0x6E n */
-    {0x00, 0x00, 0x60, 0x90, 0x90, 0x90, 0x60, 0x00}, /* 0x6F o */
-    {0x00, 0x00, 0xE0, 0x90, 0x90, 0xE0, 0x80, 0x80}, /* 0x70 p */
-    {0x00, 0x00, 0x70, 0x90, 0x90, 0x70, 0x10, 0x10}, /* 0x71 q */
-    {0x00, 0x00, 0x70, 0x90, 0x80, 0x80, 0x80, 0x00}, /* 0x72 r */
-    {0x00, 0x00, 0x70, 0x80, 0x60, 0x10, 0xE0, 0x00}, /* 0x73 s */
-    {0x40, 0x40, 0xE0, 0x40, 0x40, 0x40, 0x30, 0x00}, /* 0x74 t */
-    {0x00, 0x00, 0x90, 0x90, 0x90, 0x90, 0x70, 0x00}, /* 0x75 u */
-    {0x00, 0x00, 0x90, 0x90, 0x90, 0x60, 0x60, 0x00}, /* 0x76 v */
-    {0x00, 0x00, 0x90, 0x90, 0xF0, 0xF0, 0x90, 0x00}, /* 0x77 w */
-    {0x00, 0x00, 0x90, 0x60, 0x60, 0x90, 0x90, 0x00}, /* 0x78 x */
-    {0x00, 0x00, 0x90, 0x90, 0x90, 0x70, 0x10, 0xE0}, /* 0x79 y */
-    {0x00, 0x00, 0xF0, 0x10, 0x20, 0x40, 0xF0, 0x00}, /* 0x7A z */
-    {0x30, 0x40, 0x40, 0xC0, 0xC0, 0x40, 0x40, 0x30}, /* 0x7B { */
-    {0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20}, /* 0x7C | */
-    {0xC0, 0x20, 0x20, 0x30, 0x30, 0x20, 0x20, 0xC0}, /* 0x7D } */
-    {0x00, 0x00, 0x00, 0x48, 0xB0, 0x00, 0x00, 0x00}, /* 0x7E ~ */
-};
-
-static void draw_char8(int px, int py, char ch, uint8_t fg, uint8_t bg) {
-    uint8_t c = (uint8_t)ch;
-    if (c < 0x20 || c > 0x7E)
-        c = ' ';
-    const uint8_t* g = spleen_5x8[c - 0x20];
-    for (int r = 0; r < 8; r++) {
-        int yy = py + r;
-        if (yy < 0 || yy >= DISP_H)
-            continue;
-        volatile uint16_t* row = GVRAM + yy * (uint32_t)GVRAM_STR;
-        uint8_t bits = g[r];
-        for (int b = 0; b < 5; b++) {
-            int xx = px + b;
-            if (xx >= 0 && xx < DISP_W)
-                row[xx] = (bits & (0x80 >> b)) ? fg : bg;
-        }
-    }
-}
-
-static void draw_text(int px, int py, const char* s, uint8_t fg, uint8_t bg) {
-    while (*s) {
-        draw_char8(px, py, *s++, fg, bg);
-        px += 6;
-    }
-}
-
-static void draw_char8_clip(int px, int py, char ch, uint8_t fg, uint8_t bg,
-                            int zpos) {
-    uint8_t c = (uint8_t)ch;
-    if (c < 0x20 || c > 0x7E)
-        c = ' ';
-    const uint8_t* g = spleen_5x8[c - 0x20];
-    for (int r = 0; r < 8; r++) {
-        int yy = py + r;
-        if (yy < 0 || yy >= DISP_H)
-            continue;
-        volatile uint16_t* row = GVRAM + yy * GVRAM_STR;
-        uint8_t bits = g[r];
-        for (int b = 0; b < 5; b++) {
-            int xx = px + b;
-            if (xx < 0 || xx >= DISP_W)
-                continue;
-            int covered = 0;
-            for (int k = zpos + 1; k < 3; k++) {
-                Win* ow = &wins[zmap[k]];
-                if (xx >= ow->x && xx < ow->x + ow->w && yy >= ow->y &&
-                    yy < ow->y + ow->h) {
-                    covered = 1;
-                    break;
-                }
-            }
-            if (!covered)
-                row[xx] = (bits & (0x80 >> b)) ? fg : bg;
-        }
-    }
-}
+/* ---- Window overlap check ---- */
 
 static int win_overlap(int zpos) {
     Win* w = &wins[zmap[zpos]];
@@ -500,17 +151,55 @@ static int win_overlap(int zpos) {
     return 0;
 }
 
-static void draw_text_clip(int px, int py, const char* s, uint8_t fg,
-                           uint8_t bg, int zpos) {
+/* ---- Clipped text (uses OS gfx module) ---- */
+
+static void draw_text_clip(int px, int py, const char* s, uint16_t fg,
+                           uint16_t bg, int zpos) {
     if (!win_overlap(zpos)) {
-        draw_text(px, py, s, fg, bg);
+        ss_gfx_draw_text(px, py, s, fg, bg);
         return;
     }
-    while (*s) {
-        draw_char8_clip(px, py, *s++, fg, bg, zpos);
-        px += 6;
+    int clips[3][4];
+    for (int i = 0; i < 3; i++) {
+        Win* w = &wins[zmap[i]];
+        clips[i][0] = w->x; clips[i][1] = w->y;
+        clips[i][2] = w->w; clips[i][3] = w->h;
     }
+    ss_gfx_draw_text_clip(px, py, s, fg, bg, (const int*)clips, 3, zpos);
 }
+
+/* ---- Window frame drawing ---- */
+
+static void draw_frame(Win* w, int is_fg) {
+    uint16_t t_bg = is_fg ? C_GRAY_L : C_WHITE;
+
+    ss_gfx_rect(w->x + 1, w->y + 1, w->w - 2, TITLE_H - 2, t_bg);
+    ss_gfx_rect(w->x + 1, w->y + TITLE_H, w->w - 2, w->h - TITLE_H - 1, C_WHITE);
+
+    /* Border lines */
+    ss_gfx_rect(w->x, w->y, w->w, 1, C_BLACK);
+    ss_gfx_rect(w->x, w->y + w->h - 1, w->w, 1, C_BLACK);
+    ss_gfx_rect(w->x, w->y + 1, 1, w->h - 2, C_BLACK);
+    ss_gfx_rect(w->x + w->w - 1, w->y + 1, 1, w->h - 2, C_BLACK);
+    ss_gfx_rect(w->x + 1, w->y + TITLE_H - 1, w->w - 2, 1, C_BLACK);
+
+    int tw = (int)strlen(w->title) * SS_FONT_ADV;
+    int tx = w->x + (w->w - tw) / 2;
+
+    if (is_fg) {
+        for (int i = 0; i < 5; i++) {
+            int ly = w->y + 2 + i * 2;
+            if (tx > w->x + 12)
+                ss_gfx_rect(w->x + 4, ly, tx - 8 - (w->x + 4) + 1, 1, C_BLACK);
+            if (tx + tw + 8 < w->x + w->w - 4)
+                ss_gfx_rect(tx + tw + 8, ly, (w->x + w->w - 5) - (tx + tw + 8) + 1, 1, C_BLACK);
+        }
+    }
+
+    ss_gfx_draw_text(tx, w->y + 2, w->title, C_BLACK, t_bg);
+}
+
+/* ---- Dirty content update ---- */
 
 static void pad(char* s, int n) {
     int l = (int)strlen(s);
@@ -521,94 +210,57 @@ static void pad(char* s, int n) {
 static void draw_content_dirty(Win* w) {
     for (int i = 0; i < 3; i++) {
         if (memcmp(w->line[i], w->prev[i], 30) != 0) {
-            draw_text(w->x + 4, w->y + CONTENT_Y + i * LINE_H, w->line[i],
-                      C_BLACK, C_WHITE);
+            ss_gfx_draw_text(w->x + 4, w->y + CONTENT_Y + i * LINE_H,
+                             w->line[i], C_BLACK, C_WHITE);
             memcpy(w->prev[i], w->line[i], 30);
         }
     }
 }
 
-static void draw_frame(Win* w, int is_fg) {
-    uint16_t t_bg = is_fg ? C_GRAY_L : C_WHITE;
-
-    /* Interior fills (no overdraw) */
-    fill_rect(w->x + 1, w->y + 1, w->x + w->w - 2, w->y + TITLE_H - 2, t_bg);
-    fill_rect(w->x + 1, w->y + TITLE_H, w->x + w->w - 2, w->y + w->h - 2,
-              C_WHITE);
-
-    /* Border lines (1px black) */
-    fill_rect(w->x, w->y, w->x + w->w - 1, w->y, C_BLACK);
-    fill_rect(w->x, w->y + w->h - 1, w->x + w->w - 1, w->y + w->h - 1, C_BLACK);
-    fill_rect(w->x, w->y + 1, w->x, w->y + w->h - 2, C_BLACK);
-    fill_rect(w->x + w->w - 1, w->y + 1, w->x + w->w - 1, w->y + w->h - 2,
-              C_BLACK);
-    fill_rect(w->x + 1, w->y + TITLE_H - 1, w->x + w->w - 2, w->y + TITLE_H - 1,
-              C_BLACK);
-
-    int tw = (int)strlen(w->title) * 6;
-    int tx = w->x + (w->w - tw) / 2;
-
-    if (is_fg) {
-        for (int i = 0; i < 5; i++) {
-            int ly = w->y + 2 + i * 2;
-            if (tx > w->x + 12)
-                fill_rect(w->x + 4, ly, tx - 8, ly, C_BLACK);
-            if (tx + tw + 8 < w->x + w->w - 4)
-                fill_rect(tx + tw + 8, ly, w->x + w->w - 5, ly, C_BLACK);
-        }
-    }
-
-    draw_text(tx, w->y + 2, w->title, C_BLACK, t_bg);
-}
+/* ---- Marching ants outline ---- */
 
 static void draw_march_outline(int x, int y, int w, int h) {
     uint16_t colors[2] = {C_WHITE, C_BLACK};
     int offset = (int)(frame & 7);
     int peri = 0;
 
-    if (x >= 0 && y >= 0 && x + w <= DISP_W && y + h <= DISP_H) {
-        /* Fast path: fully visible, no bounds checking */
+    if (x >= 0 && y >= 0 && x + w <= SS_SCREEN_W && y + h <= SS_SCREEN_H) {
         volatile uint16_t* row;
-        /* Top edge: contiguous, pointer increment */
-        row = GVRAM + y * (uint32_t)GVRAM_STR + x;
+        row = ss_draw_page + y * (uint32_t)SS_SCREEN_W + x;
         for (int i = 0; i < w; i++, peri++)
             row[i] = colors[((peri + offset) >> 2) & 1];
-        /* Right edge */
         for (int i = 1; i < h; i++, peri++)
-            GVRAM[(uint32_t)(y + i) * GVRAM_STR + x + w - 1] =
+            ss_draw_page[(uint32_t)(y + i) * SS_SCREEN_W + x + w - 1] =
                 colors[((peri + offset) >> 2) & 1];
-        /* Bottom edge: contiguous */
-        row = GVRAM + (uint32_t)(y + h - 1) * GVRAM_STR + x;
+        row = ss_draw_page + (uint32_t)(y + h - 1) * SS_SCREEN_W + x;
         for (int i = w - 2; i >= 0; i--, peri++)
             row[i] = colors[((peri + offset) >> 2) & 1];
-        /* Left edge */
         for (int i = h - 2; i >= 1; i--, peri++)
-            GVRAM[(uint32_t)(y + i) * GVRAM_STR + x] =
+            ss_draw_page[(uint32_t)(y + i) * SS_SCREEN_W + x] =
                 colors[((peri + offset) >> 2) & 1];
     } else {
-        /* Slow path: per-pixel bounds check */
         for (int i = 0; i < w; i++, peri++) {
             int px = x + i;
-            if (px >= 0 && px < DISP_W && y >= 0 && y < DISP_H)
-                GVRAM[y * (uint32_t)GVRAM_STR + px] =
+            if (px >= 0 && px < SS_SCREEN_W && y >= 0 && y < SS_SCREEN_H)
+                ss_draw_page[y * (uint32_t)SS_SCREEN_W + px] =
                     colors[((peri + offset) >> 2) & 1];
         }
         for (int i = 1; i < h; i++, peri++) {
             int py = y + i;
-            if (x + w - 1 >= 0 && x + w - 1 < DISP_W && py >= 0 && py < DISP_H)
-                GVRAM[py * (uint32_t)GVRAM_STR + x + w - 1] =
+            if (x + w - 1 >= 0 && x + w - 1 < SS_SCREEN_W && py >= 0 && py < SS_SCREEN_H)
+                ss_draw_page[py * (uint32_t)SS_SCREEN_W + x + w - 1] =
                     colors[((peri + offset) >> 2) & 1];
         }
         for (int i = w - 2; i >= 0; i--, peri++) {
             int px = x + i;
-            if (px >= 0 && px < DISP_W && y + h - 1 >= 0 && y + h - 1 < DISP_H)
-                GVRAM[(uint32_t)(y + h - 1) * GVRAM_STR + px] =
+            if (px >= 0 && px < SS_SCREEN_W && y + h - 1 >= 0 && y + h - 1 < SS_SCREEN_H)
+                ss_draw_page[(uint32_t)(y + h - 1) * SS_SCREEN_W + px] =
                     colors[((peri + offset) >> 2) & 1];
         }
         for (int i = h - 2; i >= 1; i--, peri++) {
             int py = y + i;
-            if (x >= 0 && x < DISP_W && py >= 0 && py < DISP_H)
-                GVRAM[py * (uint32_t)GVRAM_STR + x] =
+            if (x >= 0 && x < SS_SCREEN_W && py >= 0 && py < SS_SCREEN_H)
+                ss_draw_page[py * (uint32_t)SS_SCREEN_W + x] =
                     colors[((peri + offset) >> 2) & 1];
         }
     }
@@ -617,121 +269,95 @@ static void draw_march_outline(int x, int y, int w, int h) {
 /* ---- Outline save / restore ---- */
 
 static void ol_save(int x, int y, int w, int h) {
-    ol_x = x;
-    ol_y = y;
-    ol_w = w;
-    ol_h = h;
+    ol_x = x; ol_y = y; ol_w = w; ol_h = h;
     int idx = 0;
 
-    if (x >= 0 && y >= 0 && x + w <= SW && y + h <= SH) {
-        /* Fast path: fully visible, no bounds checking */
+    if (x >= 0 && y >= 0 && x + w <= SS_SCREEN_W && y + h <= SS_SCREEN_H) {
         volatile uint16_t* p;
-        /* Top edge */
-        p = GVRAM + y * (uint32_t)GVRAM_STR + x;
+        p = ss_draw_page + y * (uint32_t)SS_SCREEN_W + x;
         for (int i = 0; i < w && idx < OL_MAX; i++, idx++) ol_buf[idx] = p[i];
-        /* Bottom edge */
-        p = GVRAM + (uint32_t)(y + h - 1) * GVRAM_STR + x;
+        p = ss_draw_page + (uint32_t)(y + h - 1) * SS_SCREEN_W + x;
         for (int i = 0; i < w && idx < OL_MAX; i++, idx++) ol_buf[idx] = p[i];
-        /* Left edge */
         for (int i = 1; i < h - 1 && idx < OL_MAX; i++, idx++)
-            ol_buf[idx] = GVRAM[(uint32_t)(y + i) * GVRAM_STR + x];
-        /* Right edge */
+            ol_buf[idx] = ss_draw_page[(uint32_t)(y + i) * SS_SCREEN_W + x];
         for (int i = 1; i < h - 1 && idx < OL_MAX; i++, idx++)
-            ol_buf[idx] = GVRAM[(uint32_t)(y + i) * GVRAM_STR + x + w - 1];
+            ol_buf[idx] = ss_draw_page[(uint32_t)(y + i) * SS_SCREEN_W + x + w - 1];
     } else {
-        /* Slow path: per-pixel bounds check */
         for (int i = 0; i < w && idx < OL_MAX; i++) {
             int px = x + i;
-            ol_buf[idx++] = (px >= 0 && px < SW && y >= 0 && y < SH)
-                                ? GVRAM[y * (uint32_t)GVRAM_STR + px]
-                                : 0;
+            ol_buf[idx++] = (px >= 0 && px < SS_SCREEN_W && y >= 0 && y < SS_SCREEN_H)
+                ? ss_draw_page[y * (uint32_t)SS_SCREEN_W + px] : 0;
         }
         for (int i = 0; i < w && idx < OL_MAX; i++) {
             int px = x + i, py = y + h - 1;
-            ol_buf[idx++] = (px >= 0 && px < SW && py >= 0 && py < SH)
-                                ? GVRAM[py * (uint32_t)GVRAM_STR + px]
-                                : 0;
+            ol_buf[idx++] = (px >= 0 && px < SS_SCREEN_W && py >= 0 && py < SS_SCREEN_H)
+                ? ss_draw_page[py * (uint32_t)SS_SCREEN_W + px] : 0;
         }
         for (int i = 1; i < h - 1 && idx < OL_MAX; i++) {
             int py = y + i;
-            ol_buf[idx++] = (x >= 0 && x < SW && py >= 0 && py < SH)
-                                ? GVRAM[py * (uint32_t)GVRAM_STR + x]
-                                : 0;
+            ol_buf[idx++] = (x >= 0 && x < SS_SCREEN_W && py >= 0 && py < SS_SCREEN_H)
+                ? ss_draw_page[py * (uint32_t)SS_SCREEN_W + x] : 0;
         }
         for (int i = 1; i < h - 1 && idx < OL_MAX; i++) {
             int py = y + i, px = x + w - 1;
-            ol_buf[idx++] = (px >= 0 && px < SW && py >= 0 && py < SH)
-                                ? GVRAM[py * (uint32_t)GVRAM_STR + px]
-                                : 0;
+            ol_buf[idx++] = (px >= 0 && px < SS_SCREEN_W && py >= 0 && py < SS_SCREEN_H)
+                ? ss_draw_page[py * (uint32_t)SS_SCREEN_W + px] : 0;
         }
     }
     ol_valid = 1;
 }
 
 static void ol_restore(void) {
-    if (!ol_valid)
-        return;
+    if (!ol_valid) return;
     int x = ol_x, y = ol_y, w = ol_w, h = ol_h;
     int idx = 0;
 
-    if (x >= 0 && y >= 0 && x + w <= SW && y + h <= SH) {
-        /* Fast path: fully visible, no bounds checking */
+    if (x >= 0 && y >= 0 && x + w <= SS_SCREEN_W && y + h <= SS_SCREEN_H) {
         volatile uint16_t* p;
-        /* Top edge */
-        p = GVRAM + y * (uint32_t)GVRAM_STR + x;
+        p = ss_draw_page + y * (uint32_t)SS_SCREEN_W + x;
         for (int i = 0; i < w && idx < OL_MAX; i++, idx++) p[i] = ol_buf[idx];
-        /* Bottom edge */
-        p = GVRAM + (uint32_t)(y + h - 1) * GVRAM_STR + x;
+        p = ss_draw_page + (uint32_t)(y + h - 1) * SS_SCREEN_W + x;
         for (int i = 0; i < w && idx < OL_MAX; i++, idx++) p[i] = ol_buf[idx];
-        /* Left edge */
         for (int i = 1; i < h - 1 && idx < OL_MAX; i++, idx++)
-            GVRAM[(uint32_t)(y + i) * GVRAM_STR + x] = ol_buf[idx];
-        /* Right edge */
+            ss_draw_page[(uint32_t)(y + i) * SS_SCREEN_W + x] = ol_buf[idx];
         for (int i = 1; i < h - 1 && idx < OL_MAX; i++, idx++)
-            GVRAM[(uint32_t)(y + i) * GVRAM_STR + x + w - 1] = ol_buf[idx];
+            ss_draw_page[(uint32_t)(y + i) * SS_SCREEN_W + x + w - 1] = ol_buf[idx];
     } else {
-        /* Slow path: per-pixel bounds check */
         for (int i = 0; i < w && idx < OL_MAX; i++) {
             int px = x + i;
-            if (px >= 0 && px < SW && y >= 0 && y < SH)
-                GVRAM[y * (uint32_t)GVRAM_STR + px] = ol_buf[idx];
+            if (px >= 0 && px < SS_SCREEN_W && y >= 0 && y < SS_SCREEN_H)
+                ss_draw_page[y * (uint32_t)SS_SCREEN_W + px] = ol_buf[idx];
             idx++;
         }
         for (int i = 0; i < w && idx < OL_MAX; i++) {
             int px = x + i, py = y + h - 1;
-            if (px >= 0 && px < SW && py >= 0 && py < SH)
-                GVRAM[py * (uint32_t)GVRAM_STR + px] = ol_buf[idx];
+            if (px >= 0 && px < SS_SCREEN_W && py >= 0 && py < SS_SCREEN_H)
+                ss_draw_page[py * (uint32_t)SS_SCREEN_W + px] = ol_buf[idx];
             idx++;
         }
         for (int i = 1; i < h - 1 && idx < OL_MAX; i++) {
             int py = y + i;
-            if (x >= 0 && x < SW && py >= 0 && py < SH)
-                GVRAM[py * (uint32_t)GVRAM_STR + x] = ol_buf[idx];
+            if (x >= 0 && x < SS_SCREEN_W && py >= 0 && py < SS_SCREEN_H)
+                ss_draw_page[py * (uint32_t)SS_SCREEN_W + x] = ol_buf[idx];
             idx++;
         }
         for (int i = 1; i < h - 1 && idx < OL_MAX; i++) {
             int py = y + i, px = x + w - 1;
-            if (px >= 0 && px < SW && py >= 0 && py < SH)
-                GVRAM[py * (uint32_t)GVRAM_STR + px] = ol_buf[idx];
+            if (px >= 0 && px < SS_SCREEN_W && py >= 0 && py < SS_SCREEN_H)
+                ss_draw_page[py * (uint32_t)SS_SCREEN_W + px] = ol_buf[idx];
             idx++;
         }
     }
     ol_valid = 0;
 }
 
-/* ================================================================
- * Z-order
- * ================================================================ */
+/* ---- Z-order ---- */
 
 static void bring_to_front(int idx) {
     int p = -1;
     for (int i = 0; i < 3; i++)
-        if (zmap[i] == idx) {
-            p = i;
-            break;
-        }
-    if (p < 0 || p == 2)
-        return;
+        if (zmap[i] == idx) { p = i; break; }
+    if (p < 0 || p == 2) return;
     for (int i = p; i < 2; i++) zmap[i] = zmap[i + 1];
     zmap[2] = idx;
 }
@@ -745,9 +371,7 @@ static int hit_test(int hx, int hy) {
     return -1;
 }
 
-/* ================================================================
- * V-sync
- * ================================================================ */
+/* ---- V-sync ---- */
 
 static void wait_vsync(void) {
     volatile uint8_t* gpip = (volatile uint8_t*)0xE88001;
@@ -756,17 +380,15 @@ static void wait_vsync(void) {
 }
 
 /* ================================================================
- * Data Thread — Timer/Keyboard window text + IOCS (non-time-critical)
+ * Data Thread — Timer/Keyboard window text + IOCS
  * ================================================================ */
 
 static void* data_thread(void* arg) {
     (void)arg;
     for (;;) {
         if (exit_flag)
-            for (;;)
-                ss_task_sleep(0x7FFFFFFF); /* infinite sleep in 200Hz ticks */
+            for (;;) ss_task_sleep(0x7FFFFFFF);
 
-        /* Keyboard */
         if (_iocs_b_keysns() > 0) {
             int key = _iocs_b_keyinp();
             if ((key & 0xFF) == 0x1B) {
@@ -788,7 +410,6 @@ static void* data_thread(void* arg) {
         }
         strcpy(wins[1].line[2], "                        ");
 
-        /* Timer */
         uint32_t f = frame;
         uint32_t sec = f / 55;
         uint32_t frac = (f % 55) * 100 / 55;
@@ -799,38 +420,31 @@ static void* data_thread(void* arg) {
         sprintf(wins[0].line[2], "Sw:%lu", ss_switch_count);
         pad(wins[0].line[2], 24);
 
-        /* Sleep 40 ticks = 200ms at 200Hz */
         ss_task_sleep(40);
     }
     return NULL;
 }
 
 /* ================================================================
- * Main (render thread + task management)
+ * Main
  * ================================================================ */
 
 int main(void) {
     int ssp = _iocs_b_super(0);
 
-    /* Initialize TRAP #14 exception handler FIRST */
     ss_init_trap14();
 
     ss_mem_init(local_memory, sizeof(local_memory));
     ss_sched_init();
 
-    /* Register main() as a task so the scheduler can context-switch
-       to/from it. Without this, ss_curr_task points to a worker task
-       that never actually runs, and preemptive switching breaks. */
     main_tcb.state = SS_TS_READY;
     main_tcb.pri = 8;
-    main_tcb.stack_base = (void*)1; /* sentinel: never matches saved SP */
+    main_tcb.stack_base = (void*)1;
     ss_curr_task = &main_tcb;
     ss_sched_enqueue(&main_tcb);
 
-    /* Enable Timer D interrupts for preemptive scheduling */
     ss_set_interrupts();
 
-    /* Display setup */
     int old_mode = _iocs_crtmod(-1);
     _iocs_crtmod(8);
     _iocs_g_clr_on();
@@ -838,11 +452,8 @@ int main(void) {
     _iocs_b_curoff();
     _iocs_skeyset(0);
 
-    /* NEW: Clear GVRAM ($C00000) to prevent garbage display */
-    volatile uint32_t* gvramp = (volatile uint32_t*)0xC00000;
-    for (int i = 0; i < (512 * 512) / 2; i++) gvramp[i] = 0;
+    ss_gfx_init();
 
-    /* Clear visible TVRAM (16KB) to prevent text garbage */
     {
         volatile uint32_t* tp = (volatile uint32_t*)0xE00000;
         for (int i = 0; i < 0x1000; i++) tp[i] = 0;
@@ -851,35 +462,30 @@ int main(void) {
     _iocs_ms_init();
     _iocs_skey_mod(0, 0, 0);
     _iocs_ms_curon();
-    _iocs_ms_limit(0, DISP_W - 1, 0, DISP_H - 1);
+    _iocs_ms_limit(0, SS_SCREEN_W - 1, 0, SS_SCREEN_H - 1);
 
-    /* Protect COPY key (trap #12) and NMI (autovector 7) */
     saved_copy_vec = *(volatile uint32_t*)0xB0;
     saved_nmi_vec = *(volatile uint32_t*)0x7C;
     *(volatile uint32_t*)0xB0 = (uint32_t)ss_nop_handler;
     *(volatile uint32_t*)0x7C = (uint32_t)ss_nop_handler;
 
-    /* Window init */
     wins[0] = (Win){30, 15, WIN_W, WIN_H, "Timer", {{{0}}}, {{0}}};
     wins[1] = (Win){180, 60, WIN_W, WIN_H, "Keyboard", {{{0}}}, {{0}}};
     wins[2] = (Win){80, 120, WIN_W, WIN_H, "Mouse", {{{0}}}, {{0}}};
     ol_valid = 0;
 
-    /* Create single data worker thread (batches all IOCS calls) */
     uint16_t t_data = ss_task_create(&(SSTaskInfo){.entry = data_thread,
-                                                   .pri = 8,
-                                                   .ctx_level = 0,
-                                                   .stack_size = 0,
-                                                   .stack = NULL});
+                                                    .pri = 8,
+                                                    .ctx_level = 0,
+                                                    .stack_size = 0,
+                                                    .stack = NULL});
     ss_task_start(t_data);
 
-    /* Main rendering loop */
     for (;;) {
         wait_vsync();
         frame++;
 
-        if (exit_flag)
-            break;
+        if (exit_flag) break;
 
         int cur_mx, cur_my, left;
         {
@@ -892,7 +498,6 @@ int main(void) {
             mb_right = (dt & 0x0001) != 0;
         }
 
-        /* Update mouse window text */
         sprintf(wins[2].line[0], "X:%3d Y:%3d", cur_mx, cur_my);
         pad(wins[2].line[0], 24);
         sprintf(wins[2].line[1], "L=%s R=%s", left ? "DN" : "UP",
@@ -909,13 +514,13 @@ int main(void) {
                 bring_to_front(hit);
                 save_win_bitmap(wins[hit].x, wins[hit].y, wins[hit].w,
                                 wins[hit].h);
-                fill_stipple(wins[hit].x, wins[hit].y,
-                             wins[hit].x + wins[hit].w - 1,
-                             wins[hit].y + wins[hit].h - 1, C_WHITE, C_GRAY_M);
+                ss_gfx_fill_stipple(wins[hit].x, wins[hit].y,
+                                    wins[hit].x + wins[hit].w - 1,
+                                    wins[hit].y + wins[hit].h - 1,
+                                    C_WHITE, C_GRAY_M);
                 for (int i = 0; i < 3; i++) {
                     int idx = zmap[i];
-                    if (idx == drag)
-                        continue;
+                    if (idx == drag) continue;
                     draw_frame(&wins[idx], (i == 2));
                     memset(wins[idx].prev, 0xFF, sizeof(wins[idx].prev));
                     draw_content_dirty(&wins[idx]);
@@ -931,22 +536,20 @@ int main(void) {
             ol_restore();
             int wx = wins[drag].x, wy = wins[drag].y;
             int ww = wins[drag].w, wh = wins[drag].h;
-            if (win_save_valid && wx >= 0 && wy >= 0 && wx + ww <= SW &&
-                wy + wh <= SH) {
+            if (win_save_valid && wx >= 0 && wy >= 0 &&
+                wx + ww <= SS_SCREEN_W && wy + wh <= SS_SCREEN_H) {
                 restore_win_bitmap(wx, wy, ww, wh);
-                /* Redraw title bar with foreground style */
-                fill_rect(wx + 1, wy + 1, wx + ww - 2, wy + TITLE_H - 2,
-                          C_GRAY_L);
-                int tw = (int)strlen(wins[drag].title) * 6;
+                ss_gfx_rect(wx + 1, wy + 1, ww - 2, TITLE_H - 2, C_GRAY_L);
+                int tw = (int)strlen(wins[drag].title) * SS_FONT_ADV;
                 int tx = wx + (ww - tw) / 2;
                 for (int li = 0; li < 5; li++) {
                     int ly = wy + 2 + li * 2;
                     if (tx > wx + 12)
-                        fill_rect(wx + 4, ly, tx - 8, ly, C_BLACK);
+                        ss_gfx_rect(wx + 4, ly, tx - 8 - (wx + 4) + 1, 1, C_BLACK);
                     if (tx + tw + 8 < wx + ww - 4)
-                        fill_rect(tx + tw + 8, ly, wx + ww - 5, ly, C_BLACK);
+                        ss_gfx_rect(tx + tw + 8, ly, (wx + ww - 5) - (tx + tw + 8) + 1, 1, C_BLACK);
                 }
-                draw_text(tx, wy + 2, wins[drag].title, C_BLACK, C_GRAY_L);
+                ss_gfx_draw_text(tx, wy + 2, wins[drag].title, C_BLACK, C_GRAY_L);
             } else {
                 draw_frame(&wins[drag], 1);
             }
@@ -960,7 +563,8 @@ int main(void) {
         }
 
         if (need_full) {
-            fill_stipple(0, 0, DISP_W - 1, DISP_H - 1, C_WHITE, C_GRAY_M);
+            ss_gfx_fill_stipple(0, 0, SS_SCREEN_W - 1, SS_SCREEN_H - 1,
+                                C_WHITE, C_GRAY_M);
             for (int i = 0; i < 3; i++) {
                 int idx = zmap[i];
                 draw_frame(&wins[idx], (i == 2));
@@ -991,7 +595,6 @@ int main(void) {
         }
     }
 
-    /* Check if exception was caught by TRAP #14 handler */
     if (ss_trapbuf_flag != 0) {
         char buf[128];
         _iocs_b_print("\r\n=== EXCEPTION CAUGHT (TRAP #14) ===\r\n");
@@ -1006,13 +609,9 @@ int main(void) {
         _exit(1);
     }
 
-    /* Restore interrupts to Human68K state */
     ss_restore_interrupts();
-
-    /* Restore TRAP #14 exception handler */
     ss_restore_trap14();
 
-    /* Restore COPY key and NMI vectors */
     *(volatile uint32_t*)0xB0 = saved_copy_vec;
     *(volatile uint32_t*)0x7C = saved_nmi_vec;
 
@@ -1021,7 +620,10 @@ int main(void) {
     _iocs_skey_mod(-1, 0, 0);
     _iocs_crtmod(old_mode);
     _iocs_b_curon();
+
     _iocs_b_print("SSOS-Preemptive terminated.\r\n");
+    /* Flush DOS keyboard buffer before exit */
+    _dos_kflush(0xFF0C);
     _iocs_b_super(ssp);
     _exit(0);
 }

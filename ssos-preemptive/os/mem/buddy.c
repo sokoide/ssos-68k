@@ -116,9 +116,6 @@ void* ss_alloc(uint32_t size) {
         split_block(blk, found_order, order);
     }
 
-    /* Store order in pad for recovery during free */
-    blk->pad[0] = order;
-
     /* Mark as allocated in order map */
     buddy.order_map[block_index(blk)] = 0xFF;
 
@@ -130,25 +127,7 @@ void ss_free(void* ptr) {
     if (ptr == NULL) return;
 
     SSBuddyBlock* blk = (SSBuddyBlock*)((uint8_t*)ptr - sizeof(SSBuddyBlock));
-    /* Recover order from the map - for allocated blocks we need to find it */
-    /* We store the order in the block header during alloc */
-    /* Actually we marked it 0xFF. We need to recover the original order.
-       Let's use a different approach: store the order at the start of the
-       allocated block's header space. */
-
-    /* The order was stored by split_block or directly set */
-    /* We need to recover it. Let's scan the map for this block */
-    uint32_t idx = block_index(blk);
-
-    /* Find the block's order by checking map entries */
-    /* For allocated blocks, we stored order before the user pointer */
-    /* Actually let's fix: store order in the SSBuddyBlock struct */
-    /* blk->order was set during alloc, but we overwrite it with 0xFF */
-    /* Solution: store in a separate field */
-
-    /* Recover order from pad[0] stored during alloc */
-    uint8_t order = blk->pad[0];
-
+    uint8_t order = blk->order;
     int oidx = order_to_index(order);
 
     /* Try to coalesce with buddy */
@@ -185,9 +164,26 @@ void ss_free(void* ptr) {
 }
 
 void* ss_alloc_aligned(uint32_t size, uint32_t align) {
-    /* For buddy system, alignment is inherent based on block size */
-    (void)align;
-    return ss_alloc(size);
+    if (align < sizeof(SSBuddyBlock)) align = sizeof(SSBuddyBlock);
+    /* Ensure alignment is a power of 2 */
+    if (align & (align - 1)) return NULL;
+
+    /* Overallocate: align-1 for misalignment + sizeof(void*) for original ptr */
+    uint32_t extra = align - 1 + sizeof(void*);
+    void* raw = ss_alloc(size + extra);
+    if (!raw) return NULL;
+
+    uintptr_t addr = (uintptr_t)raw + sizeof(void*);
+    uintptr_t aligned = (addr + align - 1) & ~(uintptr_t)(align - 1);
+
+    ((void**)aligned)[-1] = raw;
+    return (void*)aligned;
+}
+
+void ss_free_aligned(void* ptr) {
+    if (!ptr) return;
+    void* raw = ((void**)ptr)[-1];
+    ss_free(raw);
 }
 
 uint32_t ss_mem_total(void) {

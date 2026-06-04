@@ -36,7 +36,7 @@ int16_t ss_recv(SSMessage* msg) {
     if (msg == NULL) return SS_ERR_PARAM;
 
     /* Determine current task's queue */
-    SSTask* curr = (SSTask*)ss_curr_task;
+    SSTask* curr = ss_curr_task;
     if (curr == NULL) return SS_ERR_STATE;
 
     uint16_t id = (uint16_t)((curr - tcb_table) + 1);
@@ -64,7 +64,7 @@ int16_t ss_recv(SSMessage* msg) {
 int16_t ss_recv_nb(SSMessage* msg) {
     if (msg == NULL) return SS_ERR_PARAM;
 
-    SSTask* curr = (SSTask*)ss_curr_task;
+    SSTask* curr = ss_curr_task;
     if (curr == NULL) return SS_ERR_STATE;
 
     uint16_t id = (uint16_t)((curr - tcb_table) + 1);

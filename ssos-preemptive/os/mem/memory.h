@@ -51,6 +51,7 @@ void     ss_mem_init(void* base, uint32_t size);
 void*    ss_alloc(uint32_t size);
 void     ss_free(void* ptr);
 void*    ss_alloc_aligned(uint32_t size, uint32_t align);
+void     ss_free_aligned(void* ptr);
 
 void     ss_slab_init(SSSlabCache* cache, uint16_t obj_size, void* mem, uint32_t mem_size);
 void*    ss_slab_alloc(SSSlabCache* cache);
