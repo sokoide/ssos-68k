@@ -20,11 +20,13 @@ format:
 	$(EXEC) textlint --fix "**/*.md"
 	@echo "Aligning markdown tables..."
 	@find . -name "*.md" \
-		! -path "./conductor/*" \
-		! -path "./node_modules/*" \
-		! -path "./.gomodcache/*" \
-		! -name "CLAUDE.md" \
-		-exec sh -c 'for f; do nvim --headless -c "MdTableAlignAll" -c "wq" "$$f"; done' _ {} +
+    ! -path "./conductor/*" \
+    ! -path "./node_modules/*" \
+    ! -path "./.gomodcache/*" \
+    ! -path "./.omc/*" \
+    ! -path "./.serena/*" \
+    ! -name "CLAUDE.md" \
+    -print0 | xargs -0 -I {} nvim --headless -c "MdTableAlignAll" -c "wq" {}
 
 
 

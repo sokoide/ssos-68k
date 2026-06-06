@@ -118,7 +118,7 @@ make test
 ### Test Suites Overview
 
 | Test Suite      | Files                | Test Cases | Focus Area                                 |
-| --------------- | -------------------- | ---------- | ------------------------------------------ |
+|-----------------|----------------------|------------|--------------------------------------------|
 | **Memory**      | `test_memory.c`      | 15 tests   | Coalescing, table limits, first-fit logic  |
 | **Scheduler**   | `test_scheduler.c`   | 8 tests    | Batching, FIFO priority, state transitions |
 | **Layers**      | `test_layers.c`      | 12 tests   | Z-order sorting, dirty rect clipping       |
