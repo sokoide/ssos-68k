@@ -8,7 +8,7 @@
 		.globl	ss_vsync_flag
 		.globl	ss_save_data_base
 		.globl	ss_task_yield
-		.globl	ss_switch_count
+		.globl	ss_context_switch_count
 		.type	ss_set_interrupts, @function
 
 ss_disable_interrupts:
@@ -259,7 +259,7 @@ ss_timerd_handler:
 		movem.l	d0-d7/a0-a6, -(sp)
 		lea		ss_switch_tick, a0
 		move.b	#0, (a0)
-		addq.l	#1, ss_switch_count
+		addq.l	#1, ss_context_switch_count
 
 		bsr	ss_do_wakeups
 
@@ -381,7 +381,7 @@ ss_vsync_flag:
 ss_switch_tick:
 		dc.b	0
 		.even
-ss_switch_count:
+ss_context_switch_count:
 		dc.l	0
 		.even
 

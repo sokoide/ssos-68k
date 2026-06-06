@@ -8,7 +8,7 @@
 		.globl	ss_vsync_flag
 		.globl	ss_save_data_base
 		.globl	ss_task_yield
-		.globl	ss_yield_count
+		.globl	ss_context_switch_count
 		.type	ss_set_interrupts, @function
 
 ss_disable_interrupts:
@@ -222,9 +222,10 @@ ss_vdisp_handler:
 
 		| ============================================================
 		| TimerD handler - Cooperative: tick counter + wakeups only
-		| NO preemptive context switch. Tasks yield explicitly.
-		| Saves only caller-saved d0-d1/a0-a1 (4 regs, 16 bytes)
-		| instead of full save (15 regs, 60 bytes).
+		| NO preemptive context switch. Tasks yield exclusively via
+		| ss_task_yield().  Since ss_do_wakeups follows the C ABI
+		| (preserving callee-saved d2-d7/a2-a6), the ISR only needs
+		| to save caller-saved d0-d1/a0-a1 (4 regs, 16 bytes).
 		|
 		| SSTask struct offsets:
 		|   context    = 0   (void*)
@@ -236,6 +237,7 @@ ss_vdisp_handler:
 		|   wait_until = 24  (uint32_t)
 		|   state      = 28  (uint8_t)
 		|   pri        = 29  (uint8_t)
+		|   pri        = 29  (uint8_t)
 		|   ctx_level  = 30  (uint8_t)
 		|   pad        = 31  (uint8_t)
 		| ============================================================
@@ -245,11 +247,8 @@ ss_vdisp_handler:
 		.extern ss_do_wakeups
 
 ss_timerd_handler:
-		| Save ALL registers before calling ss_do_wakeups.
-		| The C compiler may optimize callee-saved register
-		| preservation in ss_do_wakeups/ss_sched_enqueue,
-		| so the ISR must save everything to be safe.
-		movem.l	d0-d7/a0-a6, -(sp)
+		| Save caller-saved regs only; C ABI preserves d2-d7/a2-a6.
+		movem.l	d0-d1/a0-a1, -(sp)
 		addq.l	#1, ss_tick_counter
 
 		| Wake sleeping tasks whose timer has expired
@@ -261,7 +260,7 @@ ss_timerd_handler:
 		andi.b	#0xef, d0
 		move.b	d0, (a0)
 
-		movem.l	(sp)+, d0-d7/a0-a6
+		movem.l	(sp)+, d0-d1/a0-a1
 		rte
 
 		| ============================================================
@@ -270,11 +269,23 @@ ss_timerd_handler:
 		| This is the ONLY path for context switching in cooperative
 		| mode. The scheduler picks the next ready task and switches
 		| to it. The calling task resumes here when scheduled again.
+		|
+		| CRITICAL: Interrupts must be disabled during the context
+		| switch.  TimerD ISR calls ss_do_wakeups() which modifies
+		| the same ready_queue and tcb_table that ss_do_context_switch
+		| uses.  Without mutual exclusion, a TimerD tick during
+		| ss_do_context_switch would corrupt the doubly-linked lists.
 		| ============================================================
 ss_task_yield:
+		| Disable interrupts FIRST for atomic context switch.
+		| TimerD (ss_do_wakeups) shares ready_queue/tcb_table
+		| with ss_do_context_switch; concurrent linked-list
+		| manipulation would cause corruption.
+		move.w	#0x2700, %sr
+
 		| Build manual resume frame: SR + return PC
 		pea		.yield_resume
-		move.w	#0x2000, -(sp)
+		move.w	#0x2000, -(sp)		| resume SR (interrupts enabled)
 		| Save all registers
 		movem.l	d0-d7/a0-a6, -(sp)
 
@@ -283,10 +294,13 @@ ss_task_yield:
 		move.l	sp, (a1)
 
 		| Count yield for diagnostics
-		addq.l	#1, ss_yield_count
+		addq.l	#1, ss_context_switch_count
 
-		| Call C scheduler to pick next task
+		| Call C scheduler to pick next task (atomic w.r.t. ISRs)
 		bsr	ss_do_context_switch
+
+		| Interrupts re-enabled when new task's SR restored:
+		|   move.w  (sp)+, %sr   (from 0x2000 in resume frame)
 
 		| ---- Resume scheduled task ----
 		move.l	ss_scheduled_task, a1
@@ -326,7 +340,7 @@ ss_vsync_counter:
 ss_vsync_flag:
 		dc.b	0
 		.even
-ss_yield_count:
+ss_context_switch_count:
 		dc.l	0
 		.even
 

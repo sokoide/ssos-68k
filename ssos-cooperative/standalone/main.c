@@ -31,7 +31,7 @@ static uint8_t local_stack_mem[SS_MAX_TASKS * SS_TASK_STACK]
 
 uint8_t* ss_task_stack_base = local_stack_mem;
 
-extern uint32_t ss_yield_count;
+extern uint32_t ss_context_switch_count;
 
 /* Palette Indices */
 #define C_WHITE 0
@@ -420,7 +420,7 @@ static void* data_thread(void* arg) {
         pad(wins[0].line[0], 24);
         sprintf(wins[0].line[1], "Time: %lu.%02lu", sec, frac);
         pad(wins[0].line[1], 24);
-        sprintf(wins[0].line[2], "Yld:%lu", ss_yield_count);
+        sprintf(wins[0].line[2], "CSw:%lu", ss_context_switch_count);
         pad(wins[0].line[2], 24);
 
         ss_task_sleep(40);
