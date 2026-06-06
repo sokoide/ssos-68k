@@ -63,6 +63,12 @@ conductor/archive/
 cmake_install.cmake
 compile_commands.json
 
+# ---- Node.js ----
+node_modules/
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+
 # ---- Logs & Temp ----
 *.log
 *.tmp

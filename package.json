@@ -1,0 +1,10 @@
+{
+  "name": "ssos-68k",
+  "version": "1.0.0",
+  "private": true,
+  "description": "SSOS - Simple OS for X68000",
+  "devDependencies": {
+    "textlint": "^14.0.0",
+    "textlint-rule-preset-ja-spacing": "^2.4.0"
+  }
+}
