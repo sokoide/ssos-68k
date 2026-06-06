@@ -443,7 +443,7 @@ typedef struct {
 ## 9. Updated Quality Score Breakdown
 
 | Category                | Score  | Weight | Weighted Score | Improvement |
-|-------------------------|--------|--------|----------------|-------------|
+| :---                    | :---   | :---   | :---           | :---        |
 | Testing Framework       | 9.8/10 | 25%    | 2.45           | +0.30       |
 | Code Architecture       | 9.5/10 | 20%    | 1.90           | +0.20       |
 | Documentation           | 9.4/10 | 15%    | 1.41           | +0.00       |
@@ -549,7 +549,7 @@ _Focus areas: Testing Excellence, Code Quality, Architecture, Documentation, Per
 ## Appendix: 2026-01 Bug Fixes
 
 | File             | Issue                                                                   | Fix                         |
-|------------------|-------------------------------------------------------------------------|-----------------------------|
+| :---             | :---                                                                    | :---                        |
 | `kernel.c`       | Ring buffer wrap-around reset wrong index (`idxw` instead of `idxr`)    | Corrected to reset `idxr`   |
 | `task_manager.c` | Duplicate `#include "task_manager.h"`                                   | Removed duplicate           |
 | `layer.c`        | Identical code in both `if`/`else` branches of `ss_layer_set_z_order()` | Consolidated to single loop |
