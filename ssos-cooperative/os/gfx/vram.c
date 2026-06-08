@@ -2,6 +2,42 @@
 #include <stdint.h>
 #include <string.h>
 
+/* Graphics Mode Table */
+static const SSGfxMode mode_table[] = {
+    [SS_CRTMOD_8] = {
+        .crtmod = 8,
+        .screen_w = 512, .screen_h = 512,
+        .display_w = 512, .display_h = 512,
+        .color_count = 256,
+        .page_count = 2,
+        .bytes_per_line = 1024,
+        .page_size = 1024 * 512,
+        .page0 = (volatile uint16_t*)0xC00000,
+        .page1 = (volatile uint16_t*)0xC80000,
+    },
+    [SS_CRTMOD_16] = {
+        .crtmod = 16,
+        .screen_w = 1024, .screen_h = 1024,
+        .display_w = 768, .display_h = 512,
+        .color_count = 16,
+        .page_count = 1,
+        .bytes_per_line = 2048,
+        .page_size = 2048 * 1024,
+        .page0 = (volatile uint16_t*)0xC00000,
+        .page1 = NULL,
+    },
+};
+
+/* Current graphics mode pointer (default: mode 16) */
+const SSGfxMode* ss_current_mode = &mode_table[SS_CRTMOD_16];
+
+/* Mode Selection Function */
+void ss_gfx_set_mode(int mode) {
+    if (mode >= SS_CRTMOD_8 && mode <= SS_CRTMOD_16) {
+        ss_current_mode = &mode_table[mode];
+    }
+}
+
 volatile uint16_t* ss_draw_page;
 volatile uint16_t* ss_display_page;
 uint8_t ss_draw_idx;
@@ -155,43 +191,57 @@ int ss_dma_fill_row(volatile uint16_t* dst, int count) {
 }
 
 void ss_gfx_init(void) {
-    ss_draw_page = SS_GVRAM_PAGE0;
-    ss_display_page = SS_GVRAM_PAGE0;
+    ss_draw_page = ss_current_mode->page0;
+    ss_display_page = ss_current_mode->page0;
     ss_draw_idx = 0;
     ss_display_idx = 0;
     ss_gfx_clear(0);
 }
 
 void ss_gfx_flip(void) {
+    if (ss_current_mode->page_count < 2) {
+        /* Single page mode: no page flip */
+        return;
+    }
     ss_display_idx = ss_draw_idx;
     ss_draw_idx ^= 1;
-    ss_draw_page = ss_draw_idx ? SS_GVRAM_PAGE1 : SS_GVRAM_PAGE0;
-    ss_display_page = ss_display_idx ? SS_GVRAM_PAGE1 : SS_GVRAM_PAGE0;
+    ss_draw_page = ss_draw_idx ? ss_current_mode->page1 : ss_current_mode->page0;
+    ss_display_page = ss_display_idx ? ss_current_mode->page1 : ss_current_mode->page0;
 
-    SS_CRTC_BASE[SS_CRTC_SCROLL_Y] = ss_display_idx ? (uint16_t)SS_SCREEN_H : 0;
+    SS_CRTC_BASE[SS_CRTC_SCROLL_Y] = ss_display_idx ? (uint16_t)ss_current_mode->screen_h : 0;
 }
 
 void ss_gfx_clear(uint16_t color) {
     uint32_t c2 = ((uint32_t)color << 16) | color;
-    uint32_t n = (uint32_t)(SS_PAGE_SIZE / 4);
+    uint32_t n = (uint32_t)(ss_current_mode->page_size / 4);
     ss_fill_long((volatile uint32_t*)ss_draw_page, c2, n);
 }
 
 void ss_gfx_rect(int x, int y, int w, int h, uint16_t color) {
     if (x < 0) { w += x; x = 0; }
     if (y < 0) { h += y; y = 0; }
-    if (x + w > SS_SCREEN_W) w = SS_SCREEN_W - x;
-    if (y + h > SS_SCREEN_H) h = SS_SCREEN_H - y;
+    if (x + w > ss_current_mode->display_w) w = ss_current_mode->display_w - x;
+    if (y + h > ss_current_mode->display_h) h = ss_current_mode->display_h - y;
     if (w <= 0 || h <= 0) return;
 
     uint32_t c2 = ((uint32_t)color << 16) | color;
+    uint32_t stride = ss_current_mode->bytes_per_line / 2;  /* words per line */
+
+    /* Validate VRAM pointer range */
+    volatile uint16_t* vram_start = ss_draw_page;
+    volatile uint16_t* vram_end = ss_draw_page + ss_current_mode->page_size / 2;
 
     if (w > SS_DMA_FILL_THRESHOLD && h > 4) {
         ss_dma_fill_setup(color, w);
         dma_fill_init();
         int ok = 1;
         for (int row = y; row < y + h && ok; row++) {
-            volatile uint16_t* b = ss_draw_page + row * (uint32_t)SS_SCREEN_W + x;
+            volatile uint16_t* b = ss_draw_page + row * stride + x;
+            /* Check if pointer is within valid VRAM range */
+            if (b < vram_start || b + w > vram_end) {
+                ok = 0;
+                break;
+            }
             if (ss_dma_fill_row(b, w) != 0) ok = 0;
         }
         dma_ch2->ccr = 0x00;
@@ -199,13 +249,20 @@ void ss_gfx_rect(int x, int y, int w, int h, uint16_t color) {
     }
 
     for (int row = y; row < y + h; row++) {
-        volatile uint16_t* b = ss_draw_page + row * (uint32_t)SS_SCREEN_W;
+        volatile uint16_t* b = ss_draw_page + row * stride;
+        /* Check if pointer is within valid VRAM range */
+        if (b < vram_start || b + x + w > vram_end) break;
+        
         int cx = x;
         if (cx & 1) {
             b[cx++] = color;
         }
         int n = (x + w - cx) / 2;
-        ss_fill_long((volatile uint32_t*)(b + cx), c2, (uint32_t)n);
+        /* Additional check before ss_fill_long */
+        volatile uint32_t* dst = (volatile uint32_t*)(b + cx);
+        if ((volatile uint16_t*)dst + n * 2 > vram_end) break;
+        
+        ss_fill_long(dst, c2, (uint32_t)n);
         if ((x + w - cx) & 1) {
             b[x + w - 1] = color;
         }
@@ -219,19 +276,20 @@ void ss_gfx_hline(int x, int y, int w, uint16_t color) {
 void ss_gfx_fill_stipple(int x, int y, int w, int h, uint16_t c1, uint16_t c2) {
     if (x < 0) { w += x; x = 0; }
     if (y < 0) { h += y; y = 0; }
-    if (x + w > SS_SCREEN_W) w = SS_SCREEN_W - x;
-    if (y + h > SS_SCREEN_H) h = SS_SCREEN_H - y;
+    if (x + w > ss_current_mode->display_w) w = ss_current_mode->display_w - x;
+    if (y + h > ss_current_mode->display_h) h = ss_current_mode->display_h - y;
     if (w <= 0 || h <= 0) return;
 
     int x1 = x + w - 1;
     int y1 = y + h - 1;
+    uint32_t stride = ss_current_mode->bytes_per_line / 2;  /* words per line */
 
     uint32_t pat[2];
     pat[0] = ((uint32_t)c2 << 16) | c1;
     pat[1] = ((uint32_t)c1 << 16) | c2;
 
     for (int yy = y; yy <= y1; yy++) {
-        volatile uint16_t* b = ss_draw_page + yy * (uint32_t)SS_SCREEN_W;
+        volatile uint16_t* b = ss_draw_page + yy * stride;
         int xx = x;
         if (xx & 1) {
             b[xx] = ((xx + yy) & 1) ? c1 : c2;
@@ -249,14 +307,15 @@ void ss_gfx_char(int x, int y, char ch, uint16_t fg, uint16_t bg) {
     uint8_t c = (uint8_t)ch;
     if (c < 0x20 || c > 0x7E) c = ' ';
     const uint8_t* g = ss_font_data[c - 0x20];
+    uint32_t stride = ss_current_mode->bytes_per_line / 2;  /* words per line */
     for (int r = 0; r < SS_FONT_H; r++) {
         int yy = y + r;
-        if (yy < 0 || yy >= SS_SCREEN_H) continue;
-        volatile uint16_t* row = ss_draw_page + yy * (uint32_t)SS_SCREEN_W;
+        if (yy < 0 || yy >= ss_current_mode->display_h) continue;
+        volatile uint16_t* row = ss_draw_page + yy * stride;
         uint8_t bits = g[r];
         for (int b = 0; b < SS_FONT_W; b++) {
             int xx = x + b;
-            if (xx >= 0 && xx < SS_SCREEN_W)
+            if (xx >= 0 && xx < ss_current_mode->display_w)
                 row[xx] = (bits & (0x80 >> b)) ? fg : bg;
         }
     }
@@ -274,14 +333,15 @@ void ss_gfx_char_clip(int x, int y, char ch, uint16_t fg, uint16_t bg,
     uint8_t c = (uint8_t)ch;
     if (c < 0x20 || c > 0x7E) c = ' ';
     const uint8_t* g = ss_font_data[c - 0x20];
+    uint32_t stride = ss_current_mode->bytes_per_line / 2;  /* words per line */
     for (int r = 0; r < SS_FONT_H; r++) {
         int yy = y + r;
-        if (yy < 0 || yy >= SS_SCREEN_H) continue;
-        volatile uint16_t* row = ss_draw_page + yy * SS_SCREEN_W;
+        if (yy < 0 || yy >= ss_current_mode->display_h) continue;
+        volatile uint16_t* row = ss_draw_page + yy * stride;
         uint8_t bits = g[r];
         for (int b = 0; b < SS_FONT_W; b++) {
             int xx = x + b;
-            if (xx < 0 || xx >= SS_SCREEN_W) continue;
+            if (xx < 0 || xx >= ss_current_mode->display_w) continue;
             int covered = 0;
             for (int k = zpos + 1; k < nclip; k++) {
                 const int* cw = &clip_wins[k * 4];

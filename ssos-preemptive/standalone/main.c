@@ -32,39 +32,85 @@ uint8_t* ss_task_stack_base = local_stack_mem;
 
 extern uint32_t ss_context_switch_count;
 
-/* Palette Indices */
-#define C_WHITE 0
-#define C_BLACK 215
-#define C_GRAY_L 247
-#define C_GRAY_M 250
-#define C_GRAY_D 252
+/* Palette Indices - Runtime mode-dependent */
+static int c_white, c_black, c_gray_l, c_gray_m, c_gray_d;
+
+static void init_palette_indices(void) {
+    if (ss_current_mode->color_count == 16) {
+        /* 16-color mode palette indices */
+        c_white = 7;       /* White */
+        c_black = 0;       /* Black */
+        c_gray_l = 8;      /* Light Gray */
+        c_gray_m = 15;     /* Dark Gray (background) */
+        c_gray_d = 0;      /* Black */
+    } else {
+        /* 256-color mode palette indices */
+        c_white = 0;
+        c_black = 215;
+        c_gray_l = 247;
+        c_gray_m = 250;
+        c_gray_d = 252;
+    }
+}
+
+#define C_WHITE c_white
+#define C_BLACK c_black
+#define C_GRAY_L c_gray_l
+#define C_GRAY_M c_gray_m
+#define C_GRAY_D c_gray_d
 
 #define PAL_RGB(r, g, b)                                                       \
     (uint16_t)((((g) & 0x1F) << 11) | (((r) & 0x1F) << 6) |                    \
                (((b) & 0x1F) << 1) | 1)
 
 static void set_palette(void) {
-    int i, r, g, b;
-    int idx = 0;
-    static const uint8_t cube_levels[] = {31, 25, 18, 12, 6, 0};
-    static const uint8_t system_levels[] = {29, 27, 23, 21, 17,
-                                             15, 10, 8,  4,  2};
+    if (ss_current_mode->color_count == 256) {
+        /* 256-color palette (6x6x6 cube + 40 system colors) */
+        int i, r, g, b;
+        int idx = 0;
+        static const uint8_t cube_levels[] = {31, 25, 18, 12, 6, 0};
+        static const uint8_t system_levels[] = {29, 27, 23, 21, 17,
+                                                 15, 10, 8,  4,  2};
 
-    for (r = 0; r < 6; r++)
-        for (g = 0; g < 6; g++)
-            for (b = 0; b < 6; b++)
-                _iocs_gpalet(idx++, PAL_RGB(cube_levels[r], cube_levels[g],
-                                            cube_levels[b]));
+        for (r = 0; r < 6; r++)
+            for (g = 0; g < 6; g++)
+                for (b = 0; b < 6; b++)
+                    _iocs_gpalet(idx++, PAL_RGB(cube_levels[r], cube_levels[g],
+                                                cube_levels[b]));
 
-    for (i = 0; i < 10; i++)
-        _iocs_gpalet(idx++, PAL_RGB(system_levels[i], 0, 0));
-    for (i = 0; i < 10; i++)
-        _iocs_gpalet(idx++, PAL_RGB(0, system_levels[i], 0));
-    for (i = 0; i < 10; i++)
-        _iocs_gpalet(idx++, PAL_RGB(0, 0, system_levels[i]));
-    for (i = 0; i < 10; i++)
-        _iocs_gpalet(idx++, PAL_RGB(system_levels[i], system_levels[i],
-                                    system_levels[i]));
+        for (i = 0; i < 10; i++)
+            _iocs_gpalet(idx++, PAL_RGB(system_levels[i], 0, 0));
+        for (i = 0; i < 10; i++)
+            _iocs_gpalet(idx++, PAL_RGB(0, system_levels[i], 0));
+        for (i = 0; i < 10; i++)
+            _iocs_gpalet(idx++, PAL_RGB(0, 0, system_levels[i]));
+        for (i = 0; i < 10; i++)
+            _iocs_gpalet(idx++, PAL_RGB(system_levels[i], system_levels[i],
+                                        system_levels[i]));
+    } else if (ss_current_mode->color_count == 16) {
+        /* 16-color palette (basic colors) */
+        static const uint16_t palette_16[16] = {
+            PAL_RGB(0, 0, 0),       /* 0: Black */
+            PAL_RGB(0, 0, 31),      /* 1: Blue */
+            PAL_RGB(0, 31, 0),      /* 2: Green */
+            PAL_RGB(0, 31, 31),     /* 3: Cyan */
+            PAL_RGB(31, 0, 0),      /* 4: Red */
+            PAL_RGB(31, 0, 31),     /* 5: Magenta */
+            PAL_RGB(31, 31, 0),     /* 6: Yellow */
+            PAL_RGB(31, 31, 31),    /* 7: White */
+            PAL_RGB(15, 15, 15),    /* 8: Dark Gray */
+            PAL_RGB(15, 15, 31),    /* 9: Light Blue */
+            PAL_RGB(15, 31, 15),    /* 10: Light Green */
+            PAL_RGB(15, 31, 31),    /* 11: Light Cyan */
+            PAL_RGB(31, 15, 15),    /* 12: Light Red */
+            PAL_RGB(31, 15, 31),    /* 13: Light Magenta */
+            PAL_RGB(31, 31, 15),    /* 14: Light Yellow */
+            PAL_RGB(0, 0, 0),       /* 15: Black (duplicate) */
+        };
+        for (int i = 0; i < 16; i++) {
+            _iocs_gpalet(i, palette_16[i]);
+        }
+    }
 }
 
 /* Window layout */
@@ -87,7 +133,7 @@ static Win wins[NUM_WINS];
 static int zmap[NUM_WINS] = {0, 1, 2};
 static volatile uint32_t frame = 0;
 static volatile int last_key = -1;
-static volatile int mx = SS_SCREEN_W / 2, my = SS_SCREEN_H / 2;
+static volatile int mx, my;  /* Initialized in main() based on current mode */
 static volatile uint8_t mb_left, mb_right;
 static volatile int exit_flag = 0;
 static int drag = -1, dox, doy;
@@ -115,16 +161,18 @@ static int ol_x, ol_y, ol_w, ol_h, ol_valid;
 /* ---- GVRAM bitmap save/restore (direct page 0 access) ---- */
 
 static void save_win_bitmap(int x, int y, int w, int h) {
-    volatile uint16_t* s = ss_draw_page + (uint32_t)y * SS_SCREEN_W + x;
+    uint32_t stride = ss_current_mode->bytes_per_line / 2;  /* words per line */
+    volatile uint16_t* s = ss_draw_page + (uint32_t)y * stride + x;
     for (int row = 0; row < h; row++) {
         for (int i = 0; i < w; i++) win_save_buf[row * w + i] = s[i];
-        s += SS_SCREEN_W;
+        s += stride;
     }
     win_save_valid = 1;
 }
 
 static void restore_win_bitmap(int x, int y, int w, int h) {
-    volatile uint16_t* d = ss_draw_page + (uint32_t)y * SS_SCREEN_W + x;
+    uint32_t stride = ss_current_mode->bytes_per_line / 2;  /* words per line */
+    volatile uint16_t* d = ss_draw_page + (uint32_t)y * stride + x;
     for (int row = 0; row < h; row++) {
         uint16_t* src = win_save_buf + row * w;
         if ((x & 1) == 0) {
@@ -135,7 +183,7 @@ static void restore_win_bitmap(int x, int y, int w, int h) {
         } else {
             for (int i = 0; i < w; i++) d[i] = src[i];
         }
-        d += SS_SCREEN_W;
+        d += stride;
     }
     win_save_valid = 0;
 }
@@ -225,44 +273,47 @@ static void draw_march_outline(int x, int y, int w, int h) {
     uint16_t colors[2] = {C_WHITE, C_BLACK};
     int offset = (int)(frame & 7);
     int peri = 0;
+    uint32_t stride = ss_current_mode->bytes_per_line / 2;  /* words per line */
+    int disp_w = ss_current_mode->display_w;
+    int disp_h = ss_current_mode->display_h;
 
-    if (x >= 0 && y >= 0 && x + w <= SS_SCREEN_W && y + h <= SS_SCREEN_H) {
+    if (x >= 0 && y >= 0 && x + w <= disp_w && y + h <= disp_h) {
         volatile uint16_t* row;
-        row = ss_draw_page + y * (uint32_t)SS_SCREEN_W + x;
+        row = ss_draw_page + y * stride + x;
         for (int i = 0; i < w; i++, peri++)
             row[i] = colors[((peri + offset) >> 2) & 1];
         for (int i = 1; i < h; i++, peri++)
-            ss_draw_page[(uint32_t)(y + i) * SS_SCREEN_W + x + w - 1] =
+            ss_draw_page[(uint32_t)(y + i) * stride + x + w - 1] =
                 colors[((peri + offset) >> 2) & 1];
-        row = ss_draw_page + (uint32_t)(y + h - 1) * SS_SCREEN_W + x;
+        row = ss_draw_page + (uint32_t)(y + h - 1) * stride + x;
         for (int i = w - 2; i >= 0; i--, peri++)
             row[i] = colors[((peri + offset) >> 2) & 1];
         for (int i = h - 2; i >= 1; i--, peri++)
-            ss_draw_page[(uint32_t)(y + i) * SS_SCREEN_W + x] =
+            ss_draw_page[(uint32_t)(y + i) * stride + x] =
                 colors[((peri + offset) >> 2) & 1];
     } else {
         for (int i = 0; i < w; i++, peri++) {
             int px = x + i;
-            if (px >= 0 && px < SS_SCREEN_W && y >= 0 && y < SS_SCREEN_H)
-                ss_draw_page[y * (uint32_t)SS_SCREEN_W + px] =
+            if (px >= 0 && px < disp_w && y >= 0 && y < disp_h)
+                ss_draw_page[y * stride + px] =
                     colors[((peri + offset) >> 2) & 1];
         }
         for (int i = 1; i < h; i++, peri++) {
             int py = y + i;
-            if (x + w - 1 >= 0 && x + w - 1 < SS_SCREEN_W && py >= 0 && py < SS_SCREEN_H)
-                ss_draw_page[py * (uint32_t)SS_SCREEN_W + x + w - 1] =
+            if (x + w - 1 >= 0 && x + w - 1 < disp_w && py >= 0 && py < disp_h)
+                ss_draw_page[py * stride + x + w - 1] =
                     colors[((peri + offset) >> 2) & 1];
         }
         for (int i = w - 2; i >= 0; i--, peri++) {
             int px = x + i;
-            if (px >= 0 && px < SS_SCREEN_W && y + h - 1 >= 0 && y + h - 1 < SS_SCREEN_H)
-                ss_draw_page[(uint32_t)(y + h - 1) * SS_SCREEN_W + px] =
+            if (px >= 0 && px < disp_w && y + h - 1 >= 0 && y + h - 1 < disp_h)
+                ss_draw_page[(uint32_t)(y + h - 1) * stride + px] =
                     colors[((peri + offset) >> 2) & 1];
         }
         for (int i = h - 2; i >= 1; i--, peri++) {
             int py = y + i;
-            if (x >= 0 && x < SS_SCREEN_W && py >= 0 && py < SS_SCREEN_H)
-                ss_draw_page[py * (uint32_t)SS_SCREEN_W + x] =
+            if (x >= 0 && x < disp_w && py >= 0 && py < disp_h)
+                ss_draw_page[py * stride + x] =
                     colors[((peri + offset) >> 2) & 1];
         }
     }
@@ -273,37 +324,40 @@ static void draw_march_outline(int x, int y, int w, int h) {
 static void ol_save(int x, int y, int w, int h) {
     ol_x = x; ol_y = y; ol_w = w; ol_h = h;
     int idx = 0;
+    uint32_t stride = ss_current_mode->bytes_per_line / 2;  /* words per line */
+    int disp_w = ss_current_mode->display_w;
+    int disp_h = ss_current_mode->display_h;
 
-    if (x >= 0 && y >= 0 && x + w <= SS_SCREEN_W && y + h <= SS_SCREEN_H) {
+    if (x >= 0 && y >= 0 && x + w <= disp_w && y + h <= disp_h) {
         volatile uint16_t* p;
-        p = ss_draw_page + y * (uint32_t)SS_SCREEN_W + x;
+        p = ss_draw_page + y * stride + x;
         for (int i = 0; i < w && idx < OL_MAX; i++, idx++) ol_buf[idx] = p[i];
-        p = ss_draw_page + (uint32_t)(y + h - 1) * SS_SCREEN_W + x;
+        p = ss_draw_page + (uint32_t)(y + h - 1) * stride + x;
         for (int i = 0; i < w && idx < OL_MAX; i++, idx++) ol_buf[idx] = p[i];
         for (int i = 1; i < h - 1 && idx < OL_MAX; i++, idx++)
-            ol_buf[idx] = ss_draw_page[(uint32_t)(y + i) * SS_SCREEN_W + x];
+            ol_buf[idx] = ss_draw_page[(uint32_t)(y + i) * stride + x];
         for (int i = 1; i < h - 1 && idx < OL_MAX; i++, idx++)
-            ol_buf[idx] = ss_draw_page[(uint32_t)(y + i) * SS_SCREEN_W + x + w - 1];
+            ol_buf[idx] = ss_draw_page[(uint32_t)(y + i) * stride + x + w - 1];
     } else {
         for (int i = 0; i < w && idx < OL_MAX; i++) {
             int px = x + i;
-            ol_buf[idx++] = (px >= 0 && px < SS_SCREEN_W && y >= 0 && y < SS_SCREEN_H)
-                ? ss_draw_page[y * (uint32_t)SS_SCREEN_W + px] : 0;
+            ol_buf[idx++] = (px >= 0 && px < disp_w && y >= 0 && y < disp_h)
+                ? ss_draw_page[y * stride + px] : 0;
         }
         for (int i = 0; i < w && idx < OL_MAX; i++) {
             int px = x + i, py = y + h - 1;
-            ol_buf[idx++] = (px >= 0 && px < SS_SCREEN_W && py >= 0 && py < SS_SCREEN_H)
-                ? ss_draw_page[py * (uint32_t)SS_SCREEN_W + px] : 0;
+            ol_buf[idx++] = (px >= 0 && px < disp_w && py >= 0 && py < disp_h)
+                ? ss_draw_page[py * stride + px] : 0;
         }
         for (int i = 1; i < h - 1 && idx < OL_MAX; i++) {
             int py = y + i;
-            ol_buf[idx++] = (x >= 0 && x < SS_SCREEN_W && py >= 0 && py < SS_SCREEN_H)
-                ? ss_draw_page[py * (uint32_t)SS_SCREEN_W + x] : 0;
+            ol_buf[idx++] = (x >= 0 && x < disp_w && py >= 0 && py < disp_h)
+                ? ss_draw_page[py * stride + x] : 0;
         }
         for (int i = 1; i < h - 1 && idx < OL_MAX; i++) {
             int py = y + i, px = x + w - 1;
-            ol_buf[idx++] = (px >= 0 && px < SS_SCREEN_W && py >= 0 && py < SS_SCREEN_H)
-                ? ss_draw_page[py * (uint32_t)SS_SCREEN_W + px] : 0;
+            ol_buf[idx++] = (px >= 0 && px < disp_w && py >= 0 && py < disp_h)
+                ? ss_draw_page[py * stride + px] : 0;
         }
     }
     ol_valid = 1;
@@ -313,40 +367,43 @@ static void ol_restore(void) {
     if (!ol_valid) return;
     int x = ol_x, y = ol_y, w = ol_w, h = ol_h;
     int idx = 0;
+    uint32_t stride = ss_current_mode->bytes_per_line / 2;  /* words per line */
+    int disp_w = ss_current_mode->display_w;
+    int disp_h = ss_current_mode->display_h;
 
-    if (x >= 0 && y >= 0 && x + w <= SS_SCREEN_W && y + h <= SS_SCREEN_H) {
+    if (x >= 0 && y >= 0 && x + w <= disp_w && y + h <= disp_h) {
         volatile uint16_t* p;
-        p = ss_draw_page + y * (uint32_t)SS_SCREEN_W + x;
+        p = ss_draw_page + y * stride + x;
         for (int i = 0; i < w && idx < OL_MAX; i++, idx++) p[i] = ol_buf[idx];
-        p = ss_draw_page + (uint32_t)(y + h - 1) * SS_SCREEN_W + x;
+        p = ss_draw_page + (uint32_t)(y + h - 1) * stride + x;
         for (int i = 0; i < w && idx < OL_MAX; i++, idx++) p[i] = ol_buf[idx];
         for (int i = 1; i < h - 1 && idx < OL_MAX; i++, idx++)
-            ss_draw_page[(uint32_t)(y + i) * SS_SCREEN_W + x] = ol_buf[idx];
+            ss_draw_page[(uint32_t)(y + i) * stride + x] = ol_buf[idx];
         for (int i = 1; i < h - 1 && idx < OL_MAX; i++, idx++)
-            ss_draw_page[(uint32_t)(y + i) * SS_SCREEN_W + x + w - 1] = ol_buf[idx];
+            ss_draw_page[(uint32_t)(y + i) * stride + x + w - 1] = ol_buf[idx];
     } else {
         for (int i = 0; i < w && idx < OL_MAX; i++) {
             int px = x + i;
-            if (px >= 0 && px < SS_SCREEN_W && y >= 0 && y < SS_SCREEN_H)
-                ss_draw_page[y * (uint32_t)SS_SCREEN_W + px] = ol_buf[idx];
+            if (px >= 0 && px < disp_w && y >= 0 && y < disp_h)
+                ss_draw_page[y * stride + px] = ol_buf[idx];
             idx++;
         }
         for (int i = 0; i < w && idx < OL_MAX; i++) {
             int px = x + i, py = y + h - 1;
-            if (px >= 0 && px < SS_SCREEN_W && py >= 0 && py < SS_SCREEN_H)
-                ss_draw_page[py * (uint32_t)SS_SCREEN_W + px] = ol_buf[idx];
+            if (px >= 0 && px < disp_w && py >= 0 && py < disp_h)
+                ss_draw_page[py * stride + px] = ol_buf[idx];
             idx++;
         }
         for (int i = 1; i < h - 1 && idx < OL_MAX; i++) {
             int py = y + i;
-            if (x >= 0 && x < SS_SCREEN_W && py >= 0 && py < SS_SCREEN_H)
-                ss_draw_page[py * (uint32_t)SS_SCREEN_W + x] = ol_buf[idx];
+            if (x >= 0 && x < disp_w && py >= 0 && py < disp_h)
+                ss_draw_page[py * stride + x] = ol_buf[idx];
             idx++;
         }
         for (int i = 1; i < h - 1 && idx < OL_MAX; i++) {
             int py = y + i, px = x + w - 1;
-            if (px >= 0 && px < SS_SCREEN_W && py >= 0 && py < SS_SCREEN_H)
-                ss_draw_page[py * (uint32_t)SS_SCREEN_W + px] = ol_buf[idx];
+            if (px >= 0 && px < disp_w && py >= 0 && py < disp_h)
+                ss_draw_page[py * stride + px] = ol_buf[idx];
             idx++;
         }
     }
@@ -431,7 +488,23 @@ static void* data_thread(void* arg) {
  * Main
  * ================================================================ */
 
-int main(void) {
+int main(int argc, char** argv) {
+    /* Parse command line arguments for graphics mode */
+    int requested_mode = SS_CRTMOD_16;  /* Default: mode 16 */
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "-8") == 0) {
+            requested_mode = SS_CRTMOD_8;
+        } else if (strcmp(argv[i], "-16") == 0) {
+            requested_mode = SS_CRTMOD_16;
+        }
+    }
+    ss_gfx_set_mode(requested_mode);
+    init_palette_indices();
+
+    /* Initialize mouse position to screen center */
+    mx = ss_current_mode->display_w / 2;
+    my = ss_current_mode->display_h / 2;
+
     int ssp = _iocs_b_super(0);
 
     ss_init_trap14();
@@ -448,7 +521,7 @@ int main(void) {
     ss_set_interrupts();
 
     int old_mode = _iocs_crtmod(-1);
-    _iocs_crtmod(8);
+    _iocs_crtmod(ss_current_mode->crtmod);
     _iocs_g_clr_on();
     set_palette();
     _iocs_b_curoff();
@@ -464,7 +537,7 @@ int main(void) {
     _iocs_ms_init();
     _iocs_skey_mod(0, 0, 0);
     _iocs_ms_curon();
-    _iocs_ms_limit(0, SS_SCREEN_W - 1, 0, SS_SCREEN_H - 1);
+    _iocs_ms_limit(0, ss_current_mode->display_w - 1, 0, ss_current_mode->display_h - 1);
 
     saved_copy_vec = *(volatile uint32_t*)0xB0;
     saved_nmi_vec = *(volatile uint32_t*)0x7C;
@@ -538,7 +611,7 @@ int main(void) {
             int wx = wins[drag].x, wy = wins[drag].y;
             int ww = wins[drag].w, wh = wins[drag].h;
             if (win_save_valid && wx >= 0 && wy >= 0 &&
-                wx + ww <= SS_SCREEN_W && wy + wh <= SS_SCREEN_H) {
+                wx + ww <= ss_current_mode->display_w && wy + wh <= ss_current_mode->display_h) {
                 restore_win_bitmap(wx, wy, ww, wh);
                 ss_gfx_rect(wx + 1, wy + 1, ww - 2, TITLE_H - 2, C_GRAY_L);
                 int tw = (int)strlen(wins[drag].title) * SS_FONT_ADV;
@@ -564,7 +637,7 @@ int main(void) {
         }
 
         if (need_full) {
-            ss_gfx_fill_stipple(0, 0, SS_SCREEN_W, SS_SCREEN_H,
+            ss_gfx_fill_stipple(0, 0, ss_current_mode->display_w, ss_current_mode->display_h,
                                 C_WHITE, C_GRAY_M);
             for (int i = 0; i < NUM_WINS; i++) {
                 int idx = zmap[i];

@@ -3,17 +3,33 @@
 
 #include <stdint.h>
 
-/* VRAM: 256-color mode (crtmod 8/10)
- * 1 pixel = 1 uint16_t (2 bytes)
- * Stride: 512 words (1024 bytes) per line
- * Total: 1024 lines → 1MB GVRAM
- */
-#define SS_GVRAM_PAGE0  ((volatile uint16_t*)0xC00000)
-#define SS_GVRAM_PAGE1  ((volatile uint16_t*)0xC80000)
-#define SS_SCREEN_W     512
-#define SS_SCREEN_H     512
-#define SS_BYTES_PER_LINE 1024
-#define SS_PAGE_SIZE    (SS_BYTES_PER_LINE * SS_SCREEN_H)
+/* Graphics Mode Constants */
+#define SS_CRTMOD_8  8
+#define SS_CRTMOD_16 16
+
+/* Graphics Mode Configuration */
+typedef struct {
+    int crtmod;                /* IOCS crtmod value */
+    int screen_w;              /* Virtual screen width */
+    int screen_h;              /* Virtual screen height */
+    int display_w;             /* Display width */
+    int display_h;             /* Display height */
+    int color_count;           /* Number of colors */
+    int page_count;            /* Number of graphics pages */
+    int bytes_per_line;        /* Bytes per line */
+    int page_size;             /* Page size in bytes */
+    volatile uint16_t* page0;  /* Page 0 VRAM address */
+    volatile uint16_t* page1;  /* Page 1 VRAM address (NULL if single page) */
+} SSGfxMode;
+
+/* Current graphics mode (extern, defined in gfx.c) */
+extern const SSGfxMode* ss_current_mode;
+
+/* Mode Selection API */
+void ss_gfx_set_mode(int mode);
+
+/* VRAM base address */
+#define SS_GVRAM_BASE    ((volatile uint16_t*)0xC00000)
 
 /* Font metrics */
 #define SS_FONT_W   5
