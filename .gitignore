@@ -20,6 +20,9 @@ Thumbs.db
 *.swo
 *~
 
+# Machine-specific LSP config (contains absolute toolchain path)
+.clangd
+
 # VSCode / Claude / MCP / Codex / Gemini
 .ai-handoff.md
 .vscode/

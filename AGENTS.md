@@ -6,7 +6,7 @@ SSOS has two OS variants in parallel directories: `ssos-preemptive/` (preemptive
 
 ## Build, Test, and Development Commands
 
-Configure the toolchain once per shell via `export XELF_BASE=/path/to/elf2x68k/m68k-xelf` and `. ~/.elf2x68k`. Build either variant with `cd ssos-<variant> && make` (produces boot + OS kernel + standalone). Use `make standalone` within a variant directory for just the Human68K binary. Use `make compiledb` for `compile_commands.json`, `make dump` for disassembly, and `make readelf` to inspect ELF metadata. Run `make clean` before switching targets.
+Configure the toolchain once per shell via `export XELF_BASE=/path/to/elf2x68k/m68k-xelf` and `. ~/.elf2x68k`. Build either variant with `cd ssos-<variant> && make` (produces boot + OS kernel + standalone). Use `make standalone` within a variant directory for just the Human68K binary. Use `make dump` for disassembly, and `make readelf` to inspect ELF metadata. Run `make clean` before switching targets.
 
 ## Coding Style & Naming Conventions
 
