@@ -2,7 +2,7 @@ ifeq ($(shell which m68k-xelf-gcc),)
 $(error Cross-compilation toolchain not found. Please run: . ~/.elf2x68k)
 endif
 
-TARGET=	standalone.x
+TARGET=	ssos_cop.x
 SRCS=	main.c \
 		../os/kernel/scheduler.c \
 		../os/mem/buddy.c \
