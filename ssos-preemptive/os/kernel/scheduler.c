@@ -174,6 +174,17 @@ uint16_t ss_task_start(uint16_t id) {
 }
 
 void ss_do_context_switch(void) {
+    /*
+     * Disable interrupts while manipulating the ready queue to prevent
+     * the TimerD ISR (which calls ss_do_wakeups → ss_sched_enqueue)
+     * from corrupting the queue mid-operation.
+     *
+     * Interrupts remain disabled on return; the resumed task's SR
+     * will be restored from the yield/ISR frame (cooperative yield
+     * pushes 0x2000, so the next task resumes with interrupts on).
+     */
+    ss_disable_interrupts();
+
     SSTask* curr = ss_curr_task;
     if (curr == NULL) return;
 

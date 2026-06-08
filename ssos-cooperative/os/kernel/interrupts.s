@@ -7,6 +7,7 @@
 		.globl	ss_tick_counter, ss_vsync_counter
 		.globl	ss_vsync_flag
 		.globl	ss_save_data_base
+		.globl	ss_context_switch
 		.globl	ss_task_yield
 		.globl	ss_context_switch_count
 		.type	ss_set_interrupts, @function
@@ -264,45 +265,26 @@ ss_timerd_handler:
 		rte
 
 		| ============================================================
-		| ss_task_yield - Voluntary context switch (callable from C)
+		| ss_context_switch - Save current task, switch to next
 		|
-		| This is the ONLY path for context switching in cooperative
-		| mode. The scheduler picks the next ready task and switches
-		| to it. The calling task resumes here when scheduled again.
-		|
-		| CRITICAL: Interrupts must be disabled during the context
-		| switch.  TimerD ISR calls ss_do_wakeups() which modifies
-		| the same ready_queue and tcb_table that ss_do_context_switch
-		| uses.  Without mutual exclusion, a TimerD tick during
-		| ss_do_context_switch would corrupt the doubly-linked lists.
+		| On entry: all registers saved on current task's stack
+		|           resume_type already set in TCB
 		| ============================================================
-ss_task_yield:
-		| Disable interrupts FIRST for atomic context switch.
-		| TimerD (ss_do_wakeups) shares ready_queue/tcb_table
-		| with ss_do_context_switch; concurrent linked-list
-		| manipulation would cause corruption.
-		move.w	#0x2700, %sr
-
-		| Build manual resume frame: SR + return PC
-		pea		.yield_resume
-		move.w	#0x2000, -(sp)		| resume SR (interrupts enabled)
-		| Save all registers
-		movem.l	d0-d7/a0-a6, -(sp)
-
+ss_context_switch:
 		| Save current SP to curr_task->context
 		move.l	ss_curr_task, a1
 		move.l	sp, (a1)
 
-		| Count yield for diagnostics
-		addq.l	#1, ss_context_switch_count
-
-		| Call C scheduler to pick next task (atomic w.r.t. ISRs)
+		| Call C scheduler to pick next task
 		bsr	ss_do_context_switch
 
-		| Interrupts re-enabled when new task's SR restored:
-		|   move.w  (sp)+, %sr   (from 0x2000 in resume frame)
+		| Fall through to .resume_task
 
-		| ---- Resume scheduled task ----
+		| ============================================================
+		| .resume_task - Resume the scheduled task
+		| Uses resume_type (TCB offset 31) to select restore method
+		| ============================================================
+	.resume_task:
 		move.l	ss_scheduled_task, a1
 		move.l	(a1), sp
 
@@ -313,18 +295,43 @@ ss_task_yield:
 		cmp.l	a0, d0
 		beq.w	.start_task
 
-		| Resuming previously-yielded task: manual SR/PC restore
+		| Check resume_type at TCB offset 31
+		cmpi.b	#0, 31(a1)
+		beq.s	.resume_interrupted
+
+		| resume_type == 1: yielded, manual SR/PC restore (no rte)
 		movem.l	(sp)+, d0-d7/a0-a6
 		move.w	(sp)+, %sr
 		move.l	(sp)+, %a0
 		jmp		(%a0)
 
+	.resume_interrupted:
+		| resume_type == 0: timer-interrupted, CPU frame intact, rte safe
+		movem.l	(sp)+, d0-d7/a0-a6
+		rte
+
 	.start_task:
 		| New task: set SR and jump directly (no rte)
 		move.l	20(a1), a0		| a0 = task entry function
 		move.w	#0x2000, %sr		| enable interrupts
-		jmp		(%a0)			| start the task
+		jmp		(%a0)		| start the task
 
+		| ============================================================
+		| ss_task_yield - Voluntary context switch (callable from C)
+		| ============================================================
+ss_task_yield:
+		| Build manual resume frame: SR + return PC
+		pea		.yield_resume
+		move.w	#0x2000, -(sp)
+		| Save all registers
+		movem.l	d0-d7/a0-a6, -(sp)
+		| Mark as yielded (resume_type = 1)
+		move.l	ss_curr_task, a1
+		move.b	#1, 31(a1)
+		| Save SP and switch
+		move.l	sp, (a1)
+		bsr	ss_do_context_switch
+		bra.w	.resume_task
 	.yield_resume:
 		rts
 
@@ -456,11 +463,11 @@ ss_trap14_handler:
 		andi.w	#0xFFFF, d0
 
 		| Decode exception type
-		cmpi.w	#2, d0			| Bus Error
+		cmpi.w	#2, d0		| Bus Error
 		beq.s	.handle
-		cmpi.w	#3, d0			| Address Error
+		cmpi.w	#3, d0		| Address Error
 		beq.s	.handle
-		cmpi.w	#4, d0			| Illegal Instruction
+		cmpi.w	#4, d0		| Illegal Instruction
 		beq.s	.handle
 		bra.w	.chain_to_old		| Other: chain to original handler
 
