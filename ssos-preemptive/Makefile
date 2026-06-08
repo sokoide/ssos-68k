@@ -2,7 +2,7 @@ ifeq ($(shell which m68k-xelf-gcc),)
 $(error Cross-compilation toolchain not found. Please run: . ~/.elf2x68k)
 endif
 
-TOPTARGETS := all
+TOPTARGETS := all dump readelf
 SUBDIRS := boot os standalone
 
 .PHONY: $(TOPTARGETS) $(SUBDIRS) clean
