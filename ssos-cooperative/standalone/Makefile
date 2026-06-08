@@ -19,8 +19,8 @@ OBJS=$(ASRC_OBJS) $(SRC_OBJS)
 CC=m68k-xelf-gcc
 AS=m68k-xelf-as
 LD=m68k-xelf-ld
-OBJDUMP=m68k-xelf-objdump
-READELF=m68k-xelf-readelf
+OBJDUMP=m68k-elf-objdump
+READELF=m68k-elf-readelf
 
 INCLUDE=-I$(XELF_BASE)/m68k-elf/include -I../include -I../os/kernel -I../os/mem -I../os/gfx
 LIB=-L$(XELF_BASE)/m68k-elf/lib
@@ -28,7 +28,7 @@ LIB=-L$(XELF_BASE)/m68k-elf/lib
 CCFLAGS=$(INCLUDE) -O2 -g -DLOCAL_MODE
 LDFLAGS=$(LIB) -lx68kiocs -nostdlib -lc -lm -lgcc
 
-.PHONY: all clean install
+.PHONY: all clean install dump readelf
 
 all: standalone
 
@@ -37,6 +37,12 @@ standalone: $(TARGET)
 
 $(TARGET): $(OBJS)
 	$(CC) $^ -o $(TARGET) -Xlinker "$(LDFLAGS)"
+
+dump: $(TARGET)
+	$(OBJDUMP) -d -S -C $(TARGET).elf
+
+readelf: $(TARGET)
+	$(READELF) -a $(TARGET).elf
 
 $(OBJDIR):
 	@mkdir -p $(OBJDIR)

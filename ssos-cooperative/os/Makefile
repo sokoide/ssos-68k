@@ -23,8 +23,8 @@ CC=m68k-xelf-gcc
 AS=m68k-xelf-as
 LD=m68k-xelf-ld
 OBJCOPY=m68k-xelf-objcopy
-OBJDUMP=m68k-xelf-objdump
-READELF=m68k-xelf-readelf
+OBJDUMP=m68k-elf-objdump
+READELF=m68k-elf-readelf
 
 INCLUDE=-I$(XELF_BASE)/m68k-elf/include -I../include -I./kernel -I./mem -I./app -I./gfx -I./win -I./ipc
 LIB=-L$(XELF_BASE)/m68k-elf/lib -L$(shell dirname $(shell m68k-xelf-gcc -print-libgcc-file-name))
@@ -42,6 +42,12 @@ $(TARGET).bin: $(TARGET)
 
 $(TARGET): $(OBJS) kernel/linker.ld
 	$(LD) --strip-all $(OBJS) -o $(TARGET).elf $(LDFLAGS) -e entry
+
+dump: $(TARGET).elf
+	$(OBJDUMP) -d -S -C $(TARGET).elf
+
+readelf: $(TARGET).elf
+	$(READELF) -a $(TARGET).elf
 
 %.o: %.s
 	$(AS) --strip-local-absolute $^ -o $@ $(ASFLAGS)
