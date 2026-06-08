@@ -1,6 +1,5 @@
 TOPTARGETS := all clean
-SUBDIRS := tools/makedisk ssos
-DISK := ssos.xdf
+SUBDIRS := tools/makedisk ssos-preemptive ssos-cooperative
 
 # use pnpm if available, otherwise npx
 RUNNER := $(shell command -v pnpm >/dev/null 2>&1 && echo "pnpm dlx" || echo "npx")
@@ -8,6 +7,8 @@ EXEC := $(shell command -v pnpm >/dev/null 2>&1 && echo "pnpm exec" || echo "npx
 
 .PHONY: $(TOPTARGETS) $(SUBDIRS) all format
 .default: all
+
+all: tools/makedisk ssos-preemptive ssos-cooperative
 
 $(TOPTARGETS): $(SUBDIRS)
 
