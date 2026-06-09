@@ -110,11 +110,37 @@ static void rebuild_zmap(void) {
     }
 }
 
+static void draw_frame(SSWindow* win, int is_fg) {
+    int th = 12; /* title bar height */
+    uint16_t t_bg = is_fg ? 8 : 7;  /* fg: dark gray(8), bg: white(7) */
+
+    /* Title bar */
+    ss_gfx_rect(win->x + 1, win->y + 1, win->w - 2, th - 2, t_bg);
+    /* Content area */
+    ss_gfx_rect(win->x + 1, win->y + th, win->w - 2, win->h - th - 1, 7);
+    /* Outer border */
+    ss_gfx_rect(win->x, win->y, win->w, 1, 0);
+    ss_gfx_rect(win->x, win->y + win->h - 1, win->w, 1, 0);
+    ss_gfx_rect(win->x, win->y, 1, win->h, 0);
+    ss_gfx_rect(win->x + win->w - 1, win->y, 1, win->h, 0);
+    /* Title separator */
+    ss_gfx_rect(win->x + 1, win->y + th - 1, win->w - 2, 1, 0);
+}
+
 void ss_win_render_all(void) {
     rebuild_zmap();
 
-    /* Clear draw page */
-    ss_gfx_clear(0);
+    /* Background stipple (no pre-clear — covers old window positions naturally) */
+    ss_gfx_fill_stipple(0, 0, ss_current_mode->display_w,
+                        ss_current_mode->display_h, 7, 15);
+
+    /* Find highest active z-order for foreground detection */
+    int highest_z = -1;
+    for (int i = 0; i < SS_MAX_WINDOWS; i++) {
+        if (windows[i].id && (windows[i].flags & SS_WIN_VISIBLE) &&
+            (int)windows[i].z > highest_z)
+            highest_z = windows[i].z;
+    }
 
     /* Render visible windows in z-order */
     for (uint16_t z = 0; z < 256; z++) {
@@ -148,15 +174,47 @@ void ss_win_render_all(void) {
             if (win->render) {
                 win->render(win);
             } else {
-                /* Default: draw a border rectangle */
-                ss_gfx_rect(win->x, win->y, win->w, win->h, 0x000F);
-                ss_gfx_rect(win->x + 1, win->y + 1, win->w - 2, win->h - 2, 0x0000);
+                int is_fg = ((int)win->z == highest_z && (int)z == highest_z);
+                draw_frame(win, is_fg);
             }
 
             win->flags &= ~SS_WIN_DIRTY;
         }
     }
+}
 
-    /* Flip the display */
-    ss_gfx_flip();
+int ss_win_hit_test(int mx, int my) {
+    for (int i = 0; i < SS_MAX_WINDOWS; i++) {
+        if (windows[i].id == 0 || !(windows[i].flags & SS_WIN_VISIBLE))
+            continue;
+        if (mx >= windows[i].x && mx < windows[i].x + (int)windows[i].w &&
+            my >= windows[i].y && my < windows[i].y + (int)windows[i].h)
+            return (int)windows[i].id;
+    }
+    return -1;
+}
+
+int ss_win_get_x(uint16_t id) {
+    if (id == 0 || id > SS_MAX_WINDOWS) return 0;
+    return windows[id - 1].x;
+}
+
+int ss_win_get_y(uint16_t id) {
+    if (id == 0 || id > SS_MAX_WINDOWS) return 0;
+    return windows[id - 1].y;
+}
+
+void ss_win_set_z(uint16_t id, uint16_t z) {
+    if (id == 0 || id > SS_MAX_WINDOWS) return;
+    windows[id - 1].z = z;
+}
+
+void ss_win_mark_dirty(uint16_t id) {
+    if (id == 0 || id > SS_MAX_WINDOWS) return;
+    SSWindow* win = &windows[id - 1];
+    win->flags |= SS_WIN_DIRTY;
+    win->dirty_x = 0;
+    win->dirty_y = 0;
+    win->dirty_w = win->w;
+    win->dirty_h = win->h;
 }
