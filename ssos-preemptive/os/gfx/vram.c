@@ -22,7 +22,7 @@ static const SSGfxMode mode_table[] = {
         .color_count = 16,
         .page_count = 1,
         .bytes_per_line = 2048,
-        .page_size = 2048 * 1024,
+        .page_size = 2048 * 512,
         .page0 = (volatile uint16_t*)0xC00000,
         .page1 = NULL,
     },
