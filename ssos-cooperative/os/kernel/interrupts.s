@@ -35,13 +35,19 @@ ss_set_interrupts:
 		| Set MFP vector base
 		move.b	#0x41, 0xe88017
 
-		| IERAB: enable all
+		| IERAB: keep all sources enabled (Human68k-compatible).
+		|   IER bits may be needed by IOCS (USART, Timers) even when
+		|   the corresponding interrupt is masked.
 		move.b	#0xff, 0xe88007
 		move.b	#0x7f, 0xe88009
 
-		| IMRAB: mask all initially
-		move.b	#0xff, 0xe88013
-		move.b	#0x7f, 0xe88015
+		| IMRAB: unmask ONLY sources we handle directly.
+		|   IMRA=$20: Timer A (V-DISP)
+		|   IMRB=$10: Timer D (200Hz tick)
+		|   All others masked → interrupt never reaches CPU, safe
+		|   even if the IOCS / hardware needs the IER bit enabled.
+		move.b	#0x20, 0xe88013
+		move.b	#0x10, 0xe88015
 
 		| Reset IPRAB, ISRAB
 		move.b	#0x00, 0xe8800b
@@ -207,7 +213,7 @@ ss_nop_handler:
 
 		| V-DISP handler: increment vsync counter and set flag
 ss_vdisp_handler:
-		movem.l	d0/a0, -(sp)
+		movem.l	d0-d7/a0-a6, -(sp)
 
 		| Reset ISRA Timer A bit (clear bit 5)
 		move.l	#0xe8800f, a0
@@ -218,7 +224,7 @@ ss_vdisp_handler:
 		addq.l	#1, ss_vsync_counter
 		move.b	#1, ss_vsync_flag
 
-		movem.l	(sp)+, d0/a0
+		movem.l	(sp)+, d0-d7/a0-a6
 		rte
 
 		| ============================================================
@@ -242,26 +248,22 @@ ss_vdisp_handler:
 		|   ctx_level  = 30  (uint8_t)
 		|   pad        = 31  (uint8_t)
 		| ============================================================
-		.extern ss_curr_task
-		.extern ss_scheduled_task
-		.extern ss_do_context_switch
-		.extern ss_do_wakeups
 
+			.globl	ss_wakeups_needed
 ss_timerd_handler:
-		| Save caller-saved regs only; C ABI preserves d2-d7/a2-a6.
-		movem.l	d0-d1/a0-a1, -(sp)
+		| Save all registers: ISR must preserve complete CPU state.
+		movem.l	d0-d7/a0-a6, -(sp)
 		addq.l	#1, ss_tick_counter
 
-		| Wake sleeping tasks whose timer has expired
-		bsr	ss_do_wakeups
-
 		| Reset ISRB Timer D bit (clear bit 4)
+			| Wakeups処理が必要ことを示すフラグを設定
+			move.b	#1, ss_wakeups_needed
 		move.l	#0xe88011, a0
 		move.b	(a0), d0
 		andi.b	#0xef, d0
 		move.b	d0, (a0)
 
-		movem.l	(sp)+, d0-d1/a0-a1
+		movem.l	(sp)+, d0-d7/a0-a6
 		rte
 
 		| ============================================================
@@ -345,6 +347,9 @@ ss_tick_counter:
 ss_vsync_counter:
 		dc.l	0
 ss_vsync_flag:
+		dc.b	0
+		.even
+ss_wakeups_needed:
 		dc.b	0
 		.even
 ss_context_switch_count:
