@@ -213,7 +213,7 @@ ss_nop_handler:
 
 		| V-DISP handler: increment vsync counter and set flag
 ss_vdisp_handler:
-		movem.l	d0-d7/a0-a6, -(sp)
+		movem.l	d0/a0, -(sp)
 
 		| Reset ISRA Timer A bit (clear bit 5)
 		move.l	#0xe8800f, a0
@@ -224,7 +224,7 @@ ss_vdisp_handler:
 		addq.l	#1, ss_vsync_counter
 		move.b	#1, ss_vsync_flag
 
-		movem.l	(sp)+, d0-d7/a0-a6
+		movem.l	(sp)+, d0/a0
 		rte
 
 		| ============================================================
@@ -251,8 +251,8 @@ ss_vdisp_handler:
 
 			.globl	ss_wakeups_needed
 ss_timerd_handler:
-		| Save all registers: ISR must preserve complete CPU state.
-		movem.l	d0-d7/a0-a6, -(sp)
+		| Minimal save: only d0/a0 for flag set and counter increment.
+		movem.l	d0/a0, -(sp)
 		addq.l	#1, ss_tick_counter
 
 		| Reset ISRB Timer D bit (clear bit 4)
@@ -263,7 +263,7 @@ ss_timerd_handler:
 		andi.b	#0xef, d0
 		move.b	d0, (a0)
 
-		movem.l	(sp)+, d0-d7/a0-a6
+		movem.l	(sp)+, d0/a0
 		rte
 
 		| ============================================================
@@ -302,14 +302,14 @@ ss_context_switch:
 		beq.s	.resume_interrupted
 
 		| resume_type == 1: yielded, manual SR/PC restore (no rte)
-		movem.l	(sp)+, d0-d7/a0-a6
+		movem.l	(sp)+, d0/a0
 		move.w	(sp)+, %sr
 		move.l	(sp)+, %a0
 		jmp		(%a0)
 
 	.resume_interrupted:
 		| resume_type == 0: timer-interrupted, CPU frame intact, rte safe
-		movem.l	(sp)+, d0-d7/a0-a6
+		movem.l	(sp)+, d0/a0
 		rte
 
 	.start_task:
@@ -326,7 +326,7 @@ ss_task_yield:
 		pea		.yield_resume
 		move.w	#0x2000, -(sp)
 		| Save all registers
-		movem.l	d0-d7/a0-a6, -(sp)
+		movem.l	d0/a0, -(sp)
 		| Mark as yielded (resume_type = 1)
 		move.l	ss_curr_task, a1
 		move.b	#1, 31(a1)
