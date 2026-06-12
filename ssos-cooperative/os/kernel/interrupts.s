@@ -213,6 +213,7 @@ ss_nop_handler:
 
 		| V-DISP handler: increment vsync counter and set flag
 ss_vdisp_handler:
+			move.w	#0x2700, %sr		| Disable interrupts to prevent nesting
 		movem.l	d0/a0, -(sp)
 
 		| Reset ISRA Timer A bit (clear bit 5)
@@ -225,7 +226,8 @@ ss_vdisp_handler:
 		move.b	#1, ss_vsync_flag
 
 		movem.l	(sp)+, d0/a0
-		rte
+					move.w	#0x2000, %sr		| Re-enable interrupts
+			rte
 
 		| ============================================================
 		| TimerD handler - Cooperative: tick counter + wakeups only
@@ -251,6 +253,7 @@ ss_vdisp_handler:
 
 			.globl	ss_wakeups_needed
 ss_timerd_handler:
+			move.w	#0x2700, %sr		| Disable interrupts to prevent nesting
 		| Minimal save: only d0/a0 for flag set and counter increment.
 		movem.l	d0/a0, -(sp)
 		addq.l	#1, ss_tick_counter
@@ -264,7 +267,8 @@ ss_timerd_handler:
 		move.b	d0, (a0)
 
 		movem.l	(sp)+, d0/a0
-		rte
+						move.w	#0x2000, %sr		| Re-enable interrupts
+			rte
 
 		| ============================================================
 		| ss_context_switch - Save current task, switch to next
@@ -310,7 +314,10 @@ ss_context_switch:
 	.resume_interrupted:
 		| resume_type == 0: timer-interrupted, CPU frame intact, rte safe
 		movem.l	(sp)+, d0/a0
-		rte
+					move.w	#0x2000, %sr		| Re-enable interrupts
+						move.w	#0x2000, %sr		| Re-enable interrupts
+						move.w	#0x2000, %sr		| Re-enable interrupts
+			rte
 
 	.start_task:
 		| New task: set SR and jump directly (no rte)
@@ -518,12 +525,18 @@ ss_trap14_handler:
 		IOCS	_ABORTJOB
 
 		| If abort somehow returns, rte back to Human68K
-		rte
+					move.w	#0x2000, %sr		| Re-enable interrupts
+						move.w	#0x2000, %sr		| Re-enable interrupts
+						move.w	#0x2000, %sr		| Re-enable interrupts
+			rte
 
 	.chain_to_old:
 		| Restore working registers
 		movem.l	(sp)+, d0-d1/a0-a1
-		| Jump to original handler — it will do the rte
+		| Jump to original handler — it will do the 			move.w	#0x2000, %sr		| Re-enable interrupts
+						move.w	#0x2000, %sr		| Re-enable interrupts
+						move.w	#0x2000, %sr		| Re-enable interrupts
+			rte
 		move.l	ss_old_trap14, a0
 		jmp		(a0)
 
