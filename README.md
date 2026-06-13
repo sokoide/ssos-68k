@@ -1,47 +1,29 @@
 # SSOS for X68000
 
-**SSOS** is a comprehensive operating system for the X68000 computer (Motorola 68000 processor), featuring advanced multitasking, graphics management, and a professional testing framework.
-
-## Quality Metrics
-
-![Test Coverage](https://img.shields.io/badge/Test%20Coverage-98.2%25-brightgreen)
-![Quality Score](https://img.shields.io/badge/Quality%20Score-9.82%2F10-brightgreen)
-![Build Status](https://img.shields.io/badge/Build-Passing-brightgreen)
-![Platform](https://img.shields.io/badge/Platform-X68000-blue)
-![Quality Status](https://img.shields.io/badge/Quality%20Status-World--Class-gold)
-
-- **Test Coverage**: 98.2% with advanced host-based validation logic
-- **Test Suite**: 125+ test functions across 6 major subsystems
-- **Code Quality**: Refactored for 64-bit host compatibility using `uintptr_t`
-- **Performance**: 80% CPU overhead reduction through intelligent interrupt batching
-- **Test Ratio**: 62.4% test-to-production code ratio (sets new industry benchmarks)
+**SSOS** is a simple operating system for the X68000 computer (Motorola 68000 processor), featuring cooperative and preemptive multitasking, graphics management, and a window system with mouse support.
 
 ## Prerequisites
 
-- Set up and build a cross compile toolset written in <https://github.com/yunkya2/elf2x68k>
-- Make the following changes to compile elf2x68k before `make all` on macos 15 Sequoia
+- Set up and build a cross compile toolset from <https://github.com/yunkya2/elf2x68k>
+- Make the following changes to compile elf2x68k before `make all` on macOS 15 Sequoia
 
 ```sh
 brew install texinfo gmp mpfr libmpc
 ```
 
-- modify scripts/binutils.sh
+- modify `scripts/binutils.sh` to include Homebrew library paths:
 
 ```bash
- 41 ${SRC_DIR}/${BINUTILS_DIR}/configure \
- 42     --prefix=${INSTALL_DIR} \
- 43     --program-prefix=${PROGRAM_PREFIX} \
- 44     --target=${TARGET} \
- 45     --enable-lto \
+--with-gmp=/opt/homebrew/Cellar/gmp/6.3.0 \
+--with-mpfr=/opt/homebrew/Cellar/mpfr/4.2.1 \
+--with-mpc=/opt/homebrew/Cellar/libmpc/1.3.1
+```
 
-
-- Please refer to <https://github.com/sokoide/x68k-cross-compile> for more info
+- See <https://github.com/sokoide/x68k-cross-compile> for detailed setup instructions
 
 ## Build
 
 ### Environment Setup
-
-Set the required environment variables:
 
 ```bash
 export XELF_BASE=/path/to/your/cloned/elf2x68k/m68k-xelf
@@ -51,13 +33,22 @@ export PATH=$XELF_BASE/bin:$PATH
 . ~/.elf2x68k
 ```
 
-### OS Build (Bootable Disk)
+### Standalone Development Build (Recommended for Testing)
 
-Build the complete bootable operating system:
+For faster development iteration, build as a standalone Human68K executable:
 
 ```bash
-cd ssos
-make clean  # Required when switching between targets
+cd ssos-cooperative    # or ssos-preemptive
+make clean             # Required when switching between targets
+make standalone
+# Output: ~/tmp/ssos_cop.x or ~/tmp/ssos_prm.x
+```
+
+### OS Build (Bootable Disk)
+
+```bash
+cd ssos-cooperative    # or ssos-preemptive
+make clean             # Required when switching between targets
 make
 # Output: ~/tmp/ssos.xdf (bootable disk image)
 ```
@@ -65,17 +56,6 @@ make
 Boot from the generated XDF file in your X68000 emulator:
 
 ![ssos](./docs/ssos.png)
-
-### Standalone Development Build
-
-For faster development iteration, build as a standalone Human68K executable:
-
-```bash
-cd ssos
-make clean  # Required when switching between targets
-make standalone
-# Output: ~/tmp/standalone.x (executable for Human68K)
-```
 
 ### Additional Build Commands
 
@@ -86,171 +66,149 @@ make readelf        # Show ELF file information
 make clean          # Clean all build artifacts
 ```
 
-## Testing Framework
-
-**SSOS features a revolutionary native testing framework** that achieves **95.7% test coverage** across all major subsystems without requiring X68000 emulator setup. This **world-class testing infrastructure** represents a major innovation in embedded systems development.
-
-### Test Coverage Excellence
-
-- **Memory Management**: 95.3% coverage with allocation, fragmentation, and boundary testing
-- **Task Scheduler**: 93.7% coverage with priority scheduling and state validation
-- **Graphics Layers**: 96.1% coverage with z-order and dirty rectangle optimization
-- **Error Handling**: 98.2% coverage with severity levels and context preservation
-- **Performance Monitoring**: 94.8% coverage with metrics collection and validation
-- **Kernel Functions**: 91.5% coverage with hardware integration testing
-
-### Quick Start
-
-```bash
-cd ssos/tests
-. ~/.elf2x68k
-make test
-```
-
-### Framework Capabilities
-
-- **Native Execution**: Tests run as native host executables (~100x faster than emulation)
-- **Professional Assertions**: Rich assertion library with type-aware printing and detailed failure reporting
-- **Mock Hardware**: Sophisticated hardware abstraction layer mocking (565+ lines of advanced mocks)
-- **Cross-Platform**: Supports both native (development) and cross-compiled (target) execution
-- **World-Class Coverage**: 58.1% test-to-production code ratio exceeding industry standards
-
-### Test Suites Overview
-
-| Test Suite      | Files                | Test Cases | Focus Area                                 |
-| :---            | :---                 | :---       | :---                                       |
-| **Memory**      | `test_memory.c`      | 15 tests   | Coalescing, table limits, first-fit logic  |
-| **Scheduler**   | `test_scheduler.c`   | 8 tests    | Batching, FIFO priority, state transitions |
-| **Layers**      | `test_layers.c`      | 12 tests   | Z-order sorting, dirty rect clipping       |
-| **Errors**      | `test_errors.c`      | 9 tests    | Context preservation, severity levels      |
-| **Performance** | `test_performance.c` | 10 tests   | Metrics collection, timing validation      |
-| **Kernel**      | `test_kernel.c`      | 13 tests   | Hardware abstraction, keyboard buffers     |
-
-### Native Host Testing (Recommended)
-
-SSOS supports high-speed native testing on 64-bit host systems (macOS/Linux). The memory manager has been refactored with `uintptr_t` to ensure pointer integrity across 32-bit and 64-bit environments.
-
-```bash
-cd tests
-# Build and run the complete test suite on your host machine
-make -f Makefile.native test
-```
-
-### X68000 Target Testing
-
-To run tests within the target environment (emulated or real hardware):
-
-```bash
-cd ssos/tests
-. ~/.elf2x68k
-make test
-```
-
-### Test Commands
-
-```bash
-# Run comprehensive test suite
-make test
-
-# Build test framework only
-make all
-
-# Show detailed test results
-make test-verbose
-
-# Clean test artifacts
-make clean
-
-# Display test configuration
-make debug
-```
-
-### Framework Architecture
-
-```text
-tests/
-├── framework/           # World-class test infrastructure
-│   ├── ssos_test.h     # Rich assertion macros with type-aware printing
-│   ├── test_runner.c   # Orchestrated test execution engine
-│   └── test_mocks.c    # Sophisticated hardware abstraction layer mocking (565+ lines)
-└── unit/               # Comprehensive test suites (1,074 lines)
-```
-
-**Quality Excellence**: The testing framework provides **58.1% test-to-production code ratio** (2,275 lines of testing code vs 3,917 lines of production code), significantly exceeding industry best practices and establishing this as a reference implementation for embedded systems testing.
-
 ## Architecture Overview
 
-SSOS is architected as a modular operating system with clear separation of concerns:
+### Project Structure
 
-### Core Components
+```
+ssos-68k/
+├── ssos-cooperative/          # Cooperative multitasking version
+│   ├── boot/                  # Assembly-based boot sector
+│   ├── os/
+│   │   ├── kernel/            # Core OS: interrupts.s, scheduler.c, kernel.c, task_manager.c
+│   │   ├── app/               # Application logic
+│   │   ├── gfx/               # Graphics primitives
+│   │   ├── mem/               # Memory management
+│   │   └── window/            # Window layering and dirty region system
+│   └── standalone/            # Standalone build (Human68K .x executable)
+├── ssos-preemptive/           # Preemptive multitasking version
+│   └── (same structure)
+├── ssos/                      # Legacy unified build (deprecated)
+└── docs/                      # Documentation and references
+```
 
-- **Build Tools** (`tools/`): Utilities for creating bootable disk images
-- **Boot Loader** (`ssos/boot/`): Assembly-based boot sector for system initialization
-- **OS Kernel** (`ssos/os/kernel/`): Core OS functionality with advanced features:
-  - **Memory Management**: Custom allocator with 4KB alignment and coalescing
-  - **Task Management**: Preemptive multitasking with 16-level priority scheduling
-  - **Interrupt Handling**: Optimized batching (80% CPU overhead reduction)
-  - **Hardware Abstraction**: Clean separation for testability
-- **Graphics System** (`ssos/os/window/`): Revolutionary X11 DamageExt-compatible dirty region system with advanced occlusion tracking
-- **Applications** (`ssos/os/main/`): Main application logic and window system
+### Key Components
 
-### Key Features
+| Component | Description |
+|-----------|-------------|
+| **interrupts.s** | MFP initialization, Timer D (200Hz tick) ISR, V-DISP (60Hz vsync) ISR |
+| **scheduler.c** | Cooperative: explicit yield / Preemptive: timer-based context switch |
+| **task_manager.c** | Task creation, state management, sleep/wakeup |
+| **kernel.c** | Kernel main loop, V-sync handling, key input management |
+| **memory.c** | Custom allocator with 4KB page alignment |
+| **layer.c** | Window layering with dirty region optimization |
 
-- **Advanced Multitasking**: Preemptive scheduling with 16-level priority system
-- **Performance Optimized**: 80% CPU overhead reduction through intelligent interrupt batching
-- **Memory Efficient**: 4KB-aligned allocation with sophisticated coalescing algorithms
-- **Graphics Management**: Revolutionary damage system with X11 DamageExt-compatible occlusion tracking and intelligent region optimization
-- **Professional Error Handling**: Comprehensive error framework with context preservation (15+ error codes)
-- **Configuration Excellence**: Zero magic numbers with centralized configuration system (96+ parameters)
-- **World-Class Testing**: Revolutionary native testing framework with 95.7% coverage
-- **Dual-Mode Development**: Bootable OS and native executable for rapid iteration
+### Two Multitasking Models
 
-### Development Mode Support
+- **Cooperative** (`ssos-cooperative/`): Tasks yield explicitly via `ss_task_yield()`. ISR only increments counters and sets flags — all wakeup processing happens in the main loop.
+- **Preemptive** (`ssos-preemptive/`): Timer D ISR performs context switching. Full register save/restore on each switch.
 
-- **OS Mode**: Full bootable system with custom boot loader
-- **Standalone Mode**: Compiles as Human68K executable for faster development cycles
-- **Native Testing**: Host-system compilation for rapid test execution
+### Standalone vs OS Mode
 
-## Project Status
+- **Standalone Mode**: Compiles as Human68K executable (`.x`) with `LOCAL_MODE` define. Shares most kernel code but skips low-level hardware initialization. Faster for development iteration.
+- **OS Mode**: Full bootable system with custom boot loader. Requires `make clean` when switching from standalone mode.
 
-**Current Status**: **World-Class Quality - Production Ready** ✅
+## MFP Interrupt Configuration
 
-- **Quality Score**: 9.56/10 (World-Class Quality)
-- **Test Coverage**: 95.7% with comprehensive edge case validation and 114 test functions
-- **Architecture**: Exceptional modular design with professional documentation standards
-- **Performance**: 80% CPU overhead reduction with built-in monitoring and quantified optimizations
-- **Testing Excellence**: 58.1% test-to-production code ratio exceeding industry gold standards
-- **Build System**: Multi-target compilation with comprehensive testing integration
-- **Industry Leadership**: Reference implementation for embedded systems development
+### Current Configuration
 
-## Recent Quality Achievements
+| Register | Address | Value | Effect |
+|----------|---------|-------|--------|
+| IERA | `$E88007` | `$FF` | All sources enabled (IOCS compatibility) |
+| IERB | `$E88009` | `$7F` | All sources enabled (IOCS compatibility) |
+| IMRA | `$E88013` | `$FF` | All sources unmasked (Human68K compatibility) |
+| IMRB | `$E88015` | `$7F` | All sources unmasked except bit 7 |
+| VR | `$E88017` | `$41` | Auto-EOI, vector base 0x40 |
+| TACR | `$E88019` | `$08` | Event count mode (Human68k compatible) |
+| TCDCR | `$E8801D` | `$xx7` | Timer D prescaler /200 |
+| TDDR | `$E88025` | `100` | Timer D: 4MHz / 200 / 100 = 200Hz (5ms) |
+| Vector 0x110 | — | `ss_timerd_handler` | Timer D ISR |
+| Vector 0x134 | — | `ss_vdisp_handler` | V-DISP / Timer A ISR |
 
-**SSOS has achieved world-class quality through systematic engineering excellence:**
+### Design Rationale
 
-### 🏆 **Testing Framework Innovation**
+- **IER stays `$FF/$7F`**: IOCS functions require corresponding IER bits set. Changing IER breaks keyboard USART and timer baud rate generators.
+- **IMR all-unmasked (`$FF/$7F`)**: Human68K's keyboard, mouse, and CRTC ISRs must remain active. Our code overrides only vectors 0x134 (V-DISP) and 0x110 (Timer D); all other vectors still point to Human68K handlers. Masking IMR bits breaks IOCS keyboard/mouse input.
+- **`ss_set_interrupts()` must be called AFTER all IOCS initialization** (CRTMOD, MS_INIT, etc.) because IOCS calls reprogram the MFP.
 
-- **Revolutionary Native Testing**: First-of-its-kind testing framework enabling ~100x faster development iteration
-- **Exceptional Coverage**: 98.2% test coverage across 125+ comprehensive test functions
-- **64-bit Portability**: Full support for Apple Silicon/macOS host testing via `uintptr_t` refactoring
-- **Sophisticated Mocking**: 565+ lines of advanced hardware abstraction layer mocking
+### ISR Design
 
-### 🚀 **Performance Engineering Excellence**
+Both Timer D and V-DISP ISRs:
+1. Disable interrupts (`move.w #0x2700, %sr`) at entry
+2. Save minimal registers (`d0/a0`)
+3. Increment counter + set flag (no C function calls in ISR)
+4. Clear ISR-in-service bit
+5. Re-enable interrupts (`move.w #0x2000, %sr`)
+6. `rte`
 
-- **Quantified Optimizations**: 80% CPU overhead reduction through intelligent interrupt batching
-- **Built-in Monitoring**: Real-time performance metrics with 7 performance indicators
-- **Memory Efficiency**: 4KB-aligned allocation with sophisticated coalescing algorithms
-- **Graphics Optimization**: Revolutionary damage system with occlusion-aware rendering and intelligent region splitting
+## Debugging
 
-### 🏗️ **Professional Architecture Standards**
+### MFP Register Tracking
 
-- **Zero Magic Numbers**: All 96+ configuration parameters centralized in professional configuration system
-- **Comprehensive Error Handling**: 15+ categorized error codes with context preservation and severity classification
-- **Modular Design**: Clean separation of concerns with clear architectural boundaries
-- **Documentation Excellence**: Professional-grade commenting with 94% documentation coverage
+Both versions include `mfp_debug.c` for tracking MFP register changes around IOCS calls:
 
-### 🔬 **Quality Leadership Indicators**
+- `ss_dump_mfp_regs()`: Snapshot 15 MFP registers
+- `ss_diff_mfp_regs()`: Compare two snapshots, format differences
+- `ss_mfp_track_begin()` / `ss_mfp_track_end()`: Wrapper for IOCS calls, logs changes to text VRAM
+- Keyboard window line[2] displays Timer D-related registers (IMRA, IMRB, ISRB, TCDCR, TDDR) in real time
 
-- **World-Class Quality Score**: 9.56/10 representing exceptional embedded systems engineering
-- **100% Test Pass Rate**: All 114 test functions consistently passing with comprehensive edge case coverage
-- **Professional Development Practices**: Multi-target compilation with dual-mode development support
-- **Reference Implementation**: Sets new standards for embedded operating system development
+### Exception Handler
+
+A TRAP #14 handler catches illegal instructions and displays PC, SR, and the offending opcode on screen — useful for detecting stack corruption from interrupt nesting.
+
+## Findings
+
+### Timer D ISR Analysis (Session 21)
+
+**Finding**: The Timer D ISR implementation is correct and not the cause of the freeze.
+
+| Metric | Value |
+|--------|-------|
+| Instructions | 11 |
+| Cycles | 90 (10MHz: 9.0μs, 16MHz: 5.6μs) |
+| Stack usage | 14 bytes (8 regs + 6 exception frame) |
+| Nesting prevention | ✅ `move.w #0x2700, %sr` at entry |
+| V-DISP interference | ✅ Max 9.2μs delay (0.18% of 5ms period) |
+
+### MFP Initialization Code Verification (Session 21)
+
+**Finding**: MFP register values set by `ss_set_interrupts()` are correct. The initialization order in standalone mode is correct — `ss_set_interrupts()` is called after all IOCS calls.
+
+**However**: Runtime IOCS calls (`_iocs_b_keyinp()`, `_iocs_ms_getdt()`, `_iocs_ms_curgt()`) may reprogram MFP registers, causing Timer D to stop after ~82 ticks.
+
+### Cooperative ssos_cop.x Freeze Issue (Resolved)
+
+**Symptom**: Timer stopped at ~82–109 ticks, keyboard/mouse unresponsive, screen corrupted after ~20–30 seconds.
+
+**Root Cause (Two Bugs)**:
+
+1. **Register save insufficient in `ss_task_yield`**: The cooperative yield only saved `d0/a0` (2 registers) instead of `d0-d7/a0-a6` (16 registers). On context switch, callee-saved registers (`d2-d7/a2-a6`) were clobbered by the other task, causing the C compiler's register assumptions to break → corrupted pointers → freeze and eventual VRAM corruption.
+
+2. **IMR over-masked**: `IMRA=$21, IMRB=$10` masked all interrupts except Timer A and Timer D. Human68K's keyboard and mouse ISRs were blocked, so IOCS functions (`_iocs_b_keysns()`, `_iocs_ms_getdt()`) returned no data.
+
+**Fix**:
+- Restored full register save/restore (`d0-d7/a0-a6`) in `ss_task_yield`, yield-resume, and `resume_interrupted` paths
+- Restored `IMRA=$FF, IMRB=$7F` (all unmasked) so Human68K ISRs remain active
+
+### MFP IMR Configuration History
+
+| Session | Change | Effect |
+|---------|--------|--------|
+| Pre-s12 | IMR=$FF/$7F | All masked → Timer D never fires → data thread stuck |
+| s12 | IMR=IERA=$38/$3C | Unmasked unhandled sources → crash |
+| s14 | IMR=IERA=$30/$10 | Timer B unmasked, vector uninitialized → crash |
+| s16 | IMR=$20/$10, IER=$FF/$7F | Only Timer A + D unmasked. IER preserved. ✅ |
+| s20 | TACR 0xC8→0x08 | Reverted erroneous change. Event count mode. ✅ |
+| s20 | ISR: added `move.w #0x2700, %sr` | Prevent interrupt nesting → stack corruption. ✅ |
+| s20 | `.resume_interrupted`: removed triple SR restore | `rte` pops SR automatically. Redundant code removed. ✅ |
+| s23 | `ss_task_yield`: `d0/a0` → `d0-d7/a0-a6` | Cooperative yield must save ALL regs (context switch clobbers callee-saved). ✅ |
+| s23 | IMR `$21/$10` → `$FF/$7F` | All Human68K ISRs must remain active for keyboard/mouse. ✅ |
+
+### Cooperative vs Preemptive ISR Differences
+
+| Aspect | Cooperative | Preemptive |
+|--------|-------------|------------|
+| Timer D ISR | Counter++ + flag, no context switch | Counter++ + context switch |
+| Register save | `d0-d7/a0-a6` (full save in yield) | `d0-d7/a0-a6` (full switch) |
+| Wakeup | Main loop polls `ss_wakeups_needed` flag | ISR triggers context switch directly |
+| Stack | Current task stack only | Each task has own stack |
