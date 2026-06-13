@@ -34,11 +34,17 @@ ss_set_interrupts:
 		| Set MFP vector base
 		move.b	#0x41, 0xe88017
 
-		| IERAB: enable all
+		| IERAB: keep all sources enabled (Human68k-compatible).
+		|   IER bits may be needed by IOCS (USART, Timers) even when
+		|   the corresponding interrupt is masked.
 		move.b	#0xff, 0xe88007
 		move.b	#0x7f, 0xe88009
 
-		| IMRAB: mask all initially
+		| IMRAB: keep all sources unmasked so Human68K's handlers
+		|   (keyboard, mouse, CRTC, etc.) continue to work.
+		|   Our code overrides only specific vectors (0x134 V-DISP,
+		|   0x110 Timer D); all others still point to Human68K ISRs.
+		|   IMRB bit 7 is reserved and must stay masked (0x7F).
 		move.b	#0xff, 0xe88013
 		move.b	#0x7f, 0xe88015
 
@@ -63,12 +69,14 @@ ss_set_interrupts:
 		move.l	a0, 0x13c
 
 		| TACR - event count mode (V-DISP)
+		|   $08 = event count mode (Human68k compatible)
 		move.b	#0x08, 0xe88019
 
-		| TCDCR - Timer D prescaler /200
-		move.b	0xe8801d, d0
-		or.b	#0xF7, d0
-		move.b	d0, 0xe8801d
+		| TCDCR - Timer C/D prescaler /200 each (delay mode)
+		|   $77 = 0111 0111 → C:/200, D:/200
+		|   Use move.b (not read-modify-write) to avoid setting
+		|   reserved bit 7 which ORing 0xF7 would do.
+		move.b	#0x77, 0xe8801d
 
 		| TADR - Timer A data
 		move.b	#1, 0xe8801f
@@ -206,6 +214,7 @@ ss_nop_handler:
 
 		| V-DISP handler: increment vsync counter and set flag
 ss_vdisp_handler:
+		move.w	#0x2700, %sr		| Disable interrupts to prevent nesting
 		movem.l	d0/a0, -(sp)
 
 		| Reset ISRA Timer A bit (clear bit 5)
@@ -218,6 +227,7 @@ ss_vdisp_handler:
 		move.b	#1, ss_vsync_flag
 
 		movem.l	(sp)+, d0/a0
+		move.w	#0x2000, %sr		| Re-enable interrupts
 		rte
 
 		| ============================================================
@@ -245,6 +255,7 @@ ss_vdisp_handler:
 		.extern ss_do_wakeups
 
 ss_timerd_handler:
+		move.w	#0x2700, %sr		| Disable interrupts to prevent nesting
 		| Minimal save: only d0/a0 needed for non-switch path
 		movem.l	d0/a0, -(sp)
 		addq.l	#1, ss_tick_counter
@@ -284,6 +295,7 @@ ss_timerd_handler:
 		andi.b	#0xef, d0
 		move.b	d0, (a0)
 		movem.l	(sp)+, d0/a0
+		move.w	#0x2000, %sr		| Re-enable interrupts
 		rte
 
 	.no_switch_full:
@@ -292,6 +304,7 @@ ss_timerd_handler:
 		andi.b	#0xef, d0
 		move.b	d0, (a0)
 		movem.l	(sp)+, d0-d7/a0-a6
+		move.w	#0x2000, %sr		| Re-enable interrupts
 		rte
 
 		| ============================================================
