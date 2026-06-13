@@ -9,6 +9,8 @@
 		.globl	ss_save_data_base
 		.globl	ss_context_switch
 		.globl	ss_task_yield
+		.globl	ss_vdisp_fire_count
+		.globl	ss_timerd_fire_count
 		.globl	ss_context_switch_count
 		.type	ss_set_interrupts, @function
 
@@ -41,13 +43,13 @@ ss_set_interrupts:
 		move.b	#0xff, 0xe88007
 		move.b	#0x7f, 0xe88009
 
-		| IMRAB: unmask ONLY sources we handle directly.
-		|   IMRA=$20: Timer A (V-DISP)
-		|   IMRB=$10: Timer D (200Hz tick)
-		|   All others masked → interrupt never reaches CPU, safe
-		|   even if the IOCS / hardware needs the IER bit enabled.
-		move.b	#0x20, 0xe88013
-		move.b	#0x10, 0xe88015
+		| IMRAB: keep all sources unmasked so Human68K's handlers
+		|   (keyboard, mouse, CRTC, etc.) continue to work.
+		|   Our code overrides only specific vectors (0x134 V-DISP,
+		|   0x110 Timer D); all others still point to Human68K ISRs.
+		|   IMRB bit 7 is reserved and must stay masked (0x7F).
+		move.b	#0xff, 0xe88013
+		move.b	#0x7f, 0xe88015
 
 		| Reset IPRAB, ISRAB
 		move.b	#0x00, 0xe8800b
@@ -70,12 +72,14 @@ ss_set_interrupts:
 		move.l	a0, 0x13c
 
 		| TACR - event count mode (V-DISP)
+		|   $08 = event count mode (Human68k compatible)
 		move.b	#0x08, 0xe88019
 
-		| TCDCR - Timer D prescaler /200
-		move.b	0xe8801d, d0
-		or.b	#0xF7, d0
-		move.b	d0, 0xe8801d
+		| TCDCR - Timer C/D prescaler /200 each (delay mode)
+		|   $77 = 0111 0111 → C:/200, D:/200
+		|   Use move.b (not read-modify-write) to avoid setting
+		|   reserved bit 7 which ORing 0xF7 would do.
+		move.b	#0x77, 0xe8801d
 
 		| TADR - Timer A data
 		move.b	#1, 0xe8801f
@@ -207,7 +211,9 @@ ss_restore_interrupts:
 		| ============================================================
 		| Interrupt handlers
 		| ============================================================
-	.globl	ss_nop_handler
+		.globl	ss_nop_handler
+		.globl	ss_vdisp_handler
+		.globl	ss_timerd_handler
 ss_nop_handler:
 		rte
 
@@ -224,6 +230,7 @@ ss_vdisp_handler:
 
 		addq.l	#1, ss_vsync_counter
 		move.b	#1, ss_vsync_flag
+		addq.l	#1, ss_vdisp_fire_count
 
 		movem.l	(sp)+, d0/a0
 					move.w	#0x2000, %sr		| Re-enable interrupts
@@ -257,6 +264,7 @@ ss_timerd_handler:
 		| Minimal save: only d0/a0 for flag set and counter increment.
 		movem.l	d0/a0, -(sp)
 		addq.l	#1, ss_tick_counter
+		addq.l	#1, ss_timerd_fire_count
 
 		| Reset ISRB Timer D bit (clear bit 4)
 			| Wakeups処理が必要ことを示すフラグを設定
@@ -306,18 +314,15 @@ ss_context_switch:
 		beq.s	.resume_interrupted
 
 		| resume_type == 1: yielded, manual SR/PC restore (no rte)
-		movem.l	(sp)+, d0/a0
+		movem.l	(sp)+, d0-d7/a0-a6
 		move.w	(sp)+, %sr
 		move.l	(sp)+, %a0
 		jmp		(%a0)
 
 	.resume_interrupted:
 		| resume_type == 0: timer-interrupted, CPU frame intact, rte safe
-		movem.l	(sp)+, d0/a0
-					move.w	#0x2000, %sr		| Re-enable interrupts
-						move.w	#0x2000, %sr		| Re-enable interrupts
-						move.w	#0x2000, %sr		| Re-enable interrupts
-			rte
+		movem.l	(sp)+, d0-d7/a0-a6
+		rte
 
 	.start_task:
 		| New task: set SR and jump directly (no rte)
@@ -332,8 +337,9 @@ ss_task_yield:
 		| Build manual resume frame: SR + return PC
 		pea		.yield_resume
 		move.w	#0x2000, -(sp)
-		| Save all registers
-		movem.l	d0/a0, -(sp)
+		| Save all registers (must save ALL — cooperative switch resumes
+	| in a different task context where d2-d7/a2-a6 are clobbered)
+		movem.l	d0-d7/a0-a6, -(sp)
 		| Mark as yielded (resume_type = 1)
 		move.l	ss_curr_task, a1
 		move.b	#1, 31(a1)
@@ -359,6 +365,10 @@ ss_vsync_flag:
 ss_wakeups_needed:
 		dc.b	0
 		.even
+ss_vdisp_fire_count:
+		dc.l	0
+ss_timerd_fire_count:
+		dc.l	0
 ss_context_switch_count:
 		dc.l	0
 		.even
@@ -525,18 +535,12 @@ ss_trap14_handler:
 		IOCS	_ABORTJOB
 
 		| If abort somehow returns, rte back to Human68K
-					move.w	#0x2000, %sr		| Re-enable interrupts
-						move.w	#0x2000, %sr		| Re-enable interrupts
-						move.w	#0x2000, %sr		| Re-enable interrupts
-			rte
+		rte
 
 	.chain_to_old:
 		| Restore working registers
 		movem.l	(sp)+, d0-d1/a0-a1
-		| Jump to original handler — it will do the 			move.w	#0x2000, %sr		| Re-enable interrupts
-						move.w	#0x2000, %sr		| Re-enable interrupts
-						move.w	#0x2000, %sr		| Re-enable interrupts
-			rte
+		| Jump to original handler — it will do the rte
 		move.l	ss_old_trap14, a0
 		jmp		(a0)
 
