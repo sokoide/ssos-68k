@@ -30,7 +30,7 @@ SRCS=	main.c \
 		../os/util/numfmt.c
 ASRCS=	$(KDIR)/interrupts.s
 
-OBJDIR=obj
+OBJDIR=obj-$(SCHED)
 
 SRC_OBJS=$(patsubst %.c,$(OBJDIR)/%.o,$(notdir $(SRCS)))
 ASRC_OBJS=$(patsubst %.s,$(OBJDIR)/%.o,$(notdir $(ASRCS)))
