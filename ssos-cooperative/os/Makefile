@@ -30,7 +30,7 @@ INCLUDE=-I$(XELF_BASE)/m68k-elf/include -I../include -I./kernel -I./mem -I./app 
 LIB=-L$(XELF_BASE)/m68k-elf/lib -L$(shell dirname $(shell m68k-xelf-gcc -print-libgcc-file-name))
 
 CCFLAGS=$(INCLUDE) -g -O2 -Wa,-adhlns="$@.lst"
-LDFLAGS=$(LIB) -lx68kiocs -Tkernel/linker.ld -lnosys -nostdlib -lc -lm -lgcc
+LDFLAGS=$(LIB) -lx68kiocs -Tkernel/linker.ld -nostdlib -lc -lm -lgcc -lnosys
 ASFLAGS=-m68000 --register-prefix-optional --traditional-format -I../include -I./kernel
 
 .PHONY: all clean dump readelf

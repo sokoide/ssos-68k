@@ -28,13 +28,17 @@ void     ss_win_show(uint16_t id);
 void     ss_win_hide(uint16_t id);
 void     ss_win_damage(uint16_t id, int x, int y, int w, int h);
 void     ss_win_render_all(void);
+void     ss_win_render_region(int rx, int ry, int rw, int rh);
 void     ss_win_move(uint16_t id, int x, int y);
 int      ss_win_hit_test(int mx, int my);
 int      ss_win_get_x(uint16_t id);
 int      ss_win_get_y(uint16_t id);
 int      ss_win_get_w(uint16_t id);
 int      ss_win_get_h(uint16_t id);
+void     ss_win_set_render(uint16_t id, void (*render)(SSWindow*));
 void     ss_win_set_z(uint16_t id, uint16_t z);
 void     ss_win_mark_dirty(uint16_t id);
+
+extern uint16_t ss_win_active_z;   /* highest visible z, set by render_all */
 
 #endif /* SS_WIN_H */

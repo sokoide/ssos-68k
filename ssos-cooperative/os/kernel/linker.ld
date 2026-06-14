@@ -37,6 +37,10 @@ SECTIONS
 	} > RAM
 	__bss_size = __bss_end - __bss_start;
 
+	/* Heap marker required by newlib sbrk (pulled in by sprintf). */
+	end = .;
+	_end = .;
+
 	.ssos : {
 		__ssosram_start = .;
 		. = . + __ssosram_size;

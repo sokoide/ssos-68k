@@ -6,6 +6,7 @@
 static SSWindow windows[SS_MAX_WINDOWS];
 static uint8_t zmap[SS_ZMAP_W * SS_ZMAP_H];
 static uint16_t win_count;
+uint16_t ss_win_active_z = 0;  /* highest visible z, set by render_all */
 
 void ss_win_init(void) {
     memset(windows, 0, sizeof(windows));
@@ -148,6 +149,7 @@ void ss_win_render_all(void) {
             (int)windows[i].z > highest_z)
             highest_z = windows[i].z;
     }
+    ss_win_active_z = (uint16_t)highest_z;
 
     /* Render visible windows in z-order */
     for (uint16_t z = 0; z < 256; z++) {
@@ -190,6 +192,63 @@ void ss_win_render_all(void) {
     }
 }
 
+/*
+ * Repaint only a rectangular region (dirty region): stipple its background
+ * and redraw visible windows that overlap it, in z-order.  Used by the
+ * drag drop path to restore the vacated old position without a full
+ * screen repaint.
+ */
+void ss_win_render_region(int rx, int ry, int rw, int rh) {
+    rebuild_zmap();
+    ss_gfx_fill_stipple(rx, ry, rw, rh, 7, 15);
+
+    int highest_z = -1;
+    for (int i = 0; i < SS_MAX_WINDOWS; i++) {
+        if (windows[i].id && (windows[i].flags & SS_WIN_VISIBLE) &&
+            (int)windows[i].z > highest_z)
+            highest_z = windows[i].z;
+    }
+    ss_win_active_z = (uint16_t)highest_z;
+
+    for (uint16_t z = 0; z < 256; z++) {
+        for (uint16_t i = 0; i < SS_MAX_WINDOWS; i++) {
+            SSWindow* win = &windows[i];
+            if (win->id == 0 || win->z != z || !(win->flags & SS_WIN_VISIBLE))
+                continue;
+            /* skip windows that don't overlap the region */
+            if (win->x >= rx + rw || win->x + (int)win->w <= rx ||
+                win->y >= ry + rh || win->y + (int)win->h <= ry)
+                continue;
+
+            int bx0 = win->x / SS_BLOCK_SIZE;
+            int by0 = win->y / SS_BLOCK_SIZE;
+            int bx1 = (win->x + win->w) / SS_BLOCK_SIZE;
+            int by1 = (win->y + win->h) / SS_BLOCK_SIZE;
+
+            int fully_occluded = 1;
+            for (int by = by0; by <= by1 && fully_occluded; by++) {
+                for (int bx = bx0; bx <= bx1; bx++) {
+                    if (bx >= 0 && bx < SS_ZMAP_W && by >= 0 && by < SS_ZMAP_H) {
+                        if (zmap[by * SS_ZMAP_W + bx] <= z) {
+                            fully_occluded = 0;
+                            break;
+                        }
+                    }
+                }
+            }
+            if (fully_occluded) continue;
+
+            if (win->render) {
+                win->render(win);
+            } else {
+                int is_fg = ((int)win->z == highest_z && (int)z == highest_z);
+                draw_frame(win, is_fg);
+            }
+            win->flags &= ~SS_WIN_DIRTY;
+        }
+    }
+}
+
 int ss_win_hit_test(int mx, int my) {
     for (int i = 0; i < SS_MAX_WINDOWS; i++) {
         if (windows[i].id == 0 || !(windows[i].flags & SS_WIN_VISIBLE))
@@ -217,6 +276,11 @@ int ss_win_get_w(uint16_t id) {
 int ss_win_get_h(uint16_t id) {
     if (id == 0 || id > SS_MAX_WINDOWS) return 0;
     return windows[id - 1].h;
+}
+
+void ss_win_set_render(uint16_t id, void (*render)(SSWindow*)) {
+    if (id == 0 || id > SS_MAX_WINDOWS) return;
+    windows[id - 1].render = render;
 }
 
 void ss_win_set_z(uint16_t id, uint16_t z) {

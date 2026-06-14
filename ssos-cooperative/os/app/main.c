@@ -6,6 +6,9 @@
 #include "../win/win.h"
 #include "../ipc/ipc.h"
 #include <stdint.h>
+#include <stdio.h>
+#include <string.h>
+#include <x68k/iocs.h>
 
 uint8_t* ss_task_stack_base;
 
@@ -14,41 +17,41 @@ static int drag_id = -1;
 static int drag_ox, drag_oy;
 static int drag_w, drag_h;
 static int drag_prev_x = -1, drag_prev_y = -1;
-static uint16_t next_z = 3;   /* monotonically increasing z for drag-to-front
-                               * (starts above initial z=1,2; wraps 255→3 since
-                               *  zmap is uint8_t and would truncate z>=256) */
+static uint16_t next_z = 3;
+static uint32_t frame = 0;   /* marching-ants phase */
 
-/* VSYNC wait via MFP GPIP polling */
+/* Window layout (standalone-compatible) */
+#define TITLE_H   12
+#define CONTENT_Y 14
+#define LINE_H    10
+#define WIN_W     240
+#define WIN_H     (CONTENT_Y + 3 * LINE_H + 4)
+#define LINE_LEN  28
+#define APP_MAX_WINS 4
+#define OL_MAX     1200
+
+typedef struct {
+    char title[20];
+    char line[3][30];
+    char prev[3][30];
+} WinContent;
+static WinContent win_content[APP_MAX_WINS];
+
+/* Outline border save/restore (under the marching-ants outline) */
+static uint16_t ol_buf[OL_MAX];
+static int ol_x, ol_y, ol_w, ol_h, ol_valid = 0;
+
 static void wait_vsync(void) {
     uint32_t last = ss_vsync_counter;
     while (ss_vsync_counter == last);
 }
 
-/*
- * Mouse input via IOCS _MS_CURGT ($75) + _MS_GETDT ($74).
- *
- * _MS_CURGT returns the absolute cursor position (X<<16 | Y) maintained
- * by the IPL-ROM SCC receive handler — the same source standalone/main.c
- * uses, so bare-metal and standalone track the cursor identically.
- * _MS_GETDT returns the button word: bit9 = left (00/FF), bit0 = right.
- *
- * These are IPL-ROM (BIOS) routines, not Human68K services: they work
- * bare-metal as long as interrupts stay enabled and the IOCS work area /
- * vector table are left intact (both guaranteed by premain).  Verified
- * working bare-metal: SCC handler installed (vector 0x148), IPL0, cursor
- * position and deltas both update live.  See x68k-master/10_キーボード・マウス.md.
- */
 static int cur_mx = 0, cur_my = 0, cur_btn = 0;
-
 static void update_mouse(void) {
     int pos, dt;
     asm volatile(
-        "moveq #0x75, %%d0\n\t"   /* _MS_CURGT: absolute X<<16|Y */
-        "trap #15\n\t"
-        "move.l %%d0, %0\n\t"
-        "moveq #0x74, %%d0\n\t"   /* _MS_GETDT: button word */
-        "trap #15\n\t"
-        "move.l %%d0, %1"
+        "moveq #0x75, %%d0\n\t"   "trap #15\n\t"   "move.l %%d0, %0\n\t"
+        "moveq #0x74, %%d0\n\t"   "trap #15\n\t"   "move.l %%d0, %1"
         : "=d"(pos), "=d"(dt) :: "d0"
     );
     cur_mx = (int16_t)((pos >> 16) & 0xFFFF);
@@ -56,21 +59,19 @@ static void update_mouse(void) {
     cur_btn = dt;
 }
 
-/*
- * XOR rectangle outline — used for BOTH the mouse cursor (6x6) and the
- * drag outline (window-sized).  XOR is its own inverse: drawing the same
- * outline twice restores the exact original pixels.  Because XOR commutes,
- * overlapping outlines (cursor over drag-rect, or drag-rect over window)
- * compose and decompose correctly without any save buffer.  No full
- * repaint, no trail, no flicker.
- */
-static int cur_prev_x = -100, cur_prev_y = -100;
+static int last_key = -1;
+static void update_keyboard(void) {
+    if (_iocs_b_keysns() > 0) {
+        last_key = _iocs_b_keyinp();
+    }
+}
 
+/* XOR outline for the software cursor (6x6) */
+static int cur_prev_x = -100, cur_prev_y = -100;
 static void xor_outline(int x, int y, int w, int h) {
     uint32_t stride = ss_current_mode->bytes_per_line / 2;
     int W = ss_current_mode->display_w, H = ss_current_mode->display_h;
     volatile uint16_t* v = ss_draw_page;
-    /* top & bottom edges */
     for (int dx = 0; dx < w; dx++) {
         int xx = x + dx;
         if (xx >= 0 && xx < W) {
@@ -79,7 +80,6 @@ static void xor_outline(int x, int y, int w, int h) {
             if (y2 >= 0 && y2 < H) v[y2 * stride + xx] ^= 0xFFFF;
         }
     }
-    /* left & right edges */
     for (int dy = 0; dy < h; dy++) {
         int yy = y + dy;
         if (yy >= 0 && yy < H) {
@@ -90,43 +90,196 @@ static void xor_outline(int x, int y, int w, int h) {
     }
 }
 
+static void pad_line(char* s, int n) {
+    int l = (int)strlen(s);
+    for (int i = l; i < n; i++) s[i] = ' ';
+    s[n] = '\0';
+}
+
+static void draw_content_dirty(uint16_t id) {
+    if (id == 0 || id > APP_MAX_WINS) return;
+    int x = ss_win_get_x(id), y = ss_win_get_y(id);
+    WinContent* c = &win_content[id - 1];
+    for (int i = 0; i < 3; i++) {
+        if (memcmp(c->line[i], c->prev[i], 30) != 0) {
+            ss_gfx_draw_text(x + 4, y + CONTENT_Y + i * LINE_H, c->line[i], 0, 7);
+            memcpy(c->prev[i], c->line[i], 30);
+        }
+    }
+}
+
+/* Save/restore only the border pixels (under the marching-ants outline). */
+static void ol_save(int x, int y, int w, int h) {
+    int W = ss_current_mode->display_w, H = ss_current_mode->display_h;
+    if (x < 0) { w += x; x = 0; }
+    if (y < 0) { h += y; y = 0; }
+    if (x + w > W) w = W - x;
+    if (y + h > H) h = H - y;
+    if (w <= 0 || h <= 0 || w * 2 + h * 2 > OL_MAX) { ol_valid = 0; return; }
+    ol_x = x; ol_y = y; ol_w = w; ol_h = h;
+    uint32_t stride = ss_current_mode->bytes_per_line / 2;
+    int idx = 0;
+    for (int i = 0; i < w && idx < OL_MAX; i++, idx++)
+        ol_buf[idx] = ss_draw_page[y * stride + x + i];
+    for (int i = 0; i < w && idx < OL_MAX; i++, idx++)
+        ol_buf[idx] = ss_draw_page[(uint32_t)(y + h - 1) * stride + x + i];
+    for (int i = 1; i < h - 1 && idx < OL_MAX; i++, idx++)
+        ol_buf[idx] = ss_draw_page[(uint32_t)(y + i) * stride + x];
+    for (int i = 1; i < h - 1 && idx < OL_MAX; i++, idx++)
+        ol_buf[idx] = ss_draw_page[(uint32_t)(y + i) * stride + x + w - 1];
+    ol_valid = 1;
+}
+static void ol_restore(void) {
+    if (!ol_valid) return;
+    int x = ol_x, y = ol_y, w = ol_w, h = ol_h;
+    uint32_t stride = ss_current_mode->bytes_per_line / 2;
+    int idx = 0;
+    for (int i = 0; i < w && idx < OL_MAX; i++, idx++)
+        ss_draw_page[y * stride + x + i] = ol_buf[idx];
+    for (int i = 0; i < w && idx < OL_MAX; i++, idx++)
+        ss_draw_page[(uint32_t)(y + h - 1) * stride + x + i] = ol_buf[idx];
+    for (int i = 1; i < h - 1 && idx < OL_MAX; i++, idx++)
+        ss_draw_page[(uint32_t)(y + i) * stride + x] = ol_buf[idx];
+    for (int i = 1; i < h - 1 && idx < OL_MAX; i++, idx++)
+        ss_draw_page[(uint32_t)(y + i) * stride + x + w - 1] = ol_buf[idx];
+    ol_valid = 0;
+}
+
+/* Marching ants outline (standalone draw_march_outline). */
+static void draw_march_outline(int x, int y, int w, int h) {
+    uint16_t colors[2] = {7, 0};
+    int offset = (int)(frame & 7);
+    uint32_t stride = ss_current_mode->bytes_per_line / 2;
+    int W = ss_current_mode->display_w, H = ss_current_mode->display_h;
+    volatile uint16_t* v = ss_draw_page;
+    int peri = 0;
+    for (int i = 0; i < w; i++, peri++) {
+        int px = x + i;
+        if (px >= 0 && px < W && y >= 0 && y < H) v[y * stride + px] = colors[((peri + offset) >> 2) & 1];
+    }
+    for (int i = 1; i < h; i++, peri++) {
+        int py = y + i, px = x + w - 1;
+        if (px >= 0 && px < W && py >= 0 && py < H) v[py * stride + px] = colors[((peri + offset) >> 2) & 1];
+    }
+    for (int i = w - 2; i >= 0; i--, peri++) {
+        int px = x + i, py = y + h - 1;
+        if (px >= 0 && px < W && py >= 0 && py < H) v[py * stride + px] = colors[((peri + offset) >> 2) & 1];
+    }
+    for (int i = h - 2; i >= 1; i--, peri++) {
+        int py = y + i;
+        if (x >= 0 && x < W && py >= 0 && py < H) v[py * stride + x] = colors[((peri + offset) >> 2) & 1];
+    }
+}
+
+/*
+ * Window render callback: standalone-style frame + content.
+ * Active (topmost) window: gray title bar with black hash stripes flanking
+ * the title (matches standalone draw_frame).  Inactive: plain white bar.
+ */
+static void render_win(SSWindow* self) {
+    if (self->id == 0 || self->id > APP_MAX_WINS) return;
+    WinContent* c = &win_content[self->id - 1];
+    int x = self->x, y = self->y, w = self->w, h = self->h;
+    int is_fg = (self->z == ss_win_active_z);
+    uint16_t t_bg = is_fg ? 8 : 7;
+
+    ss_gfx_rect(x + 1, y + 1, w - 2, TITLE_H - 2, t_bg);
+    ss_gfx_rect(x + 1, y + TITLE_H, w - 2, h - TITLE_H - 1, 7);
+    ss_gfx_rect(x, y, w, 1, 0);
+    ss_gfx_rect(x, y + h - 1, w, 1, 0);
+    ss_gfx_rect(x, y, 1, h, 0);
+    ss_gfx_rect(x + w - 1, y, 1, h, 0);
+    ss_gfx_rect(x + 1, y + TITLE_H - 1, w - 2, 1, 0);
+
+    int tw = (int)strlen(c->title) * SS_FONT_ADV;
+    int tx = x + (w - tw) / 2;
+    if (is_fg) {
+        /* black hash stripes on both sides of the title (standalone look) */
+        for (int i = 0; i < 5; i++) {
+            int ly = y + 2 + i * 2;
+            if (tx > x + 12)
+                ss_gfx_rect(x + 4, ly, tx - 8 - (x + 4) + 1, 1, 0);
+            if (tx + tw + 8 < x + w - 4)
+                ss_gfx_rect(tx + tw + 8, ly, (x + w - 5) - (tx + tw + 8) + 1, 1, 0);
+        }
+    }
+    ss_gfx_draw_text(tx, y + 2, c->title, 0, t_bg);
+
+    for (int i = 0; i < 3; i++)
+        ss_gfx_draw_text(x + 4, y + CONTENT_Y + i * LINE_H, c->line[i], 0, 7);
+    memcpy(c->prev[0], c->line[0], 30);
+    memcpy(c->prev[1], c->line[1], 30);
+    memcpy(c->prev[2], c->line[2], 30);
+}
+
 void ss_init(void) {
     ss_mem_init((void*)&__ssosram_start, (uintptr_t)&__ssosram_size);
     ss_task_stack_base = (uint8_t*)ss_alloc(SS_MAX_TASKS * SS_TASK_STACK);
-
     ss_sched_init();
     ss_work_init(&ss_main_work_queue);
     ss_ipc_init();
-
     ss_gfx_init();
     ss_win_init();
 }
 
-void ss_run(void) {
-    /* Create demo windows */
-    uint16_t w1 = ss_win_create(50, 50, 300, 200, 1);
-    uint16_t w2 = ss_win_create(200, 150, 300, 200, 2);
-    (void)w1; (void)w2;
+static void update_content(uint16_t wt, uint16_t wk, uint16_t wm,
+                           int mx, int my, int left, int right) {
+    WinContent* t = &win_content[wt - 1];
+    sprintf(t->line[0], "Vsync: %lu", (unsigned long)frame);
+    sprintf(t->line[1], "VDisp:%lu", (unsigned long)ss_vdisp_fire_count);
+    sprintf(t->line[2], "Tick: %lu", (unsigned long)ss_timerd_fire_count);
+    pad_line(t->line[0], LINE_LEN); pad_line(t->line[1], LINE_LEN); pad_line(t->line[2], LINE_LEN);
 
-    /* Initial render */
+    WinContent* k = &win_content[wk - 1];
+    if (last_key >= 0) {
+        int code = last_key & 0xFF;
+        char ch = (code >= 0x20 && code < 0x7F) ? (char)code : '.';
+        sprintf(k->line[0], "Code:%02XH '%c'", (unsigned)code, ch);
+        sprintf(k->line[1], "Shift:%02XH", (unsigned)((last_key >> 8) & 0xFF));
+        k->line[2][0] = '\0';
+    } else {
+        strcpy(k->line[0], "Press any key...");
+        k->line[1][0] = '\0';
+        k->line[2][0] = '\0';
+    }
+    pad_line(k->line[0], LINE_LEN); pad_line(k->line[1], LINE_LEN); pad_line(k->line[2], LINE_LEN);
+
+    WinContent* m = &win_content[wm - 1];
+    sprintf(m->line[0], "X:%3d Y:%3d", mx, my);
+    sprintf(m->line[1], "L=%s R=%s", left ? "DN" : "UP", right ? "DN" : "UP");
+    m->line[2][0] = '\0';
+    pad_line(m->line[0], LINE_LEN); pad_line(m->line[1], LINE_LEN); pad_line(m->line[2], LINE_LEN);
+}
+
+void ss_run(void) {
+    uint16_t w_timer = ss_win_create(30, 15, WIN_W, WIN_H, 1);
+    uint16_t w_key   = ss_win_create(180, 60, WIN_W, WIN_H, 2);
+    uint16_t w_mouse = ss_win_create(80, 120, WIN_W, WIN_H, 3);
+    ss_win_set_render(w_timer, render_win);
+    ss_win_set_render(w_key, render_win);
+    ss_win_set_render(w_mouse, render_win);
+    strcpy(win_content[w_timer - 1].title, "Timer");
+    strcpy(win_content[w_key   - 1].title, "Keyboard");
+    strcpy(win_content[w_mouse - 1].title, "Mouse");
+
     ss_win_render_all();
 
-    /* Main loop */
     while (1) {
         wait_vsync();
-
-        /* Mouse: CURGT absolute position (standalone-compatible) + buttons */
+        frame++;
         update_mouse();
+        update_keyboard();
         int mx = cur_mx, my = cur_my, btn = cur_btn;
         int left = (btn & 0x0200) != 0;
+        int right = (btn & 0x0001) != 0;
 
-        /*
-         * Drag with outline only (no per-frame full repaint → no flicker),
-         * mirroring standalone/main.c: while the button is held we move
-         * just an XOR rectangle; the window body stays put until drop,
-         * when we commit its final position and repaint once.
-         */
-        int need_redraw = 0;
+        update_content(w_timer, w_key, w_mouse, mx, my, left, right);
+
+        /* Erase previous cursor BEFORE any region repaint, so a repaint
+         * that overwrites the cursor pixel doesn't leave a stray XOR mark. */
+        if (cur_prev_x >= 0) xor_outline(cur_prev_x, cur_prev_y, 6, 6);
+
+        /* Drag (standalone-style: marching ants + region repaint, no full) */
         if (left && drag_id < 0) {
             int hid = ss_win_hit_test(mx, my);
             if (hid > 0) {
@@ -135,12 +288,15 @@ void ss_run(void) {
                 drag_oy = my - ss_win_get_y(hid);
                 drag_w  = ss_win_get_w(hid);
                 drag_h  = ss_win_get_h(hid);
-                ss_win_set_z(hid, next_z);   /* unique z → front, no ties */
+                ss_win_set_z(hid, next_z);
                 if (next_z >= 255) next_z = 3;
                 else next_z++;
-                drag_prev_x = ss_win_get_x(hid);
-                drag_prev_y = ss_win_get_y(hid);
-                xor_outline(drag_prev_x, drag_prev_y, drag_w, drag_h);
+                int ox = ss_win_get_x(hid), oy = ss_win_get_y(hid);
+                ss_win_hide(hid);
+                ss_win_render_region(ox, oy, drag_w, drag_h);  /* restore old spot */
+                ol_save(ox, oy, drag_w, drag_h);
+                draw_march_outline(ox, oy, drag_w, drag_h);
+                drag_prev_x = ox; drag_prev_y = oy;
             }
         } else if (left && drag_id > 0) {
             int nx = mx - drag_ox, ny = my - drag_oy;
@@ -150,35 +306,30 @@ void ss_run(void) {
             if (nx + drag_w > W) nx = W - drag_w;
             if (ny + drag_h > H) ny = H - drag_h;
             if (nx != drag_prev_x || ny != drag_prev_y) {
-                xor_outline(drag_prev_x, drag_prev_y, drag_w, drag_h); /* erase */
-                xor_outline(nx, ny, drag_w, drag_h);                    /* draw */
-                drag_prev_x = nx;
-                drag_prev_y = ny;
+                ol_restore();
+                ol_save(nx, ny, drag_w, drag_h);
+                drag_prev_x = nx; drag_prev_y = ny;
             }
+            draw_march_outline(drag_prev_x, drag_prev_y, drag_w, drag_h);
         } else if (!left && drag_id > 0) {
-            xor_outline(drag_prev_x, drag_prev_y, drag_w, drag_h); /* erase */
-            ss_win_move(drag_id, drag_prev_x, drag_prev_y);         /* commit */
+            ol_restore();
+            ss_win_show(drag_id);
+            ss_win_move(drag_id, drag_prev_x, drag_prev_y);
+            /* Region repaint at new position: paints the window (now active,
+             * since set_z raised it) AND refreshes ss_win_active_z. */
+            ss_win_render_region(drag_prev_x, drag_prev_y, drag_w, drag_h);
+            cur_prev_x = -100;
             drag_id = -1;
             drag_prev_x = -1;
-            need_redraw = 1;
         }
 
-        /*
-         * Repaint strategy: full repaint only on drop (window committed);
-         * otherwise just erase the previous cursor outline via XOR.  The
-         * drag outline (if active) is managed above and composes safely
-         * with the cursor because both are XOR.
-         */
-        if (need_redraw) {
-            ss_win_render_all();
-            cur_prev_x = -100;   /* fresh background overwrote old cursor */
-        } else if (cur_prev_x >= 0) {
-            xor_outline(cur_prev_x, cur_prev_y, 6, 6);  /* erase prev cursor */
+        if (drag_id <= 0) {
+            draw_content_dirty(w_timer);
+            draw_content_dirty(w_key);
+            draw_content_dirty(w_mouse);
         }
 
-        /* Software cursor: XOR outline at (mx,my).  Erased next frame by the
-         * xor_outline(cur_prev_*) call above.  Composes safely with any
-         * active drag outline because both are XOR. */
+        /* Draw cursor (erase happens at the top of the next frame) */
         xor_outline(mx, my, 6, 6);
         cur_prev_x = mx; cur_prev_y = my;
 
