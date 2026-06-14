@@ -267,29 +267,23 @@ uint16_t ss_task_sleep(uint32_t ticks);     /* ss_tick_counter + ticks まで WA
 
 各モジュールは明確に分離され、依存方向は **内側（kernel）→ 外側（app）** のみ。
 
-```text
-        ┌─────────────────────────────────────┐
-        │  app/main.c （デモアプリ）          │
-        │  （タイマ/キー/マウスウィンドウ）   │
-        └────┬──────────┬──────────┬──────────┘
-             │          │          │
-             ▼          ▼          ▼
-   ┌──────────┐   ┌──────────┐   ┌──────────┐
-   │ win/     │   │ gfx/     │   │ ipc/     │
-   │ window.c │   │ vram.c   │   │ message.c│
-   └────┬─────┘   └────┬─────┘   └────┬─────┘
-        │              │              │
-        └──────┬───────┴──────┬───────┘
-               │              │
-               ▼              ▼
-         ┌──────────┐  ┌─────────────┐
-         │ mem/     │  │ kernel/     │
-         │ buddy.c  │  │ interrupts.s│
-         │ slab.c   │  │ scheduler.c │
-         └──────────┘  │ work_queue.c│
-                       │ premain.c   │
-                       │ entry.s     │
-                       └─────────────┘
+```mermaid
+graph TD
+    app["app/main.c<br/>（デモアプリ）"]
+    win["win/window.c"]
+    gfx["gfx/vram.c"]
+    ipc["ipc/message.c"]
+    kernel["kernel/<br/>interrupts.s<br/>scheduler.c<br/>work_queue.c<br/>premain.c<br/>entry.s"]
+    mem["mem/<br/>buddy.c<br/>slab.c"]
+
+    app --> win
+    app --> gfx
+    app --> ipc
+    win --> kernel
+    win --> mem
+    gfx --> kernel
+    gfx --> mem
+    ipc --> kernel
 ```
 
 - **kernel** は MFP 割り込み、`ss_set_interrupts()`、コンテキストスイッチを提供する最も内側の層
