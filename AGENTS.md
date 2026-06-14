@@ -2,11 +2,11 @@
 
 ## Project Structure & Module Organization
 
-SSOS has two OS variants in parallel directories: `ssos-preemptive/` (preemptive multitasking) and `ssos-cooperative/` (cooperative multitasking). Within each variant, `os/` is split into `kernel/`, `mem/`, `gfx/`, `win/`, `ipc/`, and `app/` for the core C modules. Boot loader assets sit under `boot/`, while the Human68K standalone launcher is in `standalone/`. Unit tests and the native framework are contained in `ssos/tests/`, and repo-level references land in `docs/` with utilities in `tools/`. Build artifacts such as `.xdf`, `.elf`, and `.X` files are produced into `~/tmp`; keep that directory out of version control.
+SSOS lives in a single unified tree under `ssos/`. The threading model is the only thing that differs between builds and is selected at build time with `SCHED=cooperative` (explicit `ss_task_yield()`) or `SCHED=preemptive` (Timer D ISR-driven context switch). The shared subsystems — `os/gfx`, `os/mem`, `os/ipc`, `os/win`, and the common kernel headers (`os/kernel/kernel.h`, `scheduler.h`, `work_queue.*`, `entry.s`, `linker.ld`) — are compiled unchanged for both models. Only the threading core differs: `os/kernel/cooperative/{scheduler.c,interrupts.s,premain.c}` vs `os/kernel/preemptive/{scheduler.c,interrupts.s,premain.c}`. `os/app/main.c`, `standalone/main.c`, and `boot/` are shared. Boot loader assets sit under `boot/`, the Human68K standalone launcher is in `standalone/`. Unit tests and the native framework are in `tests/`, repo-level references in `docs/`, utilities in `tools/`. Build artifacts such as `.xdf`, `.elf`, and `.x` files are produced into `~/tmp`; keep that directory out of version control.
 
 ## Build, Test, and Development Commands
 
-Configure the toolchain once per shell via `export XELF_BASE=/path/to/elf2x68k/m68k-xelf` and `. ~/.elf2x68k`. Build either variant with `cd ssos-<variant> && make` (produces boot + OS kernel + standalone). Use `make standalone` within a variant directory for just the Human68K binary. Use `make dump` for disassembly, and `make readelf` to inspect ELF metadata. Run `make clean` before switching targets.
+Configure the toolchain once per shell via `export XELF_BASE=/path/to/elf2x68k/m68k-xelf` and `. ~/.elf2x68k`. Build a variant from the unified tree with `cd ssos && make SCHED=cooperative` or `make SCHED=preemptive` (each produces boot + OS kernel `.xdf` and the standalone `.x`). Use `make SCHED=<variant> standalone` for just the Human68K binary, `make dump` for disassembly, and `make readelf` to inspect ELF metadata. Run `make clean` before switching `SCHED` values.
 
 ## Coding Style & Naming Conventions
 
