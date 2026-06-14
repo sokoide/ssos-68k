@@ -20,22 +20,9 @@
 
 ## 前提条件
 
-- <https://github.com/yunkya2/elf2x68k> からクロスコンパイルツールセットをセットアップ・ビルドする
-- macOS 15 Sequoia で `make all` する前に、以下の変更を加えて elf2x68k をコンパイルする
-
-```sh
-brew install texinfo gmp mpfr libmpc
-```
-
-- `scripts/binutils.sh` に Homebrew のライブラリパスを追記:
-
-```bash
---with-gmp=/opt/homebrew/Cellar/gmp/6.3.0 \
---with-mpfr=/opt/homebrew/Cellar/mpfr/4.2.1 \
---with-mpc=/opt/homebrew/Cellar/libmpc/1.3.1
-```
-
-- 詳細なセットアップ手順は <https://github.com/sokoide/x68k-cross-compile> を参照
+macOS: `brew install yunkya2/tap/elf2x68k` でツールチェーンバイナリがインストールできる（XC ライブラリも自動）。
+ソースからビルドする場合は <https://github.com/yunkya2/elf2x68k> を参照。
+Linux/MinGW: <https://github.com/yunkya2/elf2x68k/releases> からバイナリアーカイブを取得する。
 
 ## ビルド
 
@@ -681,7 +668,6 @@ cd tests && make -f Makefile.native
 ## 参考
 
 - <https://github.com/yunkya2/elf2x68k> — クロスコンパイルツールチェーンバイナリ
-- <https://github.com/sokoide/x68k-cross-compile> — ビルド手順詳細
 
 ## コミット規約
 

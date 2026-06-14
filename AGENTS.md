@@ -22,4 +22,4 @@ Git history follows `<type>: short summary` (e.g., `feat: implement hybrid scanl
 
 ## Toolchain & Configuration Tips
 
-Install elf2x68k along with Homebrew `texinfo`, `gmp`, `mpfr`, and `libmpc` before first build. If the configure script cannot find the math libraries on macOS, update `scripts/binutils.sh` with the Homebrew cellar paths from the README. Keep your environment file (`~/.elf2x68k`) local and verify that `m68k-xelf-gcc --version` succeeds before invoking make targets.
+Install `elf2x68k` via `brew install yunkya2/tap/elf2x68k` (includes XC library). Source builds may need `texinfo`, `gmp`, `mpfr`, `libmpc`; see the upstream README for details. Keep your environment file (`~/.elf2x68k`) local and verify that `m68k-xelf-gcc --version` succeeds before invoking make targets.
