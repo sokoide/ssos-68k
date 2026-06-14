@@ -168,9 +168,9 @@ extern void ss_process_wakeups(void);
 
 static SSTask main_tcb;
 
-#define OL_MAX 1200
-static uint16_t ol_buf[OL_MAX];
-static int ol_x, ol_y, ol_w, ol_h, ol_valid;
+/* Drag outline position tracker (self-erasing XOR rect via ss_gfx_xor_rect).
+ * No save buffer: the outline is erased by re-XORing the same rect. */
+static int ol_x, ol_y;
 
 /* ---- GVRAM bitmap save/restore (direct page 0 access) ---- */
 
@@ -273,161 +273,9 @@ static void draw_content_dirty(SSWindow* w) {
 
 /* ---- Marching ants outline ---- */
 
-static void draw_march_outline(int x, int y, int w, int h) {
-    uint16_t colors[2] = {C_WHITE, C_BLACK};
-    int offset = (int)(frame & 7);
-    int peri = 0;
-    uint32_t stride = ss_current_mode->bytes_per_line / 2;  /* words per line */
-    int disp_w = ss_current_mode->display_w;
-    int disp_h = ss_current_mode->display_h;
-
-    if (x >= 0 && y >= 0 && x + w <= disp_w && y + h <= disp_h) {
-        volatile uint16_t* row;
-        row = ss_draw_page + y * stride + x;
-        for (int i = 0; i < w; i++, peri++)
-            row[i] = colors[((peri + offset) >> 2) & 1];
-        for (int i = 1; i < h; i++, peri++)
-            ss_draw_page[(uint32_t)(y + i) * stride + x + w - 1] =
-                colors[((peri + offset) >> 2) & 1];
-        row = ss_draw_page + (uint32_t)(y + h - 1) * stride + x;
-        for (int i = w - 2; i >= 0; i--, peri++)
-            row[i] = colors[((peri + offset) >> 2) & 1];
-        for (int i = h - 2; i >= 1; i--, peri++)
-            ss_draw_page[(uint32_t)(y + i) * stride + x] =
-                colors[((peri + offset) >> 2) & 1];
-    } else {
-        for (int i = 0; i < w; i++, peri++) {
-            int px = x + i;
-            if (px >= 0 && px < disp_w && y >= 0 && y < disp_h)
-                ss_draw_page[y * stride + px] =
-                    colors[((peri + offset) >> 2) & 1];
-        }
-        for (int i = 1; i < h; i++, peri++) {
-            int py = y + i;
-            if (x + w - 1 >= 0 && x + w - 1 < disp_w && py >= 0 && py < disp_h)
-                ss_draw_page[py * stride + x + w - 1] =
-                    colors[((peri + offset) >> 2) & 1];
-        }
-        for (int i = w - 2; i >= 0; i--, peri++) {
-            int px = x + i;
-            if (px >= 0 && px < disp_w && y + h - 1 >= 0 && y + h - 1 < disp_h)
-                ss_draw_page[(uint32_t)(y + h - 1) * stride + px] =
-                    colors[((peri + offset) >> 2) & 1];
-        }
-        for (int i = h - 2; i >= 1; i--, peri++) {
-            int py = y + i;
-            if (x >= 0 && x < disp_w && py >= 0 && py < disp_h)
-                ss_draw_page[py * stride + x] =
-                    colors[((peri + offset) >> 2) & 1];
-        }
-    }
-}
-
-/* ---- Outline save / restore ---- */
-
-static void ol_save(int x, int y, int w, int h) {
-    int disp_w = ss_current_mode->display_w;
-    int disp_h = ss_current_mode->display_h;
-
-    /* Clip to screen bounds */
-    if (x < 0) { w += x; x = 0; }
-    if (y < 0) { h += y; y = 0; }
-    if (x + w > disp_w) w = disp_w - x;
-    if (y + h > disp_h) h = disp_h - y;
-    if (w <= 0 || h <= 0 || w * 2 + h * 2 > OL_MAX) { ol_valid = 0; return; }
-
-    ol_x = x; ol_y = y; ol_w = w; ol_h = h;
-    int idx = 0;
-    uint32_t stride = ss_current_mode->bytes_per_line / 2;  /* words per line */
-
-    if (x >= 0 && y >= 0 && x + w <= disp_w && y + h <= disp_h) {
-        volatile uint16_t* p;
-        p = ss_draw_page + y * stride + x;
-        for (int i = 0; i < w && idx < OL_MAX; i++, idx++) ol_buf[idx] = p[i];
-        p = ss_draw_page + (uint32_t)(y + h - 1) * stride + x;
-        for (int i = 0; i < w && idx < OL_MAX; i++, idx++) ol_buf[idx] = p[i];
-        for (int i = 1; i < h - 1 && idx < OL_MAX; i++, idx++)
-            ol_buf[idx] = ss_draw_page[(uint32_t)(y + i) * stride + x];
-        for (int i = 1; i < h - 1 && idx < OL_MAX; i++, idx++)
-            ol_buf[idx] = ss_draw_page[(uint32_t)(y + i) * stride + x + w - 1];
-    } else {
-        for (int i = 0; i < w && idx < OL_MAX; i++) {
-            int px = x + i;
-            ol_buf[idx++] = (px >= 0 && px < disp_w && y >= 0 && y < disp_h)
-                ? ss_draw_page[y * stride + px] : 0;
-        }
-        for (int i = 0; i < w && idx < OL_MAX; i++) {
-            int px = x + i, py = y + h - 1;
-            ol_buf[idx++] = (px >= 0 && px < disp_w && py >= 0 && py < disp_h)
-                ? ss_draw_page[py * stride + px] : 0;
-        }
-        for (int i = 1; i < h - 1 && idx < OL_MAX; i++) {
-            int py = y + i;
-            ol_buf[idx++] = (x >= 0 && x < disp_w && py >= 0 && py < disp_h)
-                ? ss_draw_page[py * stride + x] : 0;
-        }
-        for (int i = 1; i < h - 1 && idx < OL_MAX; i++) {
-            int py = y + i, px = x + w - 1;
-            ol_buf[idx++] = (px >= 0 && px < disp_w && py >= 0 && py < disp_h)
-                ? ss_draw_page[py * stride + px] : 0;
-        }
-    }
-    ol_valid = 1;
-}
-
-static void ol_restore(void) {
-    if (!ol_valid) return;
-    int x = ol_x, y = ol_y, w = ol_w, h = ol_h;
-    int idx = 0;
-    uint32_t stride = ss_current_mode->bytes_per_line / 2;  /* words per line */
-    int disp_w = ss_current_mode->display_w;
-    int disp_h = ss_current_mode->display_h;
-
-    /* Defensive clip — ol_save already validated, but guard against
-     * stale ol_* values if a future code path sets ol_valid incorrectly. */
-    if (x < 0 || y < 0 || x + w > disp_w || y + h > disp_h || w <= 0 || h <= 0) {
-        ol_valid = 0;
-        return;
-    }
-
-    if (x >= 0 && y >= 0 && x + w <= disp_w && y + h <= disp_h) {
-        volatile uint16_t* p;
-        p = ss_draw_page + y * stride + x;
-        for (int i = 0; i < w && idx < OL_MAX; i++, idx++) p[i] = ol_buf[idx];
-        p = ss_draw_page + (uint32_t)(y + h - 1) * stride + x;
-        for (int i = 0; i < w && idx < OL_MAX; i++, idx++) p[i] = ol_buf[idx];
-        for (int i = 1; i < h - 1 && idx < OL_MAX; i++, idx++)
-            ss_draw_page[(uint32_t)(y + i) * stride + x] = ol_buf[idx];
-        for (int i = 1; i < h - 1 && idx < OL_MAX; i++, idx++)
-            ss_draw_page[(uint32_t)(y + i) * stride + x + w - 1] = ol_buf[idx];
-    } else {
-        for (int i = 0; i < w && idx < OL_MAX; i++) {
-            int px = x + i;
-            if (px >= 0 && px < disp_w && y >= 0 && y < disp_h)
-                ss_draw_page[y * stride + px] = ol_buf[idx];
-            idx++;
-        }
-        for (int i = 0; i < w && idx < OL_MAX; i++) {
-            int px = x + i, py = y + h - 1;
-            if (px >= 0 && px < disp_w && py >= 0 && py < disp_h)
-                ss_draw_page[py * stride + px] = ol_buf[idx];
-            idx++;
-        }
-        for (int i = 1; i < h - 1 && idx < OL_MAX; i++) {
-            int py = y + i;
-            if (x >= 0 && x < disp_w && py >= 0 && py < disp_h)
-                ss_draw_page[py * stride + x] = ol_buf[idx];
-            idx++;
-        }
-        for (int i = 1; i < h - 1 && idx < OL_MAX; i++) {
-            int py = y + i, px = x + w - 1;
-            if (px >= 0 && px < disp_w && py >= 0 && py < disp_h)
-                ss_draw_page[py * stride + px] = ol_buf[idx];
-            idx++;
-        }
-    }
-    ol_valid = 0;
-}
+/* The drag outline is now the shared self-erasing ss_gfx_xor_rect — no
+ * per-frame ol_save (GVRAM read) / ol_restore / marching-ants redraw.
+ * See drag_begin / drag_move / drag_end in the main loop. */
 
 /* ---- V-sync with watchdog ---- */
 
@@ -622,7 +470,6 @@ int main(int argc, char** argv) {
     ss_win_set_title(win_ids[0], "Timer");
     ss_win_set_title(win_ids[1], "Keyboard");
     ss_win_set_title(win_ids[2], "Mouse");
-    ol_valid = 0;
 
     uint16_t t_data = ss_task_create(&(SSTaskInfo){.entry = data_thread,
                                                      .pri = 8,
@@ -708,20 +555,22 @@ int main(int argc, char** argv) {
                     draw_content_dirty(w);
                 }
                 SSWindow* dw = ss_win_get_ptr(hid);
-                ol_save(ss_win_get_x(hid), ss_win_get_y(hid),
-                        ss_win_get_w(hid), ss_win_get_h(hid));
-                draw_march_outline(ss_win_get_x(hid), ss_win_get_y(hid),
-                                   ss_win_get_w(hid), ss_win_get_h(hid));
+                /* Self-erasing XOR outline at the grab position. */
+                ss_gfx_xor_rect(ss_win_get_x(hid), ss_win_get_y(hid),
+                                ss_win_get_w(hid), ss_win_get_h(hid));
+                ol_x = ss_win_get_x(hid);
+                ol_y = ss_win_get_y(hid);
                 memset(dw->content_prev, 0xFF, sizeof(dw->content_prev));
                 need_full = 0;
             }
         }
         if (!left && drag >= 0) {
-            ol_restore();
             uint16_t did = win_ids[drag];
             int wx = ss_win_get_x(did), wy = ss_win_get_y(did);
             int ww = ss_win_get_w(did), wh = ss_win_get_h(did);
             SSWindow* dw = ss_win_get_ptr(did);
+            /* Erase the XOR outline at its last position. */
+            ss_gfx_xor_rect(ol_x, ol_y, ww, wh);
             if (win_save_valid && wx >= 0 && wy >= 0 &&
                 wx + ww <= ss_current_mode->display_w && wy + wh <= ss_current_mode->display_h) {
                 restore_win_bitmap(wx, wy, ww, wh);
@@ -768,13 +617,14 @@ int main(int argc, char** argv) {
             }
             need_full = 0;
         } else if (drag >= 0) {
+            /* Self-erasing XOR outline: erase the old rect, draw the new
+             * one — and only when the window actually moved this frame. */
             SSWindow* dw = ss_win_get_ptr(win_ids[drag]);
-            int moved = (ol_x != dw->x || ol_y != dw->y);
-            if (moved) {
-                ol_restore();
-                ol_save(dw->x, dw->y, dw->w, dw->h);
+            if (ol_x != dw->x || ol_y != dw->y) {
+                ss_gfx_xor_rect(ol_x, ol_y, dw->w, dw->h);
+                ol_x = dw->x; ol_y = dw->y;
+                ss_gfx_xor_rect(dw->x, dw->y, dw->w, dw->h);
             }
-            draw_march_outline(dw->x, dw->y, dw->w, dw->h);
         } else {
             for (int i = 0; i < 3; i++) {
                 SSWindow* w = ss_win_get_ptr(win_ids[i]);
@@ -814,7 +664,6 @@ int main(int argc, char** argv) {
     *(volatile uint32_t*)0xB0 = saved_copy_vec;
     *(volatile uint32_t*)0x7C = saved_nmi_vec;
 
-    ol_restore();
     _iocs_ms_curof();
     _iocs_skey_mod(-1, 0, 0);
     _iocs_crtmod(old_mode);

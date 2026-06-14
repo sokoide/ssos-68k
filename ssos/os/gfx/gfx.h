@@ -112,4 +112,10 @@ void ss_gfx_draw_text_clip(int x, int y, const char* str, uint16_t fg, uint16_t 
 void ss_dma_fill_setup(uint16_t value, int count);
 int  ss_dma_fill_row(volatile uint16_t* dst, int count);
 
+/* XOR the perimeter of [x,y,w,h] against the draw page (clipped to screen).
+ * Self-erasing: drawing the same rect twice restores the original pixels.
+ * Used for transient UI (software cursor, drag outline) without a save
+ * buffer or any VRAM read — cheap on the slow GVRAM read path. */
+void ss_gfx_xor_rect(int x, int y, int w, int h);
+
 #endif /* SS_GFX_H */

@@ -355,6 +355,30 @@ void ss_gfx_draw_text_fast(int x, int y, const char* str, uint16_t fg, uint16_t 
     }
 }
 
+void ss_gfx_xor_rect(int x, int y, int w, int h) {
+    /* XOR 0xFFFF on the rectangle perimeter, clipped to the screen.
+     * Self-erasing: two passes over the same rect restore the original,
+     * so callers use it for transient UI (cursor, drag outline) with no
+     * save buffer and no GVRAM read. */
+    uint32_t stride = ss_current_mode->bytes_per_line / 2;
+    int W = ss_current_mode->display_w, H = ss_current_mode->display_h;
+    volatile uint16_t* v = ss_draw_page;
+    for (int dx = 0; dx < w; dx++) {
+        int xx = x + dx;
+        if (xx < 0 || xx >= W) continue;
+        if (y >= 0 && y < H) v[y * stride + xx] ^= 0xFFFF;
+        int y2 = y + h - 1;
+        if (y2 >= 0 && y2 < H) v[y2 * stride + xx] ^= 0xFFFF;
+    }
+    for (int dy = 0; dy < h; dy++) {
+        int yy = y + dy;
+        if (yy < 0 || yy >= H) continue;
+        if (x >= 0 && x < W) v[yy * stride + x] ^= 0xFFFF;
+        int x2 = x + w - 1;
+        if (x2 >= 0 && x2 < W) v[yy * stride + x2] ^= 0xFFFF;
+    }
+}
+
 void ss_gfx_char_clip(int x, int y, char ch, uint16_t fg, uint16_t bg,
                       const int* clip_wins, int nclip, int zpos) {
     uint8_t c = (uint8_t)ch;

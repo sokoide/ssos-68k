@@ -12,7 +12,10 @@
 
 uint8_t* ss_task_stack_base;
 
-/* Drag state */
+/* Drag state. The drag outline is a self-erasing XOR rectangle
+ * (ss_gfx_xor_rect): no save buffer, no GVRAM read, and it is redrawn
+ * only when the mouse actually moves — the old hot path read+restored
+ * the full window perimeter every frame. */
 static int drag_id = -1;
 static int drag_ox, drag_oy;
 static int drag_w, drag_h;
@@ -22,7 +25,7 @@ static int drag_prev_x = -1, drag_prev_y = -1;
  * would match BOTH the dragged window AND the pre-existing top window,
  * painting both as active (gray + hash stripes). */
 static uint16_t next_z = 4;
-static uint32_t frame = 0;   /* marching-ants phase */
+static uint32_t frame = 0;   /* vsync counter shown in the Timer window */
 
 /* Previous active window: saved at drag start so we can repaint it on
  * release when its is_fg flips (render_region's small rect won't
@@ -38,7 +41,6 @@ static int prev_active_x, prev_active_y, prev_active_w, prev_active_h;
 #define WIN_H     (CONTENT_Y + 3 * LINE_H + 4)
 #define LINE_LEN  28
 #define APP_MAX_WINS 4
-#define OL_MAX     1200
 
 /* 16-color palette indices (set up by premain's palette block). Naming the
  * literals keeps the rendering code readable instead of sprinkling magic
@@ -53,10 +55,6 @@ typedef struct {
     char prev[3][30];
 } WinContent;
 static WinContent win_content[APP_MAX_WINS];
-
-/* Outline border save/restore (under the marching-ants outline) */
-static uint16_t ol_buf[OL_MAX];
-static int ol_x, ol_y, ol_w, ol_h, ol_valid = 0;
 
 static void wait_vsync(void) {
     uint32_t last = ss_vsync_counter;
@@ -83,29 +81,9 @@ static void update_keyboard(void) {
     }
 }
 
-/* XOR outline for the software cursor (6x6) */
-static int cur_prev_x = -100, cur_prev_y = -100;
-static void xor_outline(int x, int y, int w, int h) {
-    uint32_t stride = ss_current_mode->bytes_per_line / 2;
-    int W = ss_current_mode->display_w, H = ss_current_mode->display_h;
-    volatile uint16_t* v = ss_draw_page;
-    for (int dx = 0; dx < w; dx++) {
-        int xx = x + dx;
-        if (xx >= 0 && xx < W) {
-            if (y >= 0 && y < H) v[y * stride + xx] ^= 0xFFFF;
-            int y2 = y + h - 1;
-            if (y2 >= 0 && y2 < H) v[y2 * stride + xx] ^= 0xFFFF;
-        }
-    }
-    for (int dy = 0; dy < h; dy++) {
-        int yy = y + dy;
-        if (yy >= 0 && yy < H) {
-            if (x >= 0 && x < W) v[yy * stride + x] ^= 0xFFFF;
-            int x2 = x + w - 1;
-            if (x2 >= 0 && x2 < W) v[yy * stride + x2] ^= 0xFFFF;
-        }
-    }
-}
+/* Software cursor (6x6) XOR outline position; -1 means "not on screen".
+ * Drawing/erasing is done via the shared self-erasing ss_gfx_xor_rect. */
+static int cur_prev_x = -1, cur_prev_y = -1;
 
 static void pad_line(char* s, int n) {
     int l = (int)strlen(s);
@@ -131,69 +109,6 @@ static void draw_content_dirty(uint16_t id) {
                                   c->line[i] + j, PAL_BLACK, PAL_WHITE);
             memcpy(c->prev[i], c->line[i], 30);
         }
-    }
-}
-
-/* Save/restore only the border pixels (under the marching-ants outline). */
-static void ol_save(int x, int y, int w, int h) {
-    int W = ss_current_mode->display_w, H = ss_current_mode->display_h;
-    if (x < 0) { w += x; x = 0; }
-    if (y < 0) { h += y; y = 0; }
-    if (x + w > W) w = W - x;
-    if (y + h > H) h = H - y;
-    if (w <= 0 || h <= 0 || w * 2 + h * 2 > OL_MAX) { ol_valid = 0; return; }
-    ol_x = x; ol_y = y; ol_w = w; ol_h = h;
-    uint32_t stride = ss_current_mode->bytes_per_line / 2;
-    int idx = 0;
-    for (int i = 0; i < w && idx < OL_MAX; i++, idx++)
-        ol_buf[idx] = ss_draw_page[y * stride + x + i];
-    for (int i = 0; i < w && idx < OL_MAX; i++, idx++)
-        ol_buf[idx] = ss_draw_page[(uint32_t)(y + h - 1) * stride + x + i];
-    for (int i = 1; i < h - 1 && idx < OL_MAX; i++, idx++)
-        ol_buf[idx] = ss_draw_page[(uint32_t)(y + i) * stride + x];
-    for (int i = 1; i < h - 1 && idx < OL_MAX; i++, idx++)
-        ol_buf[idx] = ss_draw_page[(uint32_t)(y + i) * stride + x + w - 1];
-    ol_valid = 1;
-}
-static void ol_restore(void) {
-    if (!ol_valid) return;
-    int x = ol_x, y = ol_y, w = ol_w, h = ol_h;
-    uint32_t stride = ss_current_mode->bytes_per_line / 2;
-    int idx = 0;
-    for (int i = 0; i < w && idx < OL_MAX; i++, idx++)
-        ss_draw_page[y * stride + x + i] = ol_buf[idx];
-    for (int i = 0; i < w && idx < OL_MAX; i++, idx++)
-        ss_draw_page[(uint32_t)(y + h - 1) * stride + x + i] = ol_buf[idx];
-    for (int i = 1; i < h - 1 && idx < OL_MAX; i++, idx++)
-        ss_draw_page[(uint32_t)(y + i) * stride + x] = ol_buf[idx];
-    for (int i = 1; i < h - 1 && idx < OL_MAX; i++, idx++)
-        ss_draw_page[(uint32_t)(y + i) * stride + x + w - 1] = ol_buf[idx];
-    ol_valid = 0;
-}
-
-/* Marching ants outline (standalone draw_march_outline). */
-static void draw_march_outline(int x, int y, int w, int h) {
-    uint16_t colors[2] = {PAL_WHITE, PAL_BLACK};
-    int offset = (int)(frame & 7);
-    uint32_t stride = ss_current_mode->bytes_per_line / 2;
-    int W = ss_current_mode->display_w, H = ss_current_mode->display_h;
-    volatile uint16_t* v = ss_draw_page;
-    int peri = 0;
-    for (int i = 0; i < w; i++, peri++) {
-        int px = x + i;
-        if (px >= 0 && px < W && y >= 0 && y < H) v[y * stride + px] = colors[((peri + offset) >> 2) & 1];
-    }
-    for (int i = 1; i < h; i++, peri++) {
-        int py = y + i, px = x + w - 1;
-        if (px >= 0 && px < W && py >= 0 && py < H) v[py * stride + px] = colors[((peri + offset) >> 2) & 1];
-    }
-    for (int i = w - 2; i >= 0; i--, peri++) {
-        int px = x + i, py = y + h - 1;
-        if (px >= 0 && px < W && py >= 0 && py < H) v[py * stride + px] = colors[((peri + offset) >> 2) & 1];
-    }
-    for (int i = h - 2; i >= 1; i--, peri++) {
-        int py = y + i;
-        if (x >= 0 && x < W && py >= 0 && py < H) v[py * stride + x] = colors[((peri + offset) >> 2) & 1];
     }
 }
 
@@ -299,6 +214,94 @@ static void update_content(uint16_t wt, uint16_t wk, uint16_t wm,
     m->line[2][0] = '\0';
 }
 
+/* ---- drag state machine (split out of ss_run for readability) ----
+ *
+ * The drag outline is a self-erasing XOR rectangle (ss_gfx_xor_rect):
+ * drawing the same rect twice restores the original pixels. This replaces
+ * the earlier marching-ants + ol_save/ol_restore path, which read the full
+ * window perimeter from GVRAM (slow, wait-stated) every frame the mouse
+ * moved and rewrote it every frame for the animation. Now: no save buffer,
+ * no GVRAM read, and the outline is touched only when the position changes.
+ */
+
+static void drag_begin(int mx, int my, int hid) {
+    /* Capture the previous active window (z == current active_z) BEFORE
+     * set_z, so we can repaint it on release if it loses the active title.
+     * Skip the dragged window itself. */
+    prev_active_valid = 0;
+    for (int i = 1; i <= SS_MAX_WINDOWS; i++) {
+        if (i == hid) continue;
+        if (ss_win_get_z(i) == ss_win_active_z) {
+            prev_active_x = ss_win_get_x(i);
+            prev_active_y = ss_win_get_y(i);
+            prev_active_w = ss_win_get_w(i);
+            prev_active_h = ss_win_get_h(i);
+            prev_active_valid = 1;
+            break;
+        }
+    }
+    drag_id = hid;
+    drag_ox = mx - ss_win_get_x(hid);
+    drag_oy = my - ss_win_get_y(hid);
+    drag_w  = ss_win_get_w(hid);
+    drag_h  = ss_win_get_h(hid);
+    ss_win_set_z(hid, next_z);
+    if (next_z >= 255) next_z = 3;
+    else next_z++;
+
+    int ox = ss_win_get_x(hid), oy = ss_win_get_y(hid);
+    ss_win_hide(hid);
+    ss_win_render_region(ox, oy, drag_w, drag_h);  /* restore the old spot */
+    ss_gfx_xor_rect(ox, oy, drag_w, drag_h);       /* draw XOR outline */
+    drag_prev_x = ox; drag_prev_y = oy;
+}
+
+static void drag_move(int mx, int my) {
+    int nx = mx - drag_ox, ny = my - drag_oy;
+    int W = ss_current_mode->display_w, H = ss_current_mode->display_h;
+    if (nx < 0) nx = 0;
+    if (ny < 0) ny = 0;
+    if (nx + drag_w > W) nx = W - drag_w;
+    if (ny + drag_h > H) ny = H - drag_h;
+    if (nx == drag_prev_x && ny == drag_prev_y) return;  /* no redraw when still */
+    ss_gfx_xor_rect(drag_prev_x, drag_prev_y, drag_w, drag_h);  /* erase old */
+    drag_prev_x = nx; drag_prev_y = ny;
+    ss_gfx_xor_rect(nx, ny, drag_w, drag_h);                   /* draw new */
+}
+
+static void drag_end(void) {
+    ss_gfx_xor_rect(drag_prev_x, drag_prev_y, drag_w, drag_h);  /* erase outline */
+    ss_win_show(drag_id);
+    ss_win_move(drag_id, drag_prev_x, drag_prev_y);
+    /* Region repaint at new position: paints the window (now active, since
+     * set_z raised it) AND refreshes ss_win_active_z. */
+    ss_win_render_region(drag_prev_x, drag_prev_y, drag_w, drag_h);
+    /* Repaint the previous active window: render_region only touches windows
+     * overlapping the new position, so the window that just lost the active
+     * title would be left painted in the active color. Force its repaint. */
+    if (prev_active_valid) {
+        ss_win_render_region(prev_active_x, prev_active_y,
+                             prev_active_w, prev_active_h);
+    }
+    drag_id = -1;
+    drag_prev_x = -1;
+    prev_active_valid = 0;
+}
+
+/* Run one frame of drag handling. Returns 1 while a drag is in progress
+ * (the caller suppresses per-window content redraws during a drag). */
+static int handle_drag(int mx, int my, int left) {
+    if (left && drag_id < 0) {
+        int hid = ss_win_hit_test(mx, my);
+        if (hid > 0) drag_begin(mx, my, hid);
+    } else if (left && drag_id > 0) {
+        drag_move(mx, my);
+    } else if (!left && drag_id > 0) {
+        drag_end();
+    }
+    return drag_id > 0;
+}
+
 void ss_run(void) {
     uint16_t w_timer = ss_win_create(30, 15, WIN_W, WIN_H, 1);
     uint16_t w_key   = ss_win_create(180, 60, WIN_W, WIN_H, 2);
@@ -323,90 +326,25 @@ void ss_run(void) {
 
         update_content(w_timer, w_key, w_mouse, mx, my, left, right);
 
-        /* Erase previous cursor BEFORE any region repaint, so a repaint
-         * that overwrites the cursor pixel doesn't leave a stray XOR mark. */
-        if (cur_prev_x >= 0) xor_outline(cur_prev_x, cur_prev_y, 6, 6);
+        /* Erase the previous cursor BEFORE any region repaint, so a repaint
+         * that overwrites cursor pixels does not leave a stray XOR mark. */
+        if (cur_prev_x >= 0) ss_gfx_xor_rect(cur_prev_x, cur_prev_y, 6, 6);
 
-        /* Drag (standalone-style: marching ants + region repaint, no full) */
-        if (left && drag_id < 0) {
-            int hid = ss_win_hit_test(mx, my);
-            if (hid > 0) {
-                /* Capture the previous active window (z == current active_z)
-                 * BEFORE set_z, so we can repaint it on release if it loses
-                 * the active title.  Skip if it's the dragged window itself. */
-                prev_active_valid = 0;
-                for (int i = 1; i <= SS_MAX_WINDOWS; i++) {
-                    if (i == hid) continue;
-                    if (ss_win_get_z(i) == ss_win_active_z) {
-                        prev_active_x = ss_win_get_x(i);
-                        prev_active_y = ss_win_get_y(i);
-                        prev_active_w = ss_win_get_w(i);
-                        prev_active_h = ss_win_get_h(i);
-                        prev_active_valid = 1;
-                        break;
-                    }
-                }
-                drag_id = hid;
-                drag_ox = mx - ss_win_get_x(hid);
-                drag_oy = my - ss_win_get_y(hid);
-                drag_w  = ss_win_get_w(hid);
-                drag_h  = ss_win_get_h(hid);
-                ss_win_set_z(hid, next_z);
-                if (next_z >= 255) next_z = 3;
-                else next_z++;
-                int ox = ss_win_get_x(hid), oy = ss_win_get_y(hid);
-                ss_win_hide(hid);
-                ss_win_render_region(ox, oy, drag_w, drag_h);  /* restore old spot */
-                ol_save(ox, oy, drag_w, drag_h);
-                draw_march_outline(ox, oy, drag_w, drag_h);
-                drag_prev_x = ox; drag_prev_y = oy;
-            }
-        } else if (left && drag_id > 0) {
-            int nx = mx - drag_ox, ny = my - drag_oy;
-            int W = ss_current_mode->display_w, H = ss_current_mode->display_h;
-            if (nx < 0) nx = 0;
-            if (ny < 0) ny = 0;
-            if (nx + drag_w > W) nx = W - drag_w;
-            if (ny + drag_h > H) ny = H - drag_h;
-            if (nx != drag_prev_x || ny != drag_prev_y) {
-                ol_restore();
-                ol_save(nx, ny, drag_w, drag_h);
-                drag_prev_x = nx; drag_prev_y = ny;
-            }
-            draw_march_outline(drag_prev_x, drag_prev_y, drag_w, drag_h);
-        } else if (!left && drag_id > 0) {
-            ol_restore();
-            ss_win_show(drag_id);
-            ss_win_move(drag_id, drag_prev_x, drag_prev_y);
-            /* Region repaint at new position: paints the window (now active,
-             * since set_z raised it) AND refreshes ss_win_active_z. */
-            ss_win_render_region(drag_prev_x, drag_prev_y, drag_w, drag_h);
-            /* Repaint the previous active window: render_region only
-             * touches windows overlapping the new position, so the
-             * window that just lost the active title is left painted
-             * in the active color.  Force its repaint now. */
-            if (prev_active_valid) {
-                ss_win_render_region(prev_active_x, prev_active_y,
-                                     prev_active_w, prev_active_h);
-            }
-            cur_prev_x = -100;
-            drag_id = -1;
-            drag_prev_x = -1;
-            prev_active_valid = 0;
-        }
+        int dragging = handle_drag(mx, my, left);
 
-        if (drag_id <= 0) {
+        if (!dragging) {
             draw_content_dirty(w_timer);
             draw_content_dirty(w_key);
             draw_content_dirty(w_mouse);
         }
 
-        /* Draw cursor (erase happens at the top of the next frame) */
-        xor_outline(mx, my, 6, 6);
+        /* Draw cursor (erase happens at the top of the next frame). */
+        ss_gfx_xor_rect(mx, my, 6, 6);
         cur_prev_x = mx; cur_prev_y = my;
 
         ss_work_drain(&ss_main_work_queue);
         ss_process_wakeups();
         ss_task_yield();
+        (void)right;
     }
 }
