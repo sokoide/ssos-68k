@@ -750,8 +750,13 @@ int main(int argc, char** argv) {
     _dos_exit2(0);
 
 #else
-    /* Normal path */
-    _iocs_b_print("SSOS-Preemptive terminated.\r\n");
+    /* Normal path.
+     * B_SUPER MUST come before B_PRINT: issuing IOCS _B_PRINT (trap #15) while
+     * still in supervisor mode leaves SSP pointing at the C-runtime stack and
+     * disturbs the process state DOS termination walks, triggering an Address
+     * Error in the IPL-ROM memmove at 0xFFA870 (move.l -(a0),-(a1), A1 = BSS+1).
+     * See commit e8a268e and .ai-handoff.md (s33). All DIAG_CASE_* branches
+     * above use this same B_SUPER-first order. */
     asm volatile(
         "moveq #-127, %%d0\n\t"  /* _B_SUPER = 0x81 */
         "move.l %0, %%d1\n\t"    /* old_ssp */
@@ -760,6 +765,11 @@ int main(int argc, char** argv) {
         : "d"(old_ssp)
         : "d0", "d1"
     );
+#ifdef SS_BUILD_PREEMPTIVE
+    _iocs_b_print("SSOS-Preemptive terminated.\r\n");
+#else
+    _iocs_b_print("SSOS-Cooperative terminated.\r\n");
+#endif
     _exit(0);
 #endif
 }
