@@ -680,9 +680,6 @@ cd tests && make -f Makefile.native
 
 ## 参考
 
-- `docs/SSOS_ARCHITECTURE_REPORT.md` — 詳細アーキテクチャレポート
-- `docs/SSOS_QUALITY_ANALYSIS_REPORT.md` — 品質分析レポート
-- `DRAW_IMPROVEMENT_ja.md` — 描画改善の歴史（s21 以前）
 - <https://github.com/yunkya2/elf2x68k> — クロスコンパイルツールチェーンバイナリ
 - <https://github.com/sokoide/x68k-cross-compile> — ビルド手順詳細
 
