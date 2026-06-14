@@ -26,6 +26,31 @@
 #include <x68k/iocs.h>
 #pragma warning restore format
 
+/* Diagnostic cases for s33 crash investigation.
+ * Define one of these via -D on the command line:
+ *   make CDEFINES=-DDIAG_CASE_1   (etc.)
+ * Runs the test in place of the normal exit sequence. */
+#ifdef DIAG_CASE_1
+/* B_SUPER → dos_exit2(0) — no B_PRINT at all */
+#include <x68k/dos.h>
+#endif
+#ifdef DIAG_CASE_2
+/* B_SUPER → 1000 nops → dos_exit2(0) */
+#include <x68k/dos.h>
+#endif
+#ifdef DIAG_CASE_3
+/* B_SUPER → _iocs_b_keysns() → dos_exit2(0) */
+#include <x68k/dos.h>
+#endif
+#ifdef DIAG_CASE_4
+/* B_SUPER → B_PRINT("A") → dos_exit2(0) */
+#include <x68k/dos.h>
+#endif
+#ifdef DIAG_CASE_5
+/* B_SUPER → B_PRINT("AAAA...") → dos_exit2(0) */
+#include <x68k/dos.h>
+#endif
+
 #ifdef LOCAL_MODE
 
 static uint8_t local_memory[512 * 1024] __attribute__((aligned(4)));
@@ -670,7 +695,63 @@ int main(int argc, char** argv) {
     _iocs_crtmod(old_mode);
     _iocs_b_curon();
 
-    /* Exit supervisor mode via raw trap */
+#ifdef DIAG_CASE_1
+    /* Case 1: B_SUPER → dos_exit2(0) only */
+    asm volatile(
+        "moveq #-127, %%d0\n\t"
+        "move.l %0, %%d1\n\t"
+        "trap #15\n\t"
+        : : "d"(old_ssp) : "d0", "d1"
+    );
+    _dos_exit2(0);
+
+#elif defined(DIAG_CASE_2)
+    /* Case 2: B_SUPER → 1000 nops → dos_exit2(0) */
+    asm volatile(
+        "moveq #-127, %%d0\n\t"
+        "move.l %0, %%d1\n\t"
+        "trap #15\n\t"
+        : : "d"(old_ssp) : "d0", "d1"
+    );
+    for (volatile int i = 0; i < 1000; i++);
+    _dos_exit2(0);
+
+#elif defined(DIAG_CASE_3)
+    /* Case 3: B_SUPER → keysns → dos_exit2(0) */
+    asm volatile(
+        "moveq #-127, %%d0\n\t"
+        "move.l %0, %%d1\n\t"
+        "trap #15\n\t"
+        : : "d"(old_ssp) : "d0", "d1"
+    );
+    _iocs_b_keysns();
+    _dos_exit2(0);
+
+#elif defined(DIAG_CASE_4)
+    /* Case 4: B_SUPER → B_PRINT("A") → dos_exit2(0) */
+    asm volatile(
+        "moveq #-127, %%d0\n\t"
+        "move.l %0, %%d1\n\t"
+        "trap #15\n\t"
+        : : "d"(old_ssp) : "d0", "d1"
+    );
+    _iocs_b_print("A");
+    _dos_exit2(0);
+
+#elif defined(DIAG_CASE_5)
+    /* Case 5: B_SUPER → B_PRINT(16 A's) → dos_exit2(0) */
+    asm volatile(
+        "moveq #-127, %%d0\n\t"
+        "move.l %0, %%d1\n\t"
+        "trap #15\n\t"
+        : : "d"(old_ssp) : "d0", "d1"
+    );
+    _iocs_b_print("AAAAAAAAAAAAAAAA");
+    _dos_exit2(0);
+
+#else
+    /* Normal path */
+    _iocs_b_print("SSOS-Preemptive terminated.\r\n");
     asm volatile(
         "moveq #-127, %%d0\n\t"  /* _B_SUPER = 0x81 */
         "move.l %0, %%d1\n\t"    /* old_ssp */
@@ -679,13 +760,8 @@ int main(int argc, char** argv) {
         : "d"(old_ssp)
         : "d0", "d1"
     );
-
-#ifdef SS_BUILD_PREEMPTIVE
-    _iocs_b_print("SSOS-Preemptive terminated.\r\n");
-#else
-    _iocs_b_print("SSOS-Cooperative terminated.\r\n");
-#endif
     _exit(0);
+#endif
 }
 
 #endif /* LOCAL_MODE */

@@ -493,6 +493,38 @@ Timer D と V-DISP の両 ISR は:
 
 ### バグ履歴（解決済み）
 
+#### s33: preemptive standalone 終了時 Address Error (調査中)
+
+- **症状**: `ssos_pre.x` ESC 終了時、"SSOS-Preemptive terminated." 表示直後に
+  `Exceptional Abort By address error` (PC=0xFFA870, `move.l -(a0),-(a1)`) で Address Error。
+  `ssos_cop.x` は無傷。文字列長の 1 バイト差で発現有無が変わる
+  ("Preemptive" 10文字 vs "Cooperative" 11文字)。
+
+- **確定している事実**:
+  - crash 時 A1 = `0x0015E429` (奇数) = BSS start + 1 (off-by-one)
+  - Supervisor mode (`_B_PRINT` → `_B_SUPER` → `_dos_exit2`) → crash
+  - User mode (`_B_SUPER` → `_B_PRINT` → `_dos_exit2`) → no crash
+  - `_B_PRINT` 自体は両方の順序で正常動作（メッセージは表示される）
+  - `_dos_exit2` は `movew sp@(6),sp@-; .short 0xFF4C` の単純実装。cleanup なし
+  - 0xFFA870 は IPL-ROM 内の逆方向 memmove ルーチン
+
+- **未確定の仮説**:
+  1. Human68K の PSP/MCB/プロセス管理情報がプログラム実行中に 1 バイト壊れている
+  2. `_B_SUPER` 前後での trap #15 ハンドラのスタック使用 (SSP=C runtime vs old_ssp) の
+     違いが、IOCS 内部動作を通じて PSP/MCB への「当たり方」を変えている
+  3. 文字列長の 1 バイト差は BSS alignment を変え、壊れる場所の parity を変えるだけ
+
+- **応急処置** (`e8a268e`):
+  `_iocs_b_print()` を `_B_SUPER(old_ssp)` の後に移動。確実に回避できるが、
+  なぜ効くかの説明は不完全。
+
+- **次セッションの診断計画**:
+  ケース 1: `B_SUPER` → `dos_exit2` (B_PRINT なし)
+  ケース 2: `B_SUPER` → nop 1000回 → `dos_exit2`
+  ケース 3: `B_SUPER` → `_IOCS_B_KEYSNS` → `dos_exit2`
+  ケース 4: `B_SUPER` → `B_PRINT("A")` → `dos_exit2`
+  ケース 5: `B_SUPER` → `B_PRINT("AAAAAAAAAAAAAAAA")` → `dos_exit2`
+
 #### s27-s29: OS モードのアクティブタイトル表示
 
 OS モードのウィンドウタイトルレンダリングは、スタンドアロンと同等の表示になるまで 3 回のイテレーションを経た。詳細は s27-s29 の章末尾にまとめた（[s27](#s27-3-ウィンドウのコンテンツ--アクティブ用ハッシュストライプ解決済み)・[s28](#s28-ドラッグによる非アクティブウィンドウのタイトル固着解決済み)・[s29](#s29-初回ドラッグの-z-衝突解決済み)）。
