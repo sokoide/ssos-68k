@@ -15,7 +15,7 @@ KDIR=kernel/$(SCHED)
 
 TARGET=SSOS.X
 SRCS= \
-	$(KDIR)/premain.c \
+	kernel/premain.c \
 	$(KDIR)/scheduler.c \
 	kernel/work_queue.c \
 	util/numfmt.c \

@@ -13,8 +13,10 @@ endif
 # Output name reflects the threading model.
 ifeq ($(SCHED),cooperative)
 TARGET=ssos_cop.x
+CDEFINES=-DSS_BUILD_COOPERATIVE
 else
 TARGET=ssos_pre.x
+CDEFINES=-DSS_BUILD_PREEMPTIVE
 endif
 
 KDIR=../os/kernel/$(SCHED)
@@ -43,7 +45,7 @@ READELF=m68k-elf-readelf
 INCLUDE=-I$(XELF_BASE)/m68k-elf/include -I../include -I../os/kernel -I$(KDIR) -I../os/mem -I../os/gfx -I../os/win -I../os/util
 LIB=-L$(XELF_BASE)/m68k-elf/lib
 
-CCFLAGS=$(INCLUDE) -O2 -g -DLOCAL_MODE
+CCFLAGS=$(INCLUDE) -O2 -g -DLOCAL_MODE $(CDEFINES)
 LDFLAGS=$(LIB) -lx68kiocs -nostdlib -lc -lm -lgcc
 
 .PHONY: all clean install dump readelf

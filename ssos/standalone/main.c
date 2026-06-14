@@ -1,13 +1,14 @@
 /*
- * SSOS-Cooperative Standalone — Cooperative Multithreading Windowed Demo
- * CRT: 512x512 256-color (crtmod 8)
+ * SSOS Standalone — multithreaded Windowed Demo
+ * CRT: 512x512 256-color (crtmod 8) or 1024x1024 16-color (crtmod 16)
  * Font: Spleen 5x8
  * Exit: ESC key
  *
  * Architecture:
  *   Thread 1 (main, pri=8):   Rendering loop + mouse IOCS (V-sync rate)
  *   Thread 2 (data, pri=8):   Timer/Keyboard window data + IOCS calls
- *   Context switch: cooperative (explicit yield) — no preemption
+ *   Context switch: cooperative = explicit yield (SCHED=cooperative)
+ *                   preemptive  = Timer D ISR     (SCHED=preemptive)
  */
 #include "../os/kernel/kernel.h"
 #include "../os/kernel/scheduler.h"
@@ -669,7 +670,11 @@ int main(int argc, char** argv) {
     _iocs_crtmod(old_mode);
     _iocs_b_curon();
 
+#ifdef SS_BUILD_PREEMPTIVE
+    _iocs_b_print("SSOS-Preemptive terminated.\r\n");
+#else
     _iocs_b_print("SSOS-Cooperative terminated.\r\n");
+#endif
     /* Exit supervisor mode via raw trap */
     asm volatile(
         "moveq #-127, %%d0\n\t"  /* _B_SUPER = 0x81 */
