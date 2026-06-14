@@ -670,32 +670,6 @@ int main(int argc, char** argv) {
     _iocs_crtmod(old_mode);
     _iocs_b_curon();
 
-    /* ── 終了メッセージ (s33 workaround) ──
-     *
-     * WARNING: 2つの文字列は同一長 (32バイト) に強制する。変更時は長さ
-     * を揃えること。
-     *
-     * 背景:
-     *   "Preemptive" と "Cooperative" は1文字違い (10文字 vs 11文字)。
-     *   文字列長が違うと .rodata 長が変わりリンカのセクションアライメント
-     *   を経て .bss 開始アドレスが数バイトシフトする。このシフトが
-     *   local_stack_mem 内のとあるタスクスタックオフセットを偶数→奇数
-     *   に変え、preemptive スケジューラのコンテキストスイッチが書き込む
-     *   レジスタ値が結果的に奇数ポインタとして SX-LIB の memmove
-     *   (0xFFA870, move.l -(a0),-(a1)) に渡って Address Error を
-     *   引き起こす。文字列長を揃えると BSS 配置が変わらなくなり、
-     *   この latent な不整列バグが露出しなくなる。
-     *
-     *   これはワークアラウンドであって根本修正ではない。真のバグ
-     *   (preemptive スケジューラの alignment-dependent memory
-     *   corruption) は未特定・未修正。文字列長を揃えても不正な書き込み
-     *  自体は止まらない — 違うアドレスに書かれるだけで偶発的にクラッシュ
-     *  しなくなるにすぎない。*/
-#ifdef SS_BUILD_PREEMPTIVE
-    _iocs_b_print("SSOS-Preemptive terminated. \r\n");   /* 32 bytes */
-#else
-    _iocs_b_print("SSOS-Cooperative terminated.\r\n");   /* 32 bytes */
-#endif
     /* Exit supervisor mode via raw trap */
     asm volatile(
         "moveq #-127, %%d0\n\t"  /* _B_SUPER = 0x81 */
@@ -705,6 +679,12 @@ int main(int argc, char** argv) {
         : "d"(old_ssp)
         : "d0", "d1"
     );
+
+#ifdef SS_BUILD_PREEMPTIVE
+    _iocs_b_print("SSOS-Preemptive terminated.\r\n");
+#else
+    _iocs_b_print("SSOS-Cooperative terminated.\r\n");
+#endif
     _exit(0);
 }
 
