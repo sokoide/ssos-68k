@@ -1,17 +1,17 @@
 # SSOS for X68000
 
-**SSOS** is a simple operating system for the X68000 computer (Motorola 68000 processor), featuring cooperative and preemptive multitasking, graphics management, and a window system with mouse support.
+**SSOS** は X68000（MC68000 プロセッサ）向けの簡易オペレーティングシステムです。協調的マルチタスクとプリエンプティブマルチタスクの両方に対応し、グラフィックス管理、マウス対応ウィンドウシステムを備えます。
 
-## Prerequisites
+## 前提条件
 
-- Set up and build a cross compile toolset from <https://github.com/yunkya2/elf2x68k>
-- Make the following changes to compile elf2x68k before `make all` on macOS 15 Sequoia
+- <https://github.com/yunkya2/elf2x68k> からクロスコンパイルツールセットをセットアップ・ビルドする
+- macOS 15 Sequoia で `make all` する前に、以下の変更を加えて elf2x68k をコンパイルする
 
 ```sh
 brew install texinfo gmp mpfr libmpc
 ```
 
-- modify `scripts/binutils.sh` to include Homebrew library paths:
+- `scripts/binutils.sh` に Homebrew のライブラリパスを追記:
 
 ```bash
 --with-gmp=/opt/homebrew/Cellar/gmp/6.3.0 \
@@ -19,205 +19,259 @@ brew install texinfo gmp mpfr libmpc
 --with-mpc=/opt/homebrew/Cellar/libmpc/1.3.1
 ```
 
-- See <https://github.com/sokoide/x68k-cross-compile> for detailed setup instructions
+- 詳細なセットアップ手順は <https://github.com/sokoide/x68k-cross-compile> を参照
 
-## Build
+## ビルド
 
-### Environment Setup
+### 環境設定
 
 ```bash
 export XELF_BASE=/path/to/your/cloned/elf2x68k/m68k-xelf
 export PATH=$XELF_BASE/bin:$PATH
 
-# Source the environment (recommended)
+# 環境ファイルを読み込む（推奨）
 . ~/.elf2x68k
 ```
 
-### Standalone Development Build (Recommended for Testing)
+### スタンドアローン開発ビルド（テスト推奨）
 
-For faster development iteration, build as a standalone Human68K executable:
+高速な開発イテレーションのため、Human68K 実行形式としてビルド:
 
 ```bash
-cd ssos-cooperative    # or ssos-preemptive
-make clean             # Required when switching between targets
+cd ssos-cooperative    # または ssos-preemptive
+make clean             # ターゲット切り替え時に必須
 make standalone
-# Output: ~/tmp/ssos_cop.x or ~/tmp/ssos_prm.x
+# 出力: ~/tmp/ssos_cop.x または ~/tmp/ssos_prm.x
 ```
 
-### OS Build (Bootable Disk)
+### OS ビルド（起動可能ディスク）
 
 ```bash
-cd ssos-cooperative    # or ssos-preemptive
-make clean             # Required when switching between targets
+cd ssos-cooperative    # または ssos-preemptive
+make clean             # ターゲット切り替え時に必須
 make
-# Output: ~/tmp/ssos.xdf (bootable disk image)
+# 出力: ~/tmp/ssos.xdf（起動可能ディスクイメージ）
 ```
 
-Boot from the generated XDF file in your X68000 emulator:
+生成された XDF ファイルを X68000 エミュレータで起動:
 
 ![ssos](./docs/ssos.png)
 
-### Additional Build Commands
+### その他のビルドコマンド
 
 ```bash
-make compiledb      # Generate compile_commands.json for LSP support
-make dump           # Disassemble the binary for debugging
-make readelf        # Show ELF file information
-make clean          # Clean all build artifacts
+make compiledb      # LSP 対応の compile_commands.json を生成
+make dump           # バイナリの逆アセンブル出力（デバッグ用）
+make readelf        # ELF ファイル情報を表示
+make clean          # ビルド成果物を全て削除
 ```
 
-## Architecture Overview
+## アーキテクチャ概要
 
-### Project Structure
+### プロジェクト構成
 
 ```
 ssos-68k/
-├── ssos-cooperative/          # Cooperative multitasking version
-│   ├── boot/                  # Assembly-based boot sector
+├── ssos-cooperative/          # 協調的マルチタスク版
+│   ├── boot/                  # アセンブリ製ブートセクタ
 │   ├── os/
-│   │   ├── kernel/            # Core OS: interrupts.s, scheduler.c, kernel.c, task_manager.c
-│   │   ├── app/               # Application logic
-│   │   ├── gfx/               # Graphics primitives
-│   │   ├── mem/               # Memory management
-│   │   └── window/            # Window layering and dirty region system
-│   └── standalone/            # Standalone build (Human68K .x executable)
-├── ssos-preemptive/           # Preemptive multitasking version
-│   └── (same structure)
-├── ssos/                      # Legacy unified build (deprecated)
-└── docs/                      # Documentation and references
+│   │   ├── kernel/            # コア OS: interrupts.s, scheduler.c, kernel.c, task_manager.c
+│   │   ├── app/               # アプリケーション: 3 ウィンドウ（Timer/Keyboard/Mouse）、ドラッグ、 marching-ants 枠線
+│   │   ├── gfx/               # グラフィックスプリミティブ
+│   │   ├── mem/               # メモリ管理
+│   │   ├── ipc/               # プロセス間メッセージング
+│   │   └── win/               # 汎用ウィンドウシステム (SS_MAX_WINDOWS=32): z-order, hit-test, region render
+│   └── standalone/            # スタンドアローンビルド（Human68K .x 実行形式、独自 main.c）
+├── ssos-preemptive/           # プリエンプティブマルチタスク版
+│   └── （同構造）
+├── ssos/                      # 旧統合ビルド（非推奨）
+└── docs/                      # ドキュメント
 ```
 
-### Key Components
+### 主要コンポーネント
 
-| Component | Description |
+| コンポーネント | 説明 |
 |-----------|-------------|
-| **interrupts.s** | MFP initialization, Timer D (200Hz tick) ISR, V-DISP (60Hz vsync) ISR |
-| **scheduler.c** | Cooperative: explicit yield / Preemptive: timer-based context switch |
-| **task_manager.c** | Task creation, state management, sleep/wakeup |
-| **kernel.c** | Kernel main loop, V-sync handling, key input management |
-| **memory.c** | Custom allocator with 4KB page alignment |
-| **layer.c** | Window layering with dirty region optimization |
+| **interrupts.s** | MFP 初期化、Timer D（200Hz ティック）ISR、V-DISP（60Hz vsync）ISR |
+| **scheduler.c** | 協調的: 明示的 yield / プリエンプティブ: タイマベースのコンテキストスイッチ |
+| **task_manager.c** | タスク生成、状態管理、sleep/wakeup |
+| **kernel.c** | カーネルメインループ、V-sync 処理、キー入力管理 |
+| **memory.c** | 4KB ページアライメントのカスタムアロケータ |
+| **win/window.c** | ウィンドウ z-order、hit-test、render_all、render_region、dirty region。`SS_MAX_WINDOWS=32`。 |
+| **app/main.c** | デモ: 3 ウィンドウ（Timer/Keyboard/Mouse）+ ドラッグ + marching-ants 枠線 + コンテンツ差分更新 |
 
-### Two Multitasking Models
+### 2つのマルチタスクモデル
 
-- **Cooperative** (`ssos-cooperative/`): Tasks yield explicitly via `ss_task_yield()`. ISR only increments counters and sets flags — all wakeup processing happens in the main loop.
-- **Preemptive** (`ssos-preemptive/`): Timer D ISR performs context switching. Full register save/restore on each switch.
+- **協調的** (`ssos-cooperative/`): タスクは `ss_task_yield()` で明示的に CPU を譲る。ISR はカウンタのインクリメントとフラグ設定のみ行い、起床処理は全てメインループで実行。
+- **プリエンプティブ** (`ssos-preemptive/`): Timer D ISR がコンテキストスイッチを実行。各スイッチ時に全レジスタを保存/復元。
 
-### Standalone vs OS Mode
+### スタンドアローン vs OS モード
 
-- **Standalone Mode**: Compiles as Human68K executable (`.x`) with `LOCAL_MODE` define. Shares most kernel code but skips low-level hardware initialization. Faster for development iteration.
-- **OS Mode**: Full bootable system with custom boot loader. Requires `make clean` when switching from standalone mode.
+- **スタンドアロンモード** (`.x`): `LOCAL_MODE` 定義ありで Human68K 実行形式としてコンパイル。gfx/mem/kernel コードを共有するが、独自の `main.c` と独自のウィンドウ/フレーム/ドラッグ実装を持つ。開発イテレーションが高速。
+- **OS モード** (`.xdf`): カスタムブートローダを持つ完全起動可能システム。スタンドアロンモードから切り替える際は `make clean` が必要。
 
-## MFP Interrupt Configuration
+#### ウィンドウ Z-Order 管理: OS モードがスタンドアローンと異なる理由
 
-### Current Configuration
+| 観点 | `.x`（スタンドアローン） | `.xdf`（OS） |
+|--------|-------------------|-------------|
+| Z-order 保存 | `int zmap[NUM_WINS] = {0,1,2}`（順序配列） | `SSWindow` の `uint16_t z` フィールド |
+| アクティブ判定ルール | `i == NUM_WINS-1`（zmap の最後） | `self->z == ss_win_active_z`（最大 z） |
+| ドラッグ操作 | `bring_to_front(idx)`（最後尾スロットへ移動） | `ss_win_set_z(hid, next_z++)`（単調増加） |
+| Z 衝突 | 不可能（配列順序、値の重複なし） | 可能性あり（next_z を初期 z 範囲より上にする必要あり） |
 
-| Register | Address | Value | Effect |
+**OS 版がスタンドアローンの方式を流用しない理由:**
+
+スタンドアローン版は 3 ウィンドウ固定で `zmap[]` を 3 要素の順序配列として使う — スロットインデックスがそのまま z 値となる。これは簡潔だがスケーラブルではない。
+
+OS 版 (`os/win/window.c`) は `SS_MAX_WINDOWS=32` の汎用ウィンドウマネージャである。その設計は:
+
+1. **ウィンドウごとに `z` を保存**: 各 `SSWindow` が自己記述的になる。外部の順序簿なしでウィンドウの作成/破棄/再作成が可能。
+2. **`ss_win_render_all` / `ss_win_render_region` で z=0..255 をイテレート**: z-order で描画する汎用アルゴリズム。任意のウィンドウ数で動作。
+3. **`rebuild_zmap` でブロックレベル max-z を使用**（8×8 ブロックのオクルージョンマップ）: 各ウィンドウが z 値を持つことで成立する設計。
+4. **ドラッグによる前面移動で z を単調増加**: 順序配列のスキャンなしで、ドラッグされたウィンドウが確実に新たな最前面になる。
+
+トレードオフとして、**単調増加 z は初期状態に注意が必要**: 最初のドラッグが起動時の z 値と衝突してはいけない。OS 版は `next_z` を初期 z の最大値より 1 大きい値（z=1..3 で作成したウィンドウに対して `next_z = 4`）に設定することで、2 つのウィンドウが同一 z 値（両方アクティブ表示になる）を共有するのを防いでいる。後述の「知見」s29 を参照。
+
+## MFP 割り込み設定
+
+### 現在の設定
+
+| レジスタ | アドレス | 値 | 効果 |
 |----------|---------|-------|--------|
-| IERA | `$E88007` | `$FF` | All sources enabled (IOCS compatibility) |
-| IERB | `$E88009` | `$7F` | All sources enabled (IOCS compatibility) |
-| IMRA | `$E88013` | `$FF` | All sources unmasked (Human68K compatibility) |
-| IMRB | `$E88015` | `$7F` | All sources unmasked except bit 7 |
-| VR | `$E88017` | `$41` | Auto-EOI, vector base 0x40 |
-| TACR | `$E88019` | `$08` | Event count mode (Human68k compatible) |
-| TCDCR | `$E8801D` | `$xx7` | Timer D prescaler /200 |
+| IERA | `$E88007` | `$FF` | 全ソース有効（IOCS 互換性） |
+| IERB | `$E88009` | `$7F` | 全ソース有効（IOCS 互換性） |
+| IMRA | `$E88013` | `$FF` | 全ソースマスク解除（Human68K 互換性） |
+| IMRB | `$E88015` | `$7F` | 全ソースマスク解除、bit7 除く |
+| VR | `$E88017` | `$41` | Auto-EOI、ベクタベース 0x40 |
+| TACR | `$E88019` | `$08` | イベントカウントモード（Human68k 互換） |
+| TCDCR | `$E8801D` | `$xx7` | Timer D プリスケーラ /200 |
 | TDDR | `$E88025` | `100` | Timer D: 4MHz / 200 / 100 = 200Hz (5ms) |
 | Vector 0x110 | — | `ss_timerd_handler` | Timer D ISR |
 | Vector 0x134 | — | `ss_vdisp_handler` | V-DISP / Timer A ISR |
 
-### Design Rationale
+### 設計根拠
 
-- **IER stays `$FF/$7F`**: IOCS functions require corresponding IER bits set. Changing IER breaks keyboard USART and timer baud rate generators.
-- **IMR all-unmasked (`$FF/$7F`)**: Human68K's keyboard, mouse, and CRTC ISRs must remain active. Our code overrides only vectors 0x134 (V-DISP) and 0x110 (Timer D); all other vectors still point to Human68K handlers. Masking IMR bits breaks IOCS keyboard/mouse input.
-- **`ss_set_interrupts()` must be called AFTER all IOCS initialization** (CRTMOD, MS_INIT, etc.) because IOCS calls reprogram the MFP.
+- **IER は `$FF/$7F` のまま**: IOCS 関数は対応する IER ビットがセットされている必要がある。IER を変更するとキーボード USART やタイマのボーレートジェネレータが動作しなくなる。
+- **IMR は全マスク解除（`$FF/$7F`）**: Human68K のキーボード、マウス、CRTC の ISR は動作し続ける必要がある。当コードはベクタ 0x134（V-DISP）と 0x110（Timer D）のみ上書きし、その他のベクタはすべて Human68K のハンドラを指したまま。IMR ビットをマスクすると IOCS のキーボード/マウス入力が動作しなくなる。
+- **`ss_set_interrupts()` は全 IOCS 初期化の後に呼び出すこと**（CRTMOD、MS_INIT 等）。IOCS 呼び出しが MFP を再プログラムするため。
 
-### ISR Design
+### ISR 設計
 
-Both Timer D and V-DISP ISRs:
-1. Disable interrupts (`move.w #0x2700, %sr`) at entry
-2. Save minimal registers (`d0/a0`)
-3. Increment counter + set flag (no C function calls in ISR)
-4. Clear ISR-in-service bit
-5. Re-enable interrupts (`move.w #0x2000, %sr`)
+Timer D と V-DISP の両 ISR は:
+1. エントリで割り込み禁止 (`move.w #0x2700, %sr`)
+2. 最小限のレジスタを保存 (`d0/a0`)
+3. カウンタをインクリメントしフラグを設定（ISR 内で C 関数呼び出しなし）
+4. ISR の in-service ビットをクリア
+5. 割り込み再許可 (`move.w #0x2000, %sr`)
 6. `rte`
 
-## Debugging
+## デバッグ
 
-### MFP Register Tracking
+### MFP レジスタ追跡
 
-Both versions include `mfp_debug.c` for tracking MFP register changes around IOCS calls:
+両バージョンとも `mfp_debug.c` で IOCS 呼び出し前後の MFP レジスタ変更を追跡:
 
-- `ss_dump_mfp_regs()`: Snapshot 15 MFP registers
-- `ss_diff_mfp_regs()`: Compare two snapshots, format differences
-- `ss_mfp_track_begin()` / `ss_mfp_track_end()`: Wrapper for IOCS calls, logs changes to text VRAM
-- Keyboard window line[2] displays Timer D-related registers (IMRA, IMRB, ISRB, TCDCR, TDDR) in real time
+- `ss_dump_mfp_regs()`: 15 個の MFP レジスタをスナップショット
+- `ss_diff_mfp_regs()`: 2 つのスナップショットを比較、差分を整形表示
+- `ss_mfp_track_begin()` / `ss_mfp_track_end()`: IOCS 呼び出しのラッパー、変更をテキスト VRAM に記録
+- キーボードウィンドウの line[2] に Timer D 関連レジスタ（IMRA, IMRB, ISRB, TCDCR, TDDR）をリアルタイム表示
 
-### Exception Handler
+### 例外ハンドラ
 
-A TRAP #14 handler catches illegal instructions and displays PC, SR, and the offending opcode on screen — useful for detecting stack corruption from interrupt nesting.
+TRAP #14 ハンドラが不正命令を捕捉し、PC、SR、問題のオペコードを画面表示 — 割り込みネストによるスタック破壊の検出に有用。
 
-## Findings
+## 知見
 
-### Timer D ISR Analysis (Session 21)
+### Timer D ISR 分析（Session 21）
 
-**Finding**: The Timer D ISR implementation is correct and not the cause of the freeze.
+**所見**: Timer D ISR の実装は正しく、フリーズの原因ではない。
 
-| Metric | Value |
+| 指標 | 値 |
 |--------|-------|
-| Instructions | 11 |
-| Cycles | 90 (10MHz: 9.0μs, 16MHz: 5.6μs) |
-| Stack usage | 14 bytes (8 regs + 6 exception frame) |
-| Nesting prevention | ✅ `move.w #0x2700, %sr` at entry |
-| V-DISP interference | ✅ Max 9.2μs delay (0.18% of 5ms period) |
+| 命令数 | 11 |
+| サイクル数 | 90（10MHz: 9.0μs、16MHz: 5.6μs）|
+| スタック使用量 | 14 バイト（8 レジスタ + 6 例外フレーム）|
+| ネスト防止 | ✅ エントリで `move.w #0x2700, %sr` |
+| V-DISP への干渉 | ✅ 最大 9.2μs の遅延（5ms 周期の 0.18%）|
 
-### MFP Initialization Code Verification (Session 21)
+### MFP 初期化コード検証（Session 21）
 
-**Finding**: MFP register values set by `ss_set_interrupts()` are correct. The initialization order in standalone mode is correct — `ss_set_interrupts()` is called after all IOCS calls.
+**所見**: `ss_set_interrupts()` で設定する MFP レジスタ値は正しい。スタンドアローンモードの初期化順序も正しい — `ss_set_interrupts()` は全ての IOCS 呼び出しの後に呼ばれている。
 
-**However**: Runtime IOCS calls (`_iocs_b_keyinp()`, `_iocs_ms_getdt()`, `_iocs_ms_curgt()`) may reprogram MFP registers, causing Timer D to stop after ~82 ticks.
+**ただし**: 実行時の IOCS 呼び出し（`_iocs_b_keyinp()`、`_iocs_ms_getdt()`、`_iocs_ms_curgt()`）が MFP レジスタを再プログラムする可能性があり、Timer D が約 82 ティック後に停止することがある。
 
-### Cooperative ssos_cop.x Freeze Issue (Resolved)
+### 協調的 ssos_cop.x フリーズ問題（解決済み）
 
-**Symptom**: Timer stopped at ~82–109 ticks, keyboard/mouse unresponsive, screen corrupted after ~20–30 seconds.
+**症状**: タイマが約 82–109 ティックで停止、キーボード/マウス応答なし、約 20–30 秒後に画面破損。
 
-**Root Cause (Two Bugs)**:
+**根本原因（2 つのバグ）**:
 
-1. **Register save insufficient in `ss_task_yield`**: The cooperative yield only saved `d0/a0` (2 registers) instead of `d0-d7/a0-a6` (16 registers). On context switch, callee-saved registers (`d2-d7/a2-a6`) were clobbered by the other task, causing the C compiler's register assumptions to break → corrupted pointers → freeze and eventual VRAM corruption.
+1. **`ss_task_yield` のレジスタ保存不足**: 協調的 yield は `d0/a0`（2 レジスタ）しか保存せず、`d0-d7/a0-a6`（16 レジスタ）を保存する必要があった。コンテキストスイッチ時に、もう一方のタスクによって callee-saved レジスタ（`d2-d7/a2-a6`）が破壊され、C コンパイラのレジスタ仮定が破綻 → ポインタ破損 → フリーズ、最終的に VRAM 破損。
 
-2. **IMR over-masked**: `IMRA=$21, IMRB=$10` masked all interrupts except Timer A and Timer D. Human68K's keyboard and mouse ISRs were blocked, so IOCS functions (`_iocs_b_keysns()`, `_iocs_ms_getdt()`) returned no data.
+2. **IMR の過剰マスク**: `IMRA=$21, IMRB=$10` は Timer A と Timer D 以外の全割り込みをマスクしていた。Human68K のキーボード/マウス ISR がブロックされ、IOCS 関数（`_iocs_b_keysns()`、`_iocs_ms_getdt()`）がデータを返さなくなった。
 
-**Fix**:
-- Restored full register save/restore (`d0-d7/a0-a6`) in `ss_task_yield`, yield-resume, and `resume_interrupted` paths
-- Restored `IMRA=$FF, IMRB=$7F` (all unmasked) so Human68K ISRs remain active
+**修正**:
+- `ss_task_yield`、yield-resume、`resume_interrupted` の各パスで全レジスタ保存/復元（`d0-d7/a0-a6`）に修正
+- `IMRA=$FF, IMRB=$7F`（全マスク解除）に戻し、Human68K ISR が動作するよう修正
 
-### MFP IMR Configuration History
+### `.xdf` アクティブタイトル表示修正（s27–s29）
 
-| Session | Change | Effect |
+OS モードのウィンドウタイトルレンダリングは、スタンドアローンと同等の表示になるまで 3 回のイテレーションを経た。
+
+#### s27: 3 ウィンドウのコンテンツ + アクティブ用ハッシュストライプ（解決済み）
+
+- **目標**: OS モードでスタンドアローンと同じ 3 ウィンドウデモ（`Timer` / `Keyboard` / `Mouse`）と、同じグレー+ハッシュストライプのアクティブタイトルを表示する。
+- **変更箇所** (`os/app/main.c`, `os/win/window.c`, `os/win/win.h`):
+  - ウィンドウごとに `WinContent`（タイトル + 3 行 + 前回値）、`render_win` コールバック
+  - `ss_win_active_z`（表示中の最大 z、`ss_win_render_all` / `ss_win_render_region` で設定）によるアクティブ検出
+  - 差分コンテンツ更新（`memcmp` で行ごとに前回値と比較）— 全画面再描画なし
+  - Marching-ants ドラッグ枠線（`draw_march_outline`、frame & 7）と、その下地の `ol_save`/`ol_restore`
+  - 領域限定レンダリング（`ss_win_render_region`）— ドロップ時は影響領域のみ再描画、全画面ではない
+- **スタンドアローン影響なし**: `standalone/main.c` は `os/app/main.c` や `os/win/window.c` をリンクしない。
+
+#### s28: ドラッグによる非アクティブウィンドウのタイトル固着（解決済み）
+
+- **症状**: あるウィンドウを前面にドラッグした後、別のドラッグで別のウィンドウが新たな最前面になっても、*ドラッグされなかった*他のウィンドウが古いアクティブタイトル（グレー+ハッシュストライプ）のままになる。
+- **根本原因**: `ss_win_render_region` はドロップされた矩形と重なるウィンドウのみ再描画する。`set_z` が `ss_win_active_z` を上げるとき、アクティブを*失った*ウィンドウは再描画領域の外にあるため、古い `is_fg=true` のピクセルが残る。
+- **修正**: ドラッグ開始時に、新しい `ss_win_get_z` ゲッター（win.h / window.c）で従前のアクティブウィンドウの `(x, y, w, h)` を取得。ドラッグ終了時に `ss_win_render_region(new_pos)` の後、`ss_win_render_region(prev_active_pos)` を呼び出してアクティブを失ったウィンドウを再描画。
+- **ファイル**: `os/app/main.c`、`os/win/win.h`、`os/win/window.c`。スタンドアローン影響なし。
+
+#### s29: 初回ドラッグの z 衝突（解決済み）
+
+- **症状**: 間欠的に、ドラッグ後に起動時にアクティブだったウィンドウがアクティブ表示のまま残る。
+- **根本原因**: `next_z` が `3` から始まっていたが、これは既存の最前面ウィンドウ（z=3 で作成された `W3`）と同じ値だった。`ss_win_set_z(hid, 3)` により、ドラッグされたウィンドウが `W3` と z=3 を共有することになった。`ss_win_active_z` は `z==3` に一致するため、`is_fg = (z == ss_win_active_z)` が**両方に true** となる — 両方がアクティブ（グレー+ハッシュ）として描画される。
+- **「間欠的」である理由**: 衝突するのは*最初の*ドラッグのみ（next_z が 3 → 4 に変わった後）。以降のドラッグは z=4, 5, … を生成し、固定の起動時 z=1..3 と衝突しない。
+- **スタンドアローンにこのバグがない理由**: 3 スロットの順序配列 `zmap[3]={0,1,2}` と `bring_to_front(idx)` を使っている — 配列スロットは衝突しない。
+- **修正**: `next_z` を `4` に初期化（初期 z の最大値より 1 大きい値）。最初のドラッグ → hid z=4、z=3 の起動時ウィンドウと衝突しない。
+
+### MFP IMR 設定の変遷
+
+| Session | 変更 | 影響 |
 |---------|--------|--------|
-| Pre-s12 | IMR=$FF/$7F | All masked → Timer D never fires → data thread stuck |
-| s12 | IMR=IERA=$38/$3C | Unmasked unhandled sources → crash |
-| s14 | IMR=IERA=$30/$10 | Timer B unmasked, vector uninitialized → crash |
-| s16 | IMR=$20/$10, IER=$FF/$7F | Only Timer A + D unmasked. IER preserved. ✅ |
-| s20 | TACR 0xC8→0x08 | Reverted erroneous change. Event count mode. ✅ |
-| s20 | ISR: added `move.w #0x2700, %sr` | Prevent interrupt nesting → stack corruption. ✅ |
-| s20 | `.resume_interrupted`: removed triple SR restore | `rte` pops SR automatically. Redundant code removed. ✅ |
-| s23 | `ss_task_yield`: `d0/a0` → `d0-d7/a0-a6` | Cooperative yield must save ALL regs (context switch clobbers callee-saved). ✅ |
-| s23 | IMR `$21/$10` → `$FF/$7F` | All Human68K ISRs must remain active for keyboard/mouse. ✅ |
+| Pre-s12 | IMR=$FF/$7F | 全マスク → Timer D が発火せず → データスレッド停止 |
+| s12 | IMR=IERA=$38/$3C | 未ハンドルのソースがマスク解除 → クラッシュ |
+| s14 | IMR=IERA=$30/$10 | Timer B がマスク解除、ベクタ未初期化 → クラッシュ |
+| s16 | IMR=$20/$10、IER=$FF/$7F | Timer A + D のみマスク解除。IER 維持。✅ |
+| s20 | TACR 0xC8→0x08 | 誤った変更を差し戻し。イベントカウントモード。✅ |
+| s20 | ISR: `move.w #0x2700, %sr` を追加 | 割り込みネスト防止 → スタック破損防止。✅ |
+| s20 | `.resume_interrupted`: 三重 SR 復元を削除 | `rte` が SR を自動的にポップ。重複コード削除。✅ |
+| s23 | `ss_task_yield`: `d0/a0` → `d0-d7/a0-a6` | 協調的 yield は全レジスタ保存必須（コンテキストスイッチで callee-saved が破壊される）。✅ |
+| s23 | IMR `$21/$10` → `$FF/$7F` | Human68K ISR はキーボード/マウスのため全動作必須。✅ |
 
-### Cooperative vs Preemptive ISR Differences
+### 協調的 vs プリエンプティブ ISR の差異
 
-| Aspect | Cooperative | Preemptive |
+| 観点 | 協調的 | プリエンプティブ |
 |--------|-------------|------------|
-| Timer D ISR | Counter++ + flag, no context switch | Counter++ + context switch |
-| Register save | `d0-d7/a0-a6` (full save in yield) | `d0-d7/a0-a6` (full switch) |
-| Wakeup | Main loop polls `ss_wakeups_needed` flag | ISR triggers context switch directly |
-| Stack | Current task stack only | Each task has own stack |
+| Timer D ISR | カウンタ++ + フラグ、コンテキストスイッチなし | カウンタ++ + コンテキストスイッチ |
+| レジスタ保存 | `d0-d7/a0-a6`（yield で全保存） | `d0-d7/a0-a6`（完全スイッチ） |
+| 起床 | メインループが `ss_wakeups_needed` フラグをポーリング | ISR が直接コンテキストスイッチをトリガ |
+| スタック | 現在のタスクスタックのみ | 各タスクが専用スタックを持つ |
 
-### Baremetal (`.xdf`) Mouse/Window Input — RESOLVED (s26)
+### ベアメタル (`.xdf`) マウス／ウィンドウ入力 — 解決済み (s26)
 
-**Affected build**: ベアメタルブート（`ssos_cop.xdf`、IPL-ROM ブート）。standalone（`.x`）は**影響なし**。
+**影響ビルド**: ベアメタルブート（`ssos_cop.xdf`、IPL-ROM ブート）。standalone（`.x`）は**影響なし**。
 
-**Symptom**: 背景＋空ウィンドウ2つが表示され、マウス・キーボードに反応しない（ように見えた）。
+**症状**: 背景＋空ウィンドウ2つが表示され、マウス・キーボードに反応しない（ように見えた）。
 
 #### 根本原因
 
@@ -237,7 +291,7 @@ A TRAP #14 handler catches illegal instructions and displays PC, SR, and the off
 
 SCC受信 → 割込(0x148) → IPL-ROMハンドラ($3F003039) → 座標更新 → `_MS_CURGT`/`_MS_GETDT` 返値更新、の全チェーンが機能。s25 の `boot.s`/`premain.c` で `_MS_INIT`/`_MS_CURON` を呼んだことで SCC 受信が有効化されていた。
 
-#### 修正（`ssos-cooperative/os/app/main.c`, `os/win/window.c`）
+#### 修正（`ssos-cooperative/os/app/main.c`、`os/win/window.c`）
 
 1. **マウス座標**: `_MS_GETDT`Δ累積 → `_MS_CURGT`絶対座標（standalone互換、同一ソース）
 2. **ソフトウェアカーソル**: GVRAM に XOR 枠線描画（テキストレイヤー非依存）。XOR は自分自身で相殺するため保存バッファ不要
@@ -249,15 +303,15 @@ SCC受信 → 割込(0x148) → IPL-ROMハンドラ($3F003039) → 座標更新 
 
 standalone ビルドは `obj/interrupts.o main.o scheduler.o buddy.o slab.o vram.o` のみリンク（`window.o` なし）。`standalone/main.c` は `win.h` 未参照・独自 `Win`/`draw_frame`/`ol_save`/`draw_march_outline` 実装を持つ。よって `window.c`/`win.h`/`app/main.c` の変更は standalone に無影響。
 
-### IOCS Mouse Routine Numbers (reference)
+### IOCS マウスルーチン番号（参考）
 
-| Number | Routine | Function |
+| 番号 | ルーチン | 機能 |
 |--------|---------|----------|
-| `$70` | `_MS_INIT` | Initialize mouse |
-| `$71` | `_MS_CURON` | Show cursor |
-| `$72` | `_MS_CUROF` | Hide cursor |
-| `$73` | `_MS_STAT` | Cursor visibility (-1=shown, 0=hidden) |
-| `$74` | `_MS_GETDT` | Deltas: bit24-31=Δx, bit16-23=Δy, bit8-15=left, bit0-7=right |
-| `$75` | `_MS_CURGT` | Position (X<<16 \| Y) |
-| `$76` | `_MS_CURST` | Set position |
-| `$77` | `_MS_LIMIT` | Set limits |
+| `$70` | `_MS_INIT` | マウス初期化 |
+| `$71` | `_MS_CURON` | カーソル表示 |
+| `$72` | `_MS_CUROF` | カーソル非表示 |
+| `$73` | `_MS_STAT` | カーソル表示状態（-1=表示中、0=非表示）|
+| `$74` | `_MS_GETDT` | 移動量: bit24-31=Δx, bit16-23=Δy, bit8-15=左, bit0-7=右 |
+| `$75` | `_MS_CURGT` | 位置（X<<16 \| Y）|
+| `$76` | `_MS_CURST` | 位置設定 |
+| `$77` | `_MS_LIMIT` | 制限設定 |
