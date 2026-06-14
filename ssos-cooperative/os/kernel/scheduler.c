@@ -234,6 +234,13 @@ void ss_do_wakeups(void) {
     }
 }
 
+/* Flag indicating that ss_do_wakeups should be called */
+extern volatile uint8_t ss_wakeups_needed;
+
+/* Process pending wakeups (called from main loop) */
 void ss_process_wakeups(void) {
-    ss_do_wakeups();
+    if (ss_wakeups_needed) {
+        ss_wakeups_needed = 0;
+        ss_do_wakeups();
+    }
 }

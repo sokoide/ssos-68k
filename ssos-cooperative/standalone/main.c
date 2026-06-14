@@ -153,6 +153,9 @@ extern uint16_t ss_trapbuf_sr;
 extern uint32_t ss_trapbuf_pc;
 extern char* ss_trapbuf_msg;
 
+extern volatile uint8_t ss_wakeups_needed;
+extern void ss_process_wakeups(void);
+
 static SSTask main_tcb;
 
 #define OL_MAX 1200
@@ -466,12 +469,51 @@ static int hit_test(int hx, int hy) {
     return -1;
 }
 
-/* ---- V-sync ---- */
+/* ---- V-sync with watchdog ---- */
 
 static void wait_vsync(void) {
-    volatile uint8_t* gpip = (volatile uint8_t*)0xE88001;
-    while (!(*gpip & 0x10));
-    while (*gpip & 0x10);
+    uint32_t last = ss_vsync_counter;
+    uint32_t last_vdisp = ss_vdisp_fire_count;
+    uint32_t spin = 0;
+
+    while (ss_vsync_counter == last) {
+        spin++;
+        /* Watchdog: ~55M spins at 10MHz ≈ 5s timeout.
+         * If V-DISP ISR stops, break and try to recover. */
+        if (spin > 5000000) {
+            uint32_t vdisp_now = ss_vdisp_fire_count;
+            uint32_t tick_now = ss_timerd_fire_count;
+            _iocs_b_print("\r\n[WD] V-DISP stopped! "
+                          "vdisp_fire=");
+            /* Simple hex print via IOCS */
+            {
+                char buf[64];
+                snprintf(buf, sizeof(buf),
+                         "%lu tick_fire=%lu IMRA=%02X TACR=%02X "
+                         "TCDCR=%02X IMRB=%02X ISRB=%02X\r\n",
+                         vdisp_now, tick_now,
+                         (unsigned)SS_MFP_IMRA, (unsigned)SS_MFP_TACR,
+                         (unsigned)SS_MFP_TCDCR, (unsigned)SS_MFP_IMRB,
+                         (unsigned)SS_MFP_ISRB);
+                _iocs_b_print(buf);
+            }
+            _iocs_b_print("[WD] Attempting MFP re-init...\r\n");
+            /* Re-enable V-DISP and Timer D */
+            SS_MFP_IMRA = 0x21;
+            SS_MFP_TACR = 0x08;
+            SS_MFP_IMRB = 0x10;
+            /* Reinstall V-DISP handler (vector may be corrupted) */
+            extern void ss_vdisp_handler(void);
+            *(volatile uint32_t*)0x134 = (uint32_t)ss_vdisp_handler;
+            extern void ss_timerd_handler(void);
+            *(volatile uint32_t*)0x110 = (uint32_t)ss_timerd_handler;
+            /* Reset pending */
+            SS_MFP_ISRA = 0x00;
+            SS_MFP_ISRB = 0x00;
+            spin = 0;
+            last = ss_vsync_counter;
+        }
+    }
 }
 
 /* ================================================================
@@ -480,6 +522,7 @@ static void wait_vsync(void) {
 
 static void* data_thread(void* arg) {
     (void)arg;
+
     for (;;) {
         if (exit_flag)
             for (;;) ss_task_sleep(0x7FFFFFFF);
@@ -491,6 +534,7 @@ static void* data_thread(void* arg) {
             }
             last_key = key;
         }
+
         if (last_key >= 0) {
             int k = last_key & 0xFF;
             char ch = (k >= 0x20 && k < 0x7F) ? (char)k : '.';
@@ -503,16 +547,13 @@ static void* data_thread(void* arg) {
             pad(wins[1].line[0], 24);
             strcpy(wins[1].line[1], "                        ");
         }
-        strcpy(wins[1].line[2], "                        ");
 
-        uint32_t f = frame;
-        uint32_t sec = f / 55;
-        uint32_t frac = (f % 55) * 100 / 55;
-        sprintf(wins[0].line[0], "Vsync: %lu", f);
+        sprintf(wins[0].line[0], "Vsync: %lu", frame);
         pad(wins[0].line[0], 24);
-        sprintf(wins[0].line[1], "Time: %lu.%02lu", sec, frac);
+        sprintf(wins[0].line[1], "VDisp:%lu Tick:%lu",
+                ss_vdisp_fire_count, ss_timerd_fire_count);
         pad(wins[0].line[1], 24);
-        sprintf(wins[0].line[2], "CSw:%lu", ss_context_switch_count);
+        sprintf(wins[0].line[2], "Tick:%lu", ss_tick_counter);
         pad(wins[0].line[2], 24);
 
         ss_task_sleep(40);
@@ -541,7 +582,22 @@ int main(int argc, char** argv) {
     mx = ss_current_mode->display_w / 2;
     my = ss_current_mode->display_h / 2;
 
-    int ssp = _iocs_b_super(0);
+    /*
+     * Enter Supervisor mode via raw IOCS _B_SUPER trap.
+     * Can NOT use _iocs_b_super(1) — the library function executes
+     * move.l %sp,%usp (privileged) BEFORE the trap, which crashes
+     * from User mode.  A raw trap #15 bypasses this issue.
+     */
+    int old_ssp;
+    asm volatile(
+        "moveq #-127, %%d0\n\t"  /* _B_SUPER = 0x81 */
+        "moveq #1, %%d1\n\t"     /* 1 = enter supervisor */
+        "trap #15\n\t"
+        "move.l %%d0, %0"
+        : "=d"(old_ssp)
+        :
+        : "d0", "d1"
+    );
 
     ss_init_trap14();
 
@@ -553,8 +609,6 @@ int main(int argc, char** argv) {
     main_tcb.stack_base = (void*)1;
     ss_curr_task = &main_tcb;
     ss_sched_enqueue(&main_tcb);
-
-    ss_set_interrupts();
 
     int old_mode = _iocs_crtmod(-1);
     _iocs_crtmod(ss_current_mode->crtmod);
@@ -575,6 +629,13 @@ int main(int argc, char** argv) {
     _iocs_ms_curon();
     _iocs_ms_limit(0, ss_current_mode->display_w - 1, 0, ss_current_mode->display_h - 1);
 
+    /*
+     * Set up MFP interrupts LAST — IOCS calls above (crtmod, ms_init)
+     * reprogram the MFP and would overwrite our settings if we called
+     * ss_set_interrupts() before them.
+     */
+    ss_set_interrupts();
+
     saved_copy_vec = *(volatile uint32_t*)0xB0;
     saved_nmi_vec = *(volatile uint32_t*)0x7C;
     *(volatile uint32_t*)0xB0 = (uint32_t)ss_nop_handler;
@@ -586,13 +647,16 @@ int main(int argc, char** argv) {
     ol_valid = 0;
 
     uint16_t t_data = ss_task_create(&(SSTaskInfo){.entry = data_thread,
-                                                    .pri = 8,
-                                                    .ctx_level = 0,
-                                                    .stack_size = 0,
-                                                    .stack = NULL});
+                                                     .pri = 8,
+                                                     .ctx_level = 0,
+                                                     .stack_size = 0,
+                                                     .stack = NULL});
     ss_task_start(t_data);
 
     for (;;) {
+        /* Process timer-based wakeups before anything else */
+        ss_process_wakeups();
+
         wait_vsync();
         frame++;
 
@@ -725,7 +789,15 @@ int main(int argc, char** argv) {
         sprintf(buf, "SR: 0x%04X\r\n", ss_trapbuf_sr);
         _iocs_b_print(buf);
         _iocs_b_print("====================================\r\n");
-        _iocs_b_super(ssp);
+        /* Exit supervisor mode via raw trap (see enter comment above) */
+        asm volatile(
+            "moveq #-127, %%d0\n\t"  /* _B_SUPER = 0x81 */
+            "move.l %0, %%d1\n\t"    /* old_ssp */
+            "trap #15\n\t"
+            :
+            : "d"(old_ssp)
+            : "d0", "d1"
+        );
         _exit(1);
     }
 
@@ -742,7 +814,15 @@ int main(int argc, char** argv) {
     _iocs_b_curon();
 
     _iocs_b_print("SSOS-Cooperative terminated.\r\n");
-    _iocs_b_super(ssp);
+    /* Exit supervisor mode via raw trap */
+    asm volatile(
+        "moveq #-127, %%d0\n\t"  /* _B_SUPER = 0x81 */
+        "move.l %0, %%d1\n\t"    /* old_ssp */
+        "trap #15\n\t"
+        :
+        : "d"(old_ssp)
+        : "d0", "d1"
+    );
     _exit(0);
 }
 

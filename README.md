@@ -212,3 +212,52 @@ A TRAP #14 handler catches illegal instructions and displays PC, SR, and the off
 | Register save | `d0-d7/a0-a6` (full save in yield) | `d0-d7/a0-a6` (full switch) |
 | Wakeup | Main loop polls `ss_wakeups_needed` flag | ISR triggers context switch directly |
 | Stack | Current task stack only | Each task has own stack |
+
+### Baremetal (`.xdf`) Mouse/Window Input — RESOLVED (s26)
+
+**Affected build**: ベアメタルブート（`ssos_cop.xdf`、IPL-ROM ブート）。standalone（`.x`）は**影響なし**。
+
+**Symptom**: 背景＋空ウィンドウ2つが表示され、マウス・キーボードに反応しない（ように見えた）。
+
+#### 根本原因
+
+**マウス入力チェーンは最初から動作していた。問題は「カーソルが見えない」こと。**
+
+`premain.c` がビデオコントローラ `0xE82600=$003E` で**テキストレイヤー(bit0)をOFF**にしている。IPL-ROM のマウスカーソルはテキスト画面プレーン2/3に描かれるため、テキストOFF下では不可視。`_MS_CURGT` の座標は内部的に更新されているが、画面に描画されないため「入力不能」に見えた。
+
+#### s26 計測で判明した事実（実機確認）
+
+| 計測値 | 値 | 意味 |
+|--------|-----|------|
+| `V0`=`V2` | `$3F003039` | SCC ベクタ 0x140/0x148 は **RAM上の有効ハンドラ**を指す（0/FFFFFFFF ではない → ハンドラ登録済み） |
+| `SR` | `$2004` | Supervisor + **IPL0**（割込全許可）+ Z旗標。割込マスクなし |
+| `MX` | 同一起動中に変化 | `_MS_GETDT` がマウス移動量を取得（s24では常に0） |
+| `CG` | `(188,254)→(476,360)` 等に変化 | `_MS_CURGT` 絶対座標が更新されている |
+| `VS/VD/TD/LB` | 増加中 | Timer D/V-DISP 発火、メインループ正常回転 |
+
+SCC受信 → 割込(0x148) → IPL-ROMハンドラ($3F003039) → 座標更新 → `_MS_CURGT`/`_MS_GETDT` 返値更新、の全チェーンが機能。s25 の `boot.s`/`premain.c` で `_MS_INIT`/`_MS_CURON` を呼んだことで SCC 受信が有効化されていた。
+
+#### 修正（`ssos-cooperative/os/app/main.c`, `os/win/window.c`）
+
+1. **マウス座標**: `_MS_GETDT`Δ累積 → `_MS_CURGT`絶対座標（standalone互換、同一ソース）
+2. **ソフトウェアカーソル**: GVRAM に XOR 枠線描画（テキストレイヤー非依存）。XOR は自分自身で相殺するため保存バッファ不要
+3. **ドラッグ枠線方式**: ドラッグ中は XOR 枠線のみ（ウィンドウ本体不動）、ドロップ時のみ `ss_win_render_all()`。ちらつかない（standalone 準拠）
+4. **z 一意化**: `next_z=3` 開始、255→3 折り返し。複数ウィンドウが同 z=255 にならない（w1消失バグ解消）
+5. **`rebuild_zmap` 修正**: max z 化 + `memset(zmap,0)`（旧 `0xFF` 初期値だと max 更新 `win->z>255` が常に false → 全ウィンドウ occluded → 非表示）
+
+#### standalone 無影響の根拠
+
+standalone ビルドは `obj/interrupts.o main.o scheduler.o buddy.o slab.o vram.o` のみリンク（`window.o` なし）。`standalone/main.c` は `win.h` 未参照・独自 `Win`/`draw_frame`/`ol_save`/`draw_march_outline` 実装を持つ。よって `window.c`/`win.h`/`app/main.c` の変更は standalone に無影響。
+
+### IOCS Mouse Routine Numbers (reference)
+
+| Number | Routine | Function |
+|--------|---------|----------|
+| `$70` | `_MS_INIT` | Initialize mouse |
+| `$71` | `_MS_CURON` | Show cursor |
+| `$72` | `_MS_CUROF` | Hide cursor |
+| `$73` | `_MS_STAT` | Cursor visibility (-1=shown, 0=hidden) |
+| `$74` | `_MS_GETDT` | Deltas: bit24-31=Δx, bit16-23=Δy, bit8-15=left, bit0-7=right |
+| `$75` | `_MS_CURGT` | Position (X<<16 \| Y) |
+| `$76` | `_MS_CURST` | Set position |
+| `$77` | `_MS_LIMIT` | Set limits |

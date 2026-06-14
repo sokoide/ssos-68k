@@ -162,6 +162,16 @@ static int ol_x, ol_y, ol_w, ol_h, ol_valid;
 
 static void save_win_bitmap(int x, int y, int w, int h) {
     uint32_t stride = ss_current_mode->bytes_per_line / 2;  /* words per line */
+    int disp_w = ss_current_mode->display_w;
+    int disp_h = ss_current_mode->display_h;
+
+    /* Clip to screen bounds */
+    if (x < 0) { w += x; x = 0; }
+    if (y < 0) { h += y; y = 0; }
+    if (x + w > disp_w) w = disp_w - x;
+    if (y + h > disp_h) h = disp_h - y;
+    if (w <= 0 || h <= 0) return;
+
     volatile uint16_t* s = ss_draw_page + (uint32_t)y * stride + x;
     for (int row = 0; row < h; row++) {
         for (int i = 0; i < w; i++) win_save_buf[row * w + i] = s[i];
@@ -172,6 +182,16 @@ static void save_win_bitmap(int x, int y, int w, int h) {
 
 static void restore_win_bitmap(int x, int y, int w, int h) {
     uint32_t stride = ss_current_mode->bytes_per_line / 2;  /* words per line */
+    int disp_w = ss_current_mode->display_w;
+    int disp_h = ss_current_mode->display_h;
+
+    /* Clip to screen bounds */
+    if (x < 0) { w += x; x = 0; }
+    if (y < 0) { h += y; y = 0; }
+    if (x + w > disp_w) w = disp_w - x;
+    if (y + h > disp_h) h = disp_h - y;
+    if (w <= 0 || h <= 0) return;
+
     volatile uint16_t* d = ss_draw_page + (uint32_t)y * stride + x;
     for (int row = 0; row < h; row++) {
         uint16_t* src = win_save_buf + row * w;
@@ -322,11 +342,19 @@ static void draw_march_outline(int x, int y, int w, int h) {
 /* ---- Outline save / restore ---- */
 
 static void ol_save(int x, int y, int w, int h) {
+    int disp_w = ss_current_mode->display_w;
+    int disp_h = ss_current_mode->display_h;
+
+    /* Clip to screen bounds */
+    if (x < 0) { w += x; x = 0; }
+    if (y < 0) { h += y; y = 0; }
+    if (x + w > disp_w) w = disp_w - x;
+    if (y + h > disp_h) h = disp_h - y;
+    if (w <= 0 || h <= 0 || w * 2 + h * 2 > OL_MAX) { ol_valid = 0; return; }
+
     ol_x = x; ol_y = y; ol_w = w; ol_h = h;
     int idx = 0;
     uint32_t stride = ss_current_mode->bytes_per_line / 2;  /* words per line */
-    int disp_w = ss_current_mode->display_w;
-    int disp_h = ss_current_mode->display_h;
 
     if (x >= 0 && y >= 0 && x + w <= disp_w && y + h <= disp_h) {
         volatile uint16_t* p;
@@ -370,6 +398,13 @@ static void ol_restore(void) {
     uint32_t stride = ss_current_mode->bytes_per_line / 2;  /* words per line */
     int disp_w = ss_current_mode->display_w;
     int disp_h = ss_current_mode->display_h;
+
+    /* Defensive clip — ol_save already validated, but guard against
+     * stale ol_* values if a future code path sets ol_valid incorrectly. */
+    if (x < 0 || y < 0 || x + w > disp_w || y + h > disp_h || w <= 0 || h <= 0) {
+        ol_valid = 0;
+        return;
+    }
 
     if (x >= 0 && y >= 0 && x + w <= disp_w && y + h <= disp_h) {
         volatile uint16_t* p;
@@ -433,9 +468,8 @@ static int hit_test(int hx, int hy) {
 /* ---- V-sync ---- */
 
 static void wait_vsync(void) {
-    volatile uint8_t* gpip = (volatile uint8_t*)0xE88001;
-    while (!(*gpip & 0x10));
-    while (*gpip & 0x10);
+    uint32_t last = ss_vsync_counter;
+    while (ss_vsync_counter == last);
 }
 
 /* ================================================================
@@ -444,6 +478,9 @@ static void wait_vsync(void) {
 
 static void* data_thread(void* arg) {
     (void)arg;
+    static uint32_t mfp_check_count = 0;
+    int do_mfp_check;
+
     for (;;) {
         if (exit_flag)
             for (;;) ss_task_sleep(0x7FFFFFFF);
@@ -455,6 +492,7 @@ static void* data_thread(void* arg) {
             }
             last_key = key;
         }
+
         if (last_key >= 0) {
             int k = last_key & 0xFF;
             char ch = (k >= 0x20 && k < 0x7F) ? (char)k : '.';
@@ -467,7 +505,6 @@ static void* data_thread(void* arg) {
             pad(wins[1].line[0], 24);
             strcpy(wins[1].line[1], "                        ");
         }
-        strcpy(wins[1].line[2], "                        ");
 
         uint32_t f = frame;
         uint32_t sec = f / 55;
@@ -476,7 +513,7 @@ static void* data_thread(void* arg) {
         pad(wins[0].line[0], 24);
         sprintf(wins[0].line[1], "Time: %lu.%02lu", sec, frac);
         pad(wins[0].line[1], 24);
-        sprintf(wins[0].line[2], "CSw:%lu", ss_context_switch_count);
+        sprintf(wins[0].line[2], "Tick:%lu", ss_tick_counter);
         pad(wins[0].line[2], 24);
 
         ss_task_sleep(40);
@@ -505,7 +542,22 @@ int main(int argc, char** argv) {
     mx = ss_current_mode->display_w / 2;
     my = ss_current_mode->display_h / 2;
 
-    int ssp = _iocs_b_super(0);
+    /*
+     * Enter Supervisor mode via raw IOCS _B_SUPER trap.
+     * Can NOT use _iocs_b_super(1) — the library function executes
+     * move.l %sp,%usp (privileged) BEFORE the trap, which crashes
+     * from User mode.  A raw trap #15 bypasses this issue.
+     */
+    int old_ssp;
+    asm volatile(
+        "moveq #-127, %%d0\n\t"  /* _B_SUPER = 0x81 */
+        "moveq #1, %%d1\n\t"     /* 1 = enter supervisor */
+        "trap #15\n\t"
+        "move.l %%d0, %0"
+        : "=d"(old_ssp)
+        :
+        : "d0", "d1"
+    );
 
     ss_init_trap14();
 
@@ -517,8 +569,6 @@ int main(int argc, char** argv) {
     main_tcb.stack_base = (void*)1;
     ss_curr_task = &main_tcb;
     ss_sched_enqueue(&main_tcb);
-
-    ss_set_interrupts();
 
     int old_mode = _iocs_crtmod(-1);
     _iocs_crtmod(ss_current_mode->crtmod);
@@ -539,6 +589,13 @@ int main(int argc, char** argv) {
     _iocs_ms_curon();
     _iocs_ms_limit(0, ss_current_mode->display_w - 1, 0, ss_current_mode->display_h - 1);
 
+    /*
+     * Set up MFP interrupts LAST — IOCS calls above (crtmod, ms_init)
+     * reprogram the MFP and would overwrite our settings if we called
+     * ss_set_interrupts() before them.
+     */
+    ss_set_interrupts();
+
     saved_copy_vec = *(volatile uint32_t*)0xB0;
     saved_nmi_vec = *(volatile uint32_t*)0x7C;
     *(volatile uint32_t*)0xB0 = (uint32_t)ss_nop_handler;
@@ -555,6 +612,8 @@ int main(int argc, char** argv) {
                                                     .stack_size = 0,
                                                     .stack = NULL});
     ss_task_start(t_data);
+
+    static uint32_t main_mfp_check = 0;
 
     for (;;) {
         wait_vsync();
@@ -634,6 +693,13 @@ int main(int argc, char** argv) {
         if (drag >= 0) {
             wins[drag].x = cur_mx - dox;
             wins[drag].y = cur_my - doy;
+            /* Clamp window position to keep it on screen */
+            if (wins[drag].x < 0) wins[drag].x = 0;
+            if (wins[drag].y < 0) wins[drag].y = 0;
+            if (wins[drag].x + wins[drag].w > ss_current_mode->display_w)
+                wins[drag].x = ss_current_mode->display_w - wins[drag].w;
+            if (wins[drag].y + wins[drag].h > ss_current_mode->display_h)
+                wins[drag].y = ss_current_mode->display_h - wins[drag].h;
         }
 
         if (need_full) {
@@ -679,24 +745,40 @@ int main(int argc, char** argv) {
         sprintf(buf, "SR: 0x%04X\r\n", ss_trapbuf_sr);
         _iocs_b_print(buf);
         _iocs_b_print("====================================\r\n");
-        _iocs_b_super(ssp);
+        /* Exit supervisor mode via raw trap */
+        asm volatile(
+            "moveq #-127, %%d0\n\t"  /* _B_SUPER = 0x81 */
+            "move.l %0, %%d1\n\t"    /* old_ssp */
+            "trap #15\n\t"
+            :
+            : "d"(old_ssp)
+            : "d0", "d1"
+        );
         _exit(1);
     }
 
     ss_restore_interrupts();
     ss_restore_trap14();
-
+    
     *(volatile uint32_t*)0xB0 = saved_copy_vec;
     *(volatile uint32_t*)0x7C = saved_nmi_vec;
-
+    
     ol_restore();
     _iocs_ms_curof();
     _iocs_skey_mod(-1, 0, 0);
     _iocs_crtmod(old_mode);
     _iocs_b_curon();
-
+    
     _iocs_b_print("SSOS-Preemptive terminated.\r\n");
-    _iocs_b_super(ssp);
+    /* Exit supervisor mode via raw trap */
+    asm volatile(
+        "moveq #-127, %%d0\n\t"  /* _B_SUPER = 0x81 */
+        "move.l %0, %%d1\n\t"    /* old_ssp */
+        "trap #15\n\t"
+        :
+        : "d"(old_ssp)
+        : "d0", "d1"
+    );
     _exit(0);
 }
 

@@ -106,14 +106,13 @@ void premain(void) {
     }
 
     /* Initialize and show mouse cursor (may fail in IPL mode) */
-    {
-        register int trapNo asm("d0") = 0x70;
-        asm("trap #15" :: "d"(trapNo));
-    }
-    {
-        register int trapNo asm("d0") = 0x71;
-        asm("trap #15" :: "d"(trapNo));
-    }
+    /* NOTE: MS_INIT ($70) and MS_CURON ($71) are now called from boot.s
+     * (before OS entry) and re-called AFTER ss_set_interrupts() below
+     * (after MFP is set to Human68K-compatible $FF/$7F). The earlier
+     * call here is removed because it happened BEFORE the MFP was
+     * configured to $FF/$7F, which could leave the SCC mouse receiver
+     * in an inconsistent state.
+     */
 
     /* Final cursor/display cleanup before OS takes over */
     {
@@ -130,6 +129,62 @@ void premain(void) {
         volatile uint16_t* vc = (volatile uint16_t*)0xE82600;
         *vc = 0x003E;  /* All layers ON except text (bit0=0) */
     }
+
+    /*
+     * Re-initialize MFP interrupts AFTER all IOCS calls above.
+     *
+     * entry.s calls ss_set_interrupts() BEFORE premain(), but the IOCS
+     * routines invoked above (CRTMOD, G_CLR_ON, etc.) internally
+     * reprogram the MFP — timers, IMR, and the interrupt vectors —
+     * clobbering our V-DISP (0x134) and Timer D (0x110) handlers.  With
+     * those gone, ss_vsync_counter never advances, so ss_run()'s first
+     * wait_vsync() freezes: the screen shows only the initial render
+     * (background + empty windows) and never responds to keyboard/mouse.
+     *
+     * Mirror standalone/main.c, which calls ss_set_interrupts() LAST for
+     * exactly this reason.  This re-applies IMR=$FF/$7F and reinstalls
+     * our V-DISP / Timer D handlers so the scheduler and input wake up.
+     */
+    ss_set_interrupts();
+
+    /*
+     * Re-issue _MS_INIT / _MS_CURON AFTER ss_set_interrupts() so the
+     * IPL-ROM mouse handler is installed in a clean MFP=$FF/$7F state.
+     * boot.s already called them before OS entry; this second call
+     * guarantees the SCC Ch.B receiver is fully active regardless of
+     * whatever state the prior IOCS calls (CRTMOD, G_CLR_ON) left it in.
+     * Without this, the IPL-ROM _MS_* work area may be initialized but
+     * _MS_CURGT returns the stale value 00BC00FE because no SCC
+     * receive interrupt has been routed to a vector.
+     */
+    {
+        register int trapNo asm("d0") = 0x70;
+        asm("trap #15" :: "d"(trapNo));
+    }
+    {
+        register int trapNo asm("d0") = 0x71;
+        asm("trap #15" :: "d"(trapNo));
+    }
+
+    /*
+     * baremetal 固有の MFP 調整 (AER のみ。IMR は Human68K 互換 $FF/$7F
+     * を維持する)。
+     *
+     * AER=$06: Timer A をイベントカウントモードで V-DISP 計測に使うため、
+     * GPIP4 のエッジ方向を Human68K 互換 (V-DISP の 1→0 変化でカウント)
+     * に明示設定。ss_set_interrupts() は AER を書き換えないため IPL ROM
+     * の値に依存するが、これが不適切だと Timer A がカウントせず
+     * ss_vsync_counter が進まない (wait_vsync でフリーズ)。
+     * (x68k-master/04_MFP.md §5「イベントカウントモード」)
+     *
+     * IMRA=$FF / IMRB=$7F を維持する理由: SCC (IPL レベル5) と
+     * MFP 内部ソースをすべて許可する Human68K 互換設定。
+     * 以前は IMRA=$21/IMRB=$10 で未使用ソース発火を避けていたが、
+     * その絞り込みが IPL ROM ハンドラが期待する状態を崩し、
+     * 結果としてマウス受信ワークが更新されない症状の原因になっていた。
+     */
+    *(volatile uint8_t*)0xE88003 = 0x06;   /* AER */
+    /* IMRA/IMRB are left at the $FF/$7F set by ss_set_interrupts(). */
 
     /* Set graphics mode to default (mode 16) */
     ss_gfx_set_mode(SS_CRTMOD_16);

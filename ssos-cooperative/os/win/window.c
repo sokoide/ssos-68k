@@ -85,7 +85,9 @@ void ss_win_move(uint16_t id, int x, int y) {
 }
 
 static void rebuild_zmap(void) {
-    memset(zmap, 0xFF, sizeof(zmap));
+    /* 0 = uncovered.  Must NOT be 0xFF: the max-z update below only writes
+     * when win->z > current, and 0xFF(255) would suppress every z<=255. */
+    memset(zmap, 0, sizeof(zmap));
 
     /* Sort windows by z-order (ascending) and update zmap */
     for (uint16_t i = 0; i < SS_MAX_WINDOWS; i++) {
@@ -104,7 +106,12 @@ static void rebuild_zmap(void) {
 
         for (int by = by0; by <= by1; by++) {
             for (int bx = bx0; bx <= bx1; bx++) {
-                zmap[by * SS_ZMAP_W + bx] = win->z;
+                /* keep the HIGHEST z covering this block, not just the
+                 * last one written (array order is arbitrary vs. z).  The
+                 * occlusion test in render_all compares zmap <= win->z, so
+                 * max-z here is what makes it correct. */
+                if (win->z > zmap[by * SS_ZMAP_W + bx])
+                    zmap[by * SS_ZMAP_W + bx] = win->z;
             }
         }
     }
@@ -202,6 +209,14 @@ int ss_win_get_x(uint16_t id) {
 int ss_win_get_y(uint16_t id) {
     if (id == 0 || id > SS_MAX_WINDOWS) return 0;
     return windows[id - 1].y;
+}
+int ss_win_get_w(uint16_t id) {
+    if (id == 0 || id > SS_MAX_WINDOWS) return 0;
+    return windows[id - 1].w;
+}
+int ss_win_get_h(uint16_t id) {
+    if (id == 0 || id > SS_MAX_WINDOWS) return 0;
+    return windows[id - 1].h;
 }
 
 void ss_win_set_z(uint16_t id, uint16_t z) {

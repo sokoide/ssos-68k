@@ -8,6 +8,7 @@ tags
 *.lst
 *.map
 empty.xdf
+*.xdf
 compile_commands.json
 .cache
 tools/makedisk/makedisk

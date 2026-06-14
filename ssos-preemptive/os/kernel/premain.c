@@ -135,6 +135,45 @@ void premain(void) {
         *vc = 0x003E;  /* All layers ON except text (bit0=0) */
     }
 
+    /*
+     * Re-initialize MFP interrupts AFTER all IOCS calls above.
+     *
+     * entry.s calls ss_set_interrupts() BEFORE premain(), but the IOCS
+     * routines invoked above (CRTMOD, G_CLR_ON, MS_INIT, MS_CURON, ...)
+     * internally reprogram the MFP — timers, IMR, and the interrupt
+     * vectors — clobbering our V-DISP (0x134) and Timer D (0x110)
+     * handlers.  With those gone, ss_vsync_counter never advances, so
+     * ss_run()'s first wait_vsync() freezes: the screen shows only the
+     * initial render (background + empty windows) and never responds to
+     * keyboard/mouse.
+     *
+     * Mirror standalone/main.c, which calls ss_set_interrupts() LAST for
+     * exactly this reason.  This re-applies IMR=$FF/$7F and reinstalls
+     * our V-DISP / Timer D handlers so the scheduler and input wake up.
+     */
+    ss_set_interrupts();
+
+    /*
+     * baremetal 固有の MFP 調整（standalone は Human68K が同等設定済み）。
+     *
+     * (1) AER=$06: Timer A をイベントカウントモードで V-DISP 計測に使うため、
+     *     GPIP4 のエッジ方向を Human68K 互換（V-DISP の 1→0 変化でカウント）
+     *     に明示設定。ss_set_interrupts() は AER を書き換えないため IPL ROM
+     *     の値に依存し、これが不適切だと Timer A がカウントせず
+     *     ss_vsync_counter が進まない（wait_vsync でフリーズ）。
+     *     【これが本件の根本原因。診断で AER=$06 設定後に V-DISP/Timer D の
+     *       発火を実機確認済み】(x68k-master/04_MFP.md §5)
+     *
+     * (2) IMRA=$21 / IMRB=$10: 割り込みソースを Timer A (V-DISP)・Timer D・
+     *     キーボード受信(MPSC RXF) のみに絞る。ss_set_interrupts() は
+     *     IMRA=$FF/IMRB=$7F にするが、baremetal では未使用ソース発火で
+     *     未定義ベクタへ飛びハングする。standalone/main.c の watchdog
+     *     回復値と同一（実績のある最小セット）。
+     */
+    *(volatile uint8_t*)0xE88003 = 0x06;   /* AER */
+    SS_MFP_IMRA = 0x21;                     /* Timer A(bit5) + キーボード受信(bit0) */
+    SS_MFP_IMRB = 0x10;                     /* Timer D(bit4) */
+
     /* Set graphics mode to default (mode 16) */
     ss_gfx_set_mode(SS_CRTMOD_16);
     ss_init();
