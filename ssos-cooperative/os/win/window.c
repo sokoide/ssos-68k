@@ -277,6 +277,10 @@ int ss_win_get_h(uint16_t id) {
     if (id == 0 || id > SS_MAX_WINDOWS) return 0;
     return windows[id - 1].h;
 }
+int ss_win_get_z(uint16_t id) {
+    if (id == 0 || id > SS_MAX_WINDOWS) return 0;
+    return windows[id - 1].z;
+}
 
 void ss_win_set_render(uint16_t id, void (*render)(SSWindow*)) {
     if (id == 0 || id > SS_MAX_WINDOWS) return;

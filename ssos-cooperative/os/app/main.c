@@ -17,8 +17,18 @@ static int drag_id = -1;
 static int drag_ox, drag_oy;
 static int drag_w, drag_h;
 static int drag_prev_x = -1, drag_prev_y = -1;
-static uint16_t next_z = 3;
+/* Start above the initial window z range (1..3) so the first dragged
+ * window can't share a z with an existing window.  Otherwise ss_win_active_z
+ * would match BOTH the dragged window AND the pre-existing top window,
+ * painting both as active (gray + hash stripes). */
+static uint16_t next_z = 4;
 static uint32_t frame = 0;   /* marching-ants phase */
+
+/* Previous active window: saved at drag start so we can repaint it on
+ * release when its is_fg flips (render_region's small rect won't
+ * reach windows that don't overlap the dropped position). */
+static int prev_active_valid = 0;
+static int prev_active_x, prev_active_y, prev_active_w, prev_active_h;
 
 /* Window layout (standalone-compatible) */
 #define TITLE_H   12
@@ -283,6 +293,21 @@ void ss_run(void) {
         if (left && drag_id < 0) {
             int hid = ss_win_hit_test(mx, my);
             if (hid > 0) {
+                /* Capture the previous active window (z == current active_z)
+                 * BEFORE set_z, so we can repaint it on release if it loses
+                 * the active title.  Skip if it's the dragged window itself. */
+                prev_active_valid = 0;
+                for (int i = 1; i <= SS_MAX_WINDOWS; i++) {
+                    if (i == hid) continue;
+                    if (ss_win_get_z(i) == ss_win_active_z) {
+                        prev_active_x = ss_win_get_x(i);
+                        prev_active_y = ss_win_get_y(i);
+                        prev_active_w = ss_win_get_w(i);
+                        prev_active_h = ss_win_get_h(i);
+                        prev_active_valid = 1;
+                        break;
+                    }
+                }
                 drag_id = hid;
                 drag_ox = mx - ss_win_get_x(hid);
                 drag_oy = my - ss_win_get_y(hid);
@@ -318,9 +343,18 @@ void ss_run(void) {
             /* Region repaint at new position: paints the window (now active,
              * since set_z raised it) AND refreshes ss_win_active_z. */
             ss_win_render_region(drag_prev_x, drag_prev_y, drag_w, drag_h);
+            /* Repaint the previous active window: render_region only
+             * touches windows overlapping the new position, so the
+             * window that just lost the active title is left painted
+             * in the active color.  Force its repaint now. */
+            if (prev_active_valid) {
+                ss_win_render_region(prev_active_x, prev_active_y,
+                                     prev_active_w, prev_active_h);
+            }
             cur_prev_x = -100;
             drag_id = -1;
             drag_prev_x = -1;
+            prev_active_valid = 0;
         }
 
         if (drag_id <= 0) {
