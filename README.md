@@ -47,6 +47,8 @@ make standalone
 # 出力: ~/tmp/ssos_cop.x または ~/tmp/ssos_prm.x
 ```
 
+**`make clean`が必要な理由**: `.x` と `.xdf` でコンパイルフラグが異なるため（`LOCAL_MODE` 定義の有無）。
+
 ### OS ビルド（起動可能ディスク）
 
 ```bash
@@ -56,12 +58,16 @@ make
 # 出力: ~/tmp/ssos_cop.xdf または ~/tmp/ssos_prm.xdf（起動可能ディスクイメージ）
 ```
 
-ルート Makefile から両バリアントを一括ビルドすることも可能:
+**`make clean`が必要な理由**: `.x` と `.xdf` でコンパイルフラグが異なるため（`LOCAL_MODE` 定義の有無）。同じソースファイルでも生成されるオブジェクトが異なるため、ターゲット切り替え時は中間ファイルをクリアして再ビルドが必要。
+
+### 全ターゲット一括ビルド
+
+ルート Makefile から全ターゲット（`.x` と `.xdf` 両方）を一括ビルド:
 
 ```bash
 # リポジトリルートで
-make all
-# 成果物: ssos-cooperative/ssos_cop.xdf, ssos-preemptive/ssos_prm.xdf
+make
+# 成果物: ~/tmp/ssos_cop.x, ~/tmp/ssos_cop.xdf, ~/tmp/ssos_prm.x, ~/tmp/ssos_prm.xdf
 ```
 
 生成された XDF ファイルを X68000 エミュレータで起動:
