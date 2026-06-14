@@ -39,6 +39,9 @@ uint16_t ss_win_create(int x, int y, int w, int h, uint16_t z) {
     win->dirty_h = h;
     win->render = NULL;
     win->id = i + 1;
+    memset(win->title, 0, sizeof(win->title));
+    memset(win->content, 0, sizeof(win->content));
+    memset(win->content_prev, 0, sizeof(win->content_prev));
     win_count++;
 
     ss_enable_interrupts();
@@ -246,14 +249,18 @@ void ss_win_render_region(int rx, int ry, int rw, int rh) {
 }
 
 int ss_win_hit_test(int mx, int my) {
+    int best_z = -1, best_id = -1;
     for (int i = 0; i < SS_MAX_WINDOWS; i++) {
-        if (windows[i].id == 0 || !(windows[i].flags & SS_WIN_VISIBLE))
-            continue;
-        if (mx >= windows[i].x && mx < windows[i].x + (int)windows[i].w &&
-            my >= windows[i].y && my < windows[i].y + (int)windows[i].h)
-            return (int)windows[i].id;
+        SSWindow* w = &windows[i];
+        if (w->id == 0 || !(w->flags & SS_WIN_VISIBLE)) continue;
+        if (mx >= w->x && mx < w->x + (int)w->w &&
+            my >= w->y && my < w->y + (int)w->h &&
+            (int)w->z > best_z) {
+            best_z = w->z;
+            best_id = w->id;
+        }
     }
-    return -1;
+    return best_id;
 }
 
 int ss_win_get_x(uint16_t id) {
@@ -276,6 +283,30 @@ int ss_win_get_h(uint16_t id) {
 int ss_win_get_z(uint16_t id) {
     if (id == 0 || id > SS_MAX_WINDOWS) return 0;
     return windows[id - 1].z;
+}
+
+SSWindow* ss_win_get_ptr(uint16_t id) {
+    if (id == 0 || id > SS_MAX_WINDOWS) return NULL;
+    return &windows[id - 1];
+}
+
+void ss_win_set_title(uint16_t id, const char* title) {
+    if (id == 0 || id > SS_MAX_WINDOWS) return;
+    SSWindow* win = &windows[id - 1];
+    strncpy(win->title, title, sizeof(win->title) - 1);
+    win->title[sizeof(win->title) - 1] = '\0';
+}
+
+void ss_win_set_content_line(uint16_t id, int line, const char* text) {
+    if (id == 0 || id > SS_MAX_WINDOWS) return;
+    if (line < 0 || line >= 3) return;
+    SSWindow* win = &windows[id - 1];
+    /* Preemptive: protect from main-thread read mid-copy. Cooperative
+     * yield never preempts an strncpy, so only preemptive needs this. */
+    ss_disable_interrupts();
+    strncpy(win->content[line], text, sizeof(win->content[line]) - 1);
+    win->content[line][sizeof(win->content[line]) - 1] = '\0';
+    ss_enable_interrupts();
 }
 
 void ss_win_set_render(uint16_t id, void (*render)(SSWindow*)) {

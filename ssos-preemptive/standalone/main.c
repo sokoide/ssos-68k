@@ -12,6 +12,7 @@
 #include "../os/kernel/scheduler.h"
 #include "../os/mem/memory.h"
 #include "../os/gfx/gfx.h"
+#include "../os/win/win.h"
 
 #include <stdint.h>
 #include <stdio.h>
@@ -120,18 +121,15 @@ static void set_palette(void) {
 #define WIN_W 240
 #define WIN_H (CONTENT_Y + 3 * LINE_H + 4)
 
-typedef struct {
-    int x, y, w, h;
-    char title[20];
-    char line[3][30];
-    char prev[3][30];
-} Win;
-
-#define NUM_WINS 3
-
-static Win wins[NUM_WINS];
-static int zmap[NUM_WINS] = {0, 1, 2};
+static uint16_t next_z = 4;
+static uint16_t win_ids[3];
 static volatile uint32_t frame = 0;
+
+static int id_to_idx(uint16_t id) {
+    for (int i = 0; i < 3; i++)
+        if (win_ids[i] == id) return i;
+    return -1;
+}
 static volatile int last_key = -1;
 static volatile int mx, my;  /* Initialized in main() based on current mode */
 static volatile uint8_t mb_left, mb_right;
@@ -208,39 +206,9 @@ static void restore_win_bitmap(int x, int y, int w, int h) {
     win_save_valid = 0;
 }
 
-/* ---- Window overlap check ---- */
-
-static int win_overlap(int zpos) {
-    Win* w = &wins[zmap[zpos]];
-    for (int k = zpos + 1; k < NUM_WINS; k++) {
-        Win* ow = &wins[zmap[k]];
-        if (w->x < ow->x + ow->w && w->x + w->w > ow->x &&
-            w->y < ow->y + ow->h && w->y + w->h > ow->y)
-            return 1;
-    }
-    return 0;
-}
-
-/* ---- Clipped text (uses OS gfx module) ---- */
-
-static void draw_text_clip(int px, int py, const char* s, uint16_t fg,
-                           uint16_t bg, int zpos) {
-    if (!win_overlap(zpos)) {
-        ss_gfx_draw_text(px, py, s, fg, bg);
-        return;
-    }
-    int clips[NUM_WINS][4];
-    for (int i = 0; i < NUM_WINS; i++) {
-        Win* w = &wins[zmap[i]];
-        clips[i][0] = w->x; clips[i][1] = w->y;
-        clips[i][2] = w->w; clips[i][3] = w->h;
-    }
-    ss_gfx_draw_text_clip(px, py, s, fg, bg, (const int*)clips, NUM_WINS, zpos);
-}
-
 /* ---- Window frame drawing ---- */
 
-static void draw_frame(Win* w, int is_fg) {
+static void draw_frame(SSWindow* w, int is_fg) {
     uint16_t t_bg = is_fg ? C_GRAY_L : C_WHITE;
 
     ss_gfx_rect(w->x + 1, w->y + 1, w->w - 2, TITLE_H - 2, t_bg);
@@ -271,18 +239,12 @@ static void draw_frame(Win* w, int is_fg) {
 
 /* ---- Dirty content update ---- */
 
-static void pad(char* s, int n) {
-    int l = (int)strlen(s);
-    for (int i = l; i < n; i++) s[i] = ' ';
-    s[n] = '\0';
-}
-
-static void draw_content_dirty(Win* w) {
+static void draw_content_dirty(SSWindow* w) {
     for (int i = 0; i < 3; i++) {
-        if (memcmp(w->line[i], w->prev[i], 30) != 0) {
+        if (memcmp(w->content[i], w->content_prev[i], 30) != 0) {
             ss_gfx_draw_text(w->x + 4, w->y + CONTENT_Y + i * LINE_H,
-                             w->line[i], C_BLACK, C_WHITE);
-            memcpy(w->prev[i], w->line[i], 30);
+                             w->content[i], C_BLACK, C_WHITE);
+            memcpy(w->content_prev[i], w->content[i], 30);
         }
     }
 }
@@ -445,26 +407,6 @@ static void ol_restore(void) {
     ol_valid = 0;
 }
 
-/* ---- Z-order ---- */
-
-static void bring_to_front(int idx) {
-    int p = -1;
-    for (int i = 0; i < NUM_WINS; i++)
-        if (zmap[i] == idx) { p = i; break; }
-    if (p < 0 || p == NUM_WINS - 1) return;
-    for (int i = p; i < NUM_WINS - 1; i++) zmap[i] = zmap[i + 1];
-    zmap[NUM_WINS - 1] = idx;
-}
-
-static int hit_test(int hx, int hy) {
-    for (int i = NUM_WINS - 1; i >= 0; i--) {
-        Win* w = &wins[zmap[i]];
-        if (hx >= w->x && hx < w->x + w->w && hy >= w->y && hy < w->y + w->h)
-            return zmap[i];
-    }
-    return -1;
-}
-
 /* ---- V-sync ---- */
 
 static void wait_vsync(void) {
@@ -496,25 +438,26 @@ static void* data_thread(void* arg) {
         if (last_key >= 0) {
             int k = last_key & 0xFF;
             char ch = (k >= 0x20 && k < 0x7F) ? (char)k : '.';
-            sprintf(wins[1].line[0], "Code:%02XH '%c'", k, ch);
-            pad(wins[1].line[0], 24);
-            sprintf(wins[1].line[1], "Shift:%02XH", (last_key >> 8) & 0xFF);
-            pad(wins[1].line[1], 24);
+            char buf[30];
+            sprintf(buf, "Code:%02XH '%c'", k, ch);
+            ss_win_set_content_line(win_ids[1], 0, buf);
+            sprintf(buf, "Shift:%02XH", (last_key >> 8) & 0xFF);
+            ss_win_set_content_line(win_ids[1], 1, buf);
         } else {
-            strcpy(wins[1].line[0], "Press any key...  ");
-            pad(wins[1].line[0], 24);
-            strcpy(wins[1].line[1], "                        ");
+            ss_win_set_content_line(win_ids[1], 0, "Press any key...");
+            ss_win_set_content_line(win_ids[1], 1, "");
         }
 
         uint32_t f = frame;
         uint32_t sec = f / 55;
         uint32_t frac = (f % 55) * 100 / 55;
-        sprintf(wins[0].line[0], "Vsync: %lu", f);
-        pad(wins[0].line[0], 24);
-        sprintf(wins[0].line[1], "Time: %lu.%02lu", sec, frac);
-        pad(wins[0].line[1], 24);
-        sprintf(wins[0].line[2], "Tick:%lu", ss_tick_counter);
-        pad(wins[0].line[2], 24);
+        char buf[30];
+        sprintf(buf, "Vsync: %lu", f);
+        ss_win_set_content_line(win_ids[0], 0, buf);
+        sprintf(buf, "Time: %lu.%02lu", sec, frac);
+        ss_win_set_content_line(win_ids[0], 1, buf);
+        sprintf(buf, "Tick:%lu", ss_tick_counter);
+        ss_win_set_content_line(win_ids[0], 2, buf);
 
         ss_task_sleep(40);
     }
@@ -578,6 +521,7 @@ int main(int argc, char** argv) {
     _iocs_skeyset(0);
 
     ss_gfx_init();
+    ss_win_init();
 
     {
         volatile uint32_t* tp = (volatile uint32_t*)0xE00000;
@@ -601,9 +545,12 @@ int main(int argc, char** argv) {
     *(volatile uint32_t*)0xB0 = (uint32_t)ss_nop_handler;
     *(volatile uint32_t*)0x7C = (uint32_t)ss_nop_handler;
 
-    wins[0] = (Win){30, 15, WIN_W, WIN_H, "Timer"};
-    wins[1] = (Win){180, 60, WIN_W, WIN_H, "Keyboard"};
-    wins[2] = (Win){80, 120, WIN_W, WIN_H, "Mouse"};
+    win_ids[0] = ss_win_create(30, 15, WIN_W, WIN_H, 1);
+    win_ids[1] = ss_win_create(180, 60, WIN_W, WIN_H, 2);
+    win_ids[2] = ss_win_create(80, 120, WIN_W, WIN_H, 3);
+    ss_win_set_title(win_ids[0], "Timer");
+    ss_win_set_title(win_ids[1], "Keyboard");
+    ss_win_set_title(win_ids[2], "Mouse");
     ol_valid = 0;
 
     uint16_t t_data = ss_task_create(&(SSTaskInfo){.entry = data_thread,
@@ -621,6 +568,12 @@ int main(int argc, char** argv) {
 
         if (exit_flag) break;
 
+        int highest_active_z = -1;
+        for (int i = 0; i < 3; i++) {
+            int z = ss_win_get_z(win_ids[i]);
+            if (z > highest_active_z) highest_active_z = z;
+        }
+
         int cur_mx, cur_my, left;
         {
             int dt = _iocs_ms_getdt();
@@ -632,48 +585,55 @@ int main(int argc, char** argv) {
             mb_right = (dt & 0x0001) != 0;
         }
 
-        sprintf(wins[2].line[0], "X:%3d Y:%3d", cur_mx, cur_my);
-        pad(wins[2].line[0], 24);
-        sprintf(wins[2].line[1], "L=%s R=%s", left ? "DN" : "UP",
+        char mbuf[30];
+        sprintf(mbuf, "X:%3d Y:%3d", cur_mx, cur_my);
+        ss_win_set_content_line(win_ids[2], 0, mbuf);
+        sprintf(mbuf, "L=%s R=%s", left ? "DN" : "UP",
                 mb_right ? "DN" : "UP");
-        pad(wins[2].line[1], 24);
+        ss_win_set_content_line(win_ids[2], 1, mbuf);
 
         if (left && drag < 0) {
-            int hit = hit_test(cur_mx, cur_my);
-            if (hit >= 0 && cur_my >= wins[hit].y + 1 &&
-                cur_my <= wins[hit].y + TITLE_H) {
-                drag = hit;
-                dox = cur_mx - wins[hit].x;
-                doy = cur_my - wins[hit].y;
-                bring_to_front(hit);
-                save_win_bitmap(wins[hit].x, wins[hit].y, wins[hit].w,
-                                wins[hit].h);
-                ss_gfx_fill_stipple(wins[hit].x, wins[hit].y,
-                                    wins[hit].w, wins[hit].h,
+            int hid = ss_win_hit_test(cur_mx, cur_my);
+            if (hid >= 0 && cur_my >= ss_win_get_y(hid) + 1 &&
+                cur_my <= ss_win_get_y(hid) + TITLE_H) {
+                drag = id_to_idx(hid);
+                dox = cur_mx - ss_win_get_x(hid);
+                doy = cur_my - ss_win_get_y(hid);
+                ss_win_set_z(hid, next_z);
+                if (++next_z > 255) next_z = 4;
+                save_win_bitmap(ss_win_get_x(hid), ss_win_get_y(hid),
+                                ss_win_get_w(hid), ss_win_get_h(hid));
+                ss_gfx_fill_stipple(ss_win_get_x(hid), ss_win_get_y(hid),
+                                    ss_win_get_w(hid), ss_win_get_h(hid),
                                     C_WHITE, C_GRAY_M);
-                for (int i = 0; i < NUM_WINS; i++) {
-                    int idx = zmap[i];
-                    if (idx == drag) continue;
-                    draw_frame(&wins[idx], (i == NUM_WINS - 1));
-                    memset(wins[idx].prev, 0xFF, sizeof(wins[idx].prev));
-                    draw_content_dirty(&wins[idx]);
+                for (int i = 0; i < 3; i++) {
+                    uint16_t id = win_ids[i];
+                    if (id == hid) continue;
+                    SSWindow* w = ss_win_get_ptr(id);
+                    draw_frame(w, ss_win_get_z(id) == highest_active_z);
+                    memset(w->content_prev, 0xFF, sizeof(w->content_prev));
+                    draw_content_dirty(w);
                 }
-                ol_save(wins[drag].x, wins[drag].y, wins[drag].w, wins[drag].h);
-                draw_march_outline(wins[drag].x, wins[drag].y, wins[drag].w,
-                                   wins[drag].h);
-                memset(wins[drag].prev, 0xFF, sizeof(wins[drag].prev));
+                SSWindow* dw = ss_win_get_ptr(hid);
+                ol_save(ss_win_get_x(hid), ss_win_get_y(hid),
+                        ss_win_get_w(hid), ss_win_get_h(hid));
+                draw_march_outline(ss_win_get_x(hid), ss_win_get_y(hid),
+                                   ss_win_get_w(hid), ss_win_get_h(hid));
+                memset(dw->content_prev, 0xFF, sizeof(dw->content_prev));
                 need_full = 0;
             }
         }
         if (!left && drag >= 0) {
             ol_restore();
-            int wx = wins[drag].x, wy = wins[drag].y;
-            int ww = wins[drag].w, wh = wins[drag].h;
+            uint16_t did = win_ids[drag];
+            int wx = ss_win_get_x(did), wy = ss_win_get_y(did);
+            int ww = ss_win_get_w(did), wh = ss_win_get_h(did);
+            SSWindow* dw = ss_win_get_ptr(did);
             if (win_save_valid && wx >= 0 && wy >= 0 &&
                 wx + ww <= ss_current_mode->display_w && wy + wh <= ss_current_mode->display_h) {
                 restore_win_bitmap(wx, wy, ww, wh);
                 ss_gfx_rect(wx + 1, wy + 1, ww - 2, TITLE_H - 2, C_GRAY_L);
-                int tw = (int)strlen(wins[drag].title) * SS_FONT_ADV;
+                int tw = (int)strlen(dw->title) * SS_FONT_ADV;
                 int tx = wx + (ww - tw) / 2;
                 for (int li = 0; li < 5; li++) {
                     int ly = wy + 2 + li * 2;
@@ -682,55 +642,50 @@ int main(int argc, char** argv) {
                     if (tx + tw + 8 < wx + ww - 4)
                         ss_gfx_rect(tx + tw + 8, ly, (wx + ww - 5) - (tx + tw + 8) + 1, 1, C_BLACK);
                 }
-                ss_gfx_draw_text(tx, wy + 2, wins[drag].title, C_BLACK, C_GRAY_L);
+                ss_gfx_draw_text(tx, wy + 2, dw->title, C_BLACK, C_GRAY_L);
             } else {
-                draw_frame(&wins[drag], 1);
+                draw_frame(dw, 1);
             }
-            memset(wins[drag].prev, 0xFF, sizeof(wins[drag].prev));
-            draw_content_dirty(&wins[drag]);
+            memset(dw->content_prev, 0xFF, sizeof(dw->content_prev));
+            draw_content_dirty(dw);
             drag = -1;
         }
         if (drag >= 0) {
-            wins[drag].x = cur_mx - dox;
-            wins[drag].y = cur_my - doy;
+            uint16_t did = win_ids[drag];
+            int nx = cur_mx - dox;
+            int ny = cur_my - doy;
             /* Clamp window position to keep it on screen */
-            if (wins[drag].x < 0) wins[drag].x = 0;
-            if (wins[drag].y < 0) wins[drag].y = 0;
-            if (wins[drag].x + wins[drag].w > ss_current_mode->display_w)
-                wins[drag].x = ss_current_mode->display_w - wins[drag].w;
-            if (wins[drag].y + wins[drag].h > ss_current_mode->display_h)
-                wins[drag].y = ss_current_mode->display_h - wins[drag].h;
+            if (nx < 0) nx = 0;
+            if (ny < 0) ny = 0;
+            if (nx + ss_win_get_w(did) > ss_current_mode->display_w)
+                nx = ss_current_mode->display_w - ss_win_get_w(did);
+            if (ny + ss_win_get_h(did) > ss_current_mode->display_h)
+                ny = ss_current_mode->display_h - ss_win_get_h(did);
+            ss_win_move(did, nx, ny);
         }
 
         if (need_full) {
             ss_gfx_fill_stipple(0, 0, ss_current_mode->display_w, ss_current_mode->display_h,
                                 C_WHITE, C_GRAY_M);
-            for (int i = 0; i < NUM_WINS; i++) {
-                int idx = zmap[i];
-                draw_frame(&wins[idx], (i == NUM_WINS - 1));
-                memset(wins[idx].prev, 0xFF, sizeof(wins[idx].prev));
-                draw_content_dirty(&wins[idx]);
+            for (int i = 0; i < 3; i++) {
+                SSWindow* w = ss_win_get_ptr(win_ids[i]);
+                draw_frame(w, ss_win_get_z(win_ids[i]) == highest_active_z);
+                memset(w->content_prev, 0xFF, sizeof(w->content_prev));
+                draw_content_dirty(w);
             }
             need_full = 0;
         } else if (drag >= 0) {
-            int moved = (ol_x != wins[drag].x || ol_y != wins[drag].y);
+            SSWindow* dw = ss_win_get_ptr(win_ids[drag]);
+            int moved = (ol_x != dw->x || ol_y != dw->y);
             if (moved) {
                 ol_restore();
-                ol_save(wins[drag].x, wins[drag].y, wins[drag].w, wins[drag].h);
+                ol_save(dw->x, dw->y, dw->w, dw->h);
             }
-            draw_march_outline(wins[drag].x, wins[drag].y, wins[drag].w,
-                               wins[drag].h);
+            draw_march_outline(dw->x, dw->y, dw->w, dw->h);
         } else {
-            for (int i = 0; i < NUM_WINS; i++) {
-                int idx = zmap[i];
-                Win* w = &wins[idx];
-                for (int j = 0; j < 3; j++) {
-                    if (memcmp(w->line[j], w->prev[j], 30) != 0) {
-                        draw_text_clip(w->x + 4, w->y + CONTENT_Y + j * LINE_H,
-                                       w->line[j], C_BLACK, C_WHITE, i);
-                        memcpy(w->prev[j], w->line[j], 30);
-                    }
-                }
+            for (int i = 0; i < 3; i++) {
+                SSWindow* w = ss_win_get_ptr(win_ids[i]);
+                draw_content_dirty(w);
             }
         }
     }

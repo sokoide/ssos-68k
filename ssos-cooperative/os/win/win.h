@@ -19,6 +19,9 @@ struct SSWindow {
     uint16_t dirty_x, dirty_y, dirty_w, dirty_h;
     void (*render)(SSWindow* self);
     uint16_t id;
+    char title[20];
+    char content[3][30];
+    char content_prev[3][30];
 };
 
 void     ss_win_init(void);
@@ -36,6 +39,9 @@ int      ss_win_get_y(uint16_t id);
 int      ss_win_get_w(uint16_t id);
 int      ss_win_get_h(uint16_t id);
 int      ss_win_get_z(uint16_t id);
+SSWindow* ss_win_get_ptr(uint16_t id);
+void     ss_win_set_title(uint16_t id, const char* title);
+void     ss_win_set_content_line(uint16_t id, int line, const char* text);
 void     ss_win_set_render(uint16_t id, void (*render)(SSWindow*));
 void     ss_win_set_z(uint16_t id, uint16_t z);
 void     ss_win_mark_dirty(uint16_t id);
