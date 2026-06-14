@@ -557,10 +557,12 @@ int main(int argc, char** argv) {
                                                     .pri = 8,
                                                     .ctx_level = 0,
                                                     .stack_size = 0,
-                                                    .stack = NULL});
+                                                     .stack = NULL});
     ss_task_start(t_data);
 
     static uint32_t main_mfp_check = 0;
+
+    int highest_active_z = -1;
 
     for (;;) {
         wait_vsync();
@@ -568,7 +570,8 @@ int main(int argc, char** argv) {
 
         if (exit_flag) break;
 
-        int highest_active_z = -1;
+        /* Recalculate highest_active_z every frame to handle z-order wraparound */
+        highest_active_z = -1;
         for (int i = 0; i < 3; i++) {
             int z = ss_win_get_z(win_ids[i]);
             if (z > highest_active_z) highest_active_z = z;
@@ -606,6 +609,14 @@ int main(int argc, char** argv) {
                 ss_gfx_fill_stipple(ss_win_get_x(hid), ss_win_get_y(hid),
                                     ss_win_get_w(hid), ss_win_get_h(hid),
                                     C_WHITE, C_GRAY_M);
+
+                /* Recalculate highest_active_z after z-order change */
+                highest_active_z = -1;
+                for (int i = 0; i < 3; i++) {
+                    int z = ss_win_get_z(win_ids[i]);
+                    if (z > highest_active_z) highest_active_z = z;
+                }
+
                 for (int i = 0; i < 3; i++) {
                     uint16_t id = win_ids[i];
                     if (id == hid) continue;
