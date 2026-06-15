@@ -26,31 +26,6 @@
 #include <x68k/iocs.h>
 #pragma warning restore format
 
-/* Diagnostic cases for s33 crash investigation.
- * Define one of these via -D on the command line:
- *   make CDEFINES=-DDIAG_CASE_1   (etc.)
- * Runs the test in place of the normal exit sequence. */
-#ifdef DIAG_CASE_1
-/* B_SUPER → dos_exit2(0) — no B_PRINT at all */
-#include <x68k/dos.h>
-#endif
-#ifdef DIAG_CASE_2
-/* B_SUPER → 1000 nops → dos_exit2(0) */
-#include <x68k/dos.h>
-#endif
-#ifdef DIAG_CASE_3
-/* B_SUPER → _iocs_b_keysns() → dos_exit2(0) */
-#include <x68k/dos.h>
-#endif
-#ifdef DIAG_CASE_4
-/* B_SUPER → B_PRINT("A") → dos_exit2(0) */
-#include <x68k/dos.h>
-#endif
-#ifdef DIAG_CASE_5
-/* B_SUPER → B_PRINT("AAAA...") → dos_exit2(0) */
-#include <x68k/dos.h>
-#endif
-
 #ifdef LOCAL_MODE
 
 static uint8_t local_memory[512 * 1024] __attribute__((aligned(4)));
@@ -431,20 +406,28 @@ int main(int argc, char** argv) {
     my = ss_current_mode->display_h / 2;
 
     /*
-     * Enter Supervisor mode via raw IOCS _B_SUPER trap.
-     * Can NOT use _iocs_b_super(1) — the library function executes
-     * move.l %sp,%usp (privileged) BEFORE the trap, which crashes
-     * from User mode.  A raw trap #15 bypasses this issue.
+     * Enter Supervisor mode via raw IOCS _B_SUPER trap (func 0x81).
+     * IOCS trap#15 ABI: a1 = MD, d0 = func number.
+     *   MD = 0  → enter supervisor mode; d0 returns the USP (A7 before the
+     *             switch), which we save to restore user mode on exit.
+     *   MD > 0  → return to user mode with USP = MD.
+     *   (MD < 0 is NOT a valid "enter supervisor" value here — it makes IOCS
+     *    derive SSP from MD and corrupts the stack on entry. Use MD = 0.)
+     * Can NOT use _iocs_b_super() — the library wrapper executes
+     * move.l %sp,%usp (privileged) BEFORE the trap, which crashes from user
+     * mode. A raw trap #15 with a1 = MD set explicitly bypasses this. Note a1
+     * MUST be written here (the C entry state of a1 is not a valid MD) — the
+     * same ABI that lets _B_PRINT clobber a1 also means _B_SUPER reads MD from a1.
      */
-    int old_ssp;
+    int old_usp;
     asm volatile(
-        "moveq #-127, %%d0\n\t"  /* _B_SUPER = 0x81 */
-        "moveq #1, %%d1\n\t"     /* 1 = enter supervisor */
+        "suba.l %%a1, %%a1\n\t"   /* a1 = MD = 0 → enter supervisor mode */
+        "moveq #-127, %%d0\n\t"   /* d0 = _B_SUPER = 0x81 */
         "trap #15\n\t"
-        "move.l %%d0, %0"
-        : "=d"(old_ssp)
+        "move.l %%d0, %0"         /* old_usp = USP returned by IOCS */
+        : "=d"(old_usp)
         :
-        : "d0", "d1"
+        : "d0", "a1"
     );
 
     ss_init_trap14();
@@ -672,14 +655,17 @@ int main(int argc, char** argv) {
         sprintf(buf, "SR: 0x%04X\r\n", ss_trapbuf_sr);
         _iocs_b_print(buf);
         _iocs_b_print("====================================\r\n");
-        /* Exit supervisor mode via raw trap (see enter comment above) */
+        /* Exit supervisor mode via raw trap (see enter comment above).
+         * a1 = MD = old_usp must be set explicitly: the B_PRINT calls above
+         * leave a1 clobbered (IOCS _B_PRINT uses a1 as scratch and does not
+         * restore it), and _B_SUPER reads MD from a1. */
         asm volatile(
+            "move.l %0, %%a1\n\t"    /* a1 = MD = old_usp */
             "moveq #-127, %%d0\n\t"  /* _B_SUPER = 0x81 */
-            "move.l %0, %%d1\n\t"    /* old_ssp */
             "trap #15\n\t"
             :
-            : "d"(old_ssp)
-            : "d0", "d1"
+            : "d"(old_usp)
+            : "d0", "a1"
         );
         _exit(1);
     }
@@ -695,83 +681,35 @@ int main(int argc, char** argv) {
     _iocs_crtmod(old_mode);
     _iocs_b_curon();
 
-#ifdef DIAG_CASE_1
-    /* Case 1: B_SUPER → dos_exit2(0) only */
-    asm volatile(
-        "moveq #-127, %%d0\n\t"
-        "move.l %0, %%d1\n\t"
-        "trap #15\n\t"
-        : : "d"(old_ssp) : "d0", "d1"
-    );
-    _dos_exit2(0);
-
-#elif defined(DIAG_CASE_2)
-    /* Case 2: B_SUPER → 1000 nops → dos_exit2(0) */
-    asm volatile(
-        "moveq #-127, %%d0\n\t"
-        "move.l %0, %%d1\n\t"
-        "trap #15\n\t"
-        : : "d"(old_ssp) : "d0", "d1"
-    );
-    for (volatile int i = 0; i < 1000; i++);
-    _dos_exit2(0);
-
-#elif defined(DIAG_CASE_3)
-    /* Case 3: B_SUPER → keysns → dos_exit2(0) */
-    asm volatile(
-        "moveq #-127, %%d0\n\t"
-        "move.l %0, %%d1\n\t"
-        "trap #15\n\t"
-        : : "d"(old_ssp) : "d0", "d1"
-    );
-    _iocs_b_keysns();
-    _dos_exit2(0);
-
-#elif defined(DIAG_CASE_4)
-    /* Case 4: B_SUPER → B_PRINT("A") → dos_exit2(0) */
-    asm volatile(
-        "moveq #-127, %%d0\n\t"
-        "move.l %0, %%d1\n\t"
-        "trap #15\n\t"
-        : : "d"(old_ssp) : "d0", "d1"
-    );
-    _iocs_b_print("A");
-    _dos_exit2(0);
-
-#elif defined(DIAG_CASE_5)
-    /* Case 5: B_SUPER → B_PRINT(16 A's) → dos_exit2(0) */
-    asm volatile(
-        "moveq #-127, %%d0\n\t"
-        "move.l %0, %%d1\n\t"
-        "trap #15\n\t"
-        : : "d"(old_ssp) : "d0", "d1"
-    );
-    _iocs_b_print("AAAAAAAAAAAAAAAA");
-    _dos_exit2(0);
-
-#else
-    /* Normal path.
-     * B_SUPER MUST come before B_PRINT: issuing IOCS _B_PRINT (trap #15) while
-     * still in supervisor mode leaves SSP pointing at the C-runtime stack and
-     * disturbs the process state DOS termination walks, triggering an Address
-     * Error in the IPL-ROM memmove at 0xFFA870 (move.l -(a0),-(a1), A1 = BSS+1).
-     * See commit e8a268e and .ai-handoff.md (s33). All DIAG_CASE_* branches
-     * above use this same B_SUPER-first order. */
-    asm volatile(
-        "moveq #-127, %%d0\n\t"  /* _B_SUPER = 0x81 */
-        "move.l %0, %%d1\n\t"    /* old_ssp */
-        "trap #15\n\t"
-        :
-        : "d"(old_ssp)
-        : "d0", "d1"
-    );
+    /* Normal path (s33 fix). Print the terminated message in supervisor mode,
+     * then return to user via _B_SUPER, then _exit.
+     *
+     * The only non-obvious requirement is writing a1 = MD = old_usp immediately
+     * before the _B_SUPER trap. The _iocs_b_print() call above is a C-level IOCS
+     * call (func 0x21 via trap#15) whose handler treats a1 as scratch (string
+     * cursor / work pointer) and does NOT restore it on return, so a1 is left
+     * holding a stale value (BSS+1). _B_SUPER (func 0x81) reads MD from a1 per
+     * the IOCS trap#15 ABI; without the explicit write, MD = BSS+1 (≥0) would
+     * return to user mode with USP = BSS+1, and the DOS termination walked by
+     * _exit()'s cleanup (__fd_exit_clean / _dos_allclose) would hit a corrupted
+     * stack → Address Error in the IPL-ROM memmove at 0xFFA870 (move.l
+     * -(a0),-(a1)). Writing a1 = old_usp right before the trap is the complete
+     * fix. (This is unrelated to preemptive scheduling; cooperative only survived
+     * by luck — the leftover a1 occasionally happened to be benign.) */
 #ifdef SS_BUILD_PREEMPTIVE
     _iocs_b_print("SSOS-Preemptive terminated.\r\n");
 #else
     _iocs_b_print("SSOS-Cooperative terminated.\r\n");
 #endif
+    asm volatile(
+        "move.l %0, %%a1\n\t"    /* a1 = MD = old_usp (must re-set: B_PRINT clobbered a1) */
+        "moveq #-127, %%d0\n\t"  /* d0 = _B_SUPER = 0x81 */
+        "trap #15\n\t"
+        :
+        : "d"(old_usp)
+        : "d0", "a1"
+    );
     _exit(0);
-#endif
 }
 
 #endif /* LOCAL_MODE */

@@ -493,37 +493,93 @@ Timer D と V-DISP の両 ISR は:
 
 ### バグ履歴（解決済み）
 
-#### s33: preemptive standalone 終了時 Address Error (調査中)
+#### s33: standalone 終了時 Address Error（B_PRINT が a1 を破壊し、後続の _B_SUPER が MD を誤読）
 
 - **症状**: `ssos_pre.x` ESC 終了時、"SSOS-Preemptive terminated." 表示直後に
   `Exceptional Abort By address error` (PC=0xFFA870, `move.l -(a0),-(a1)`) で Address Error。
-  `ssos_cop.x` は無傷。文字列長の 1 バイト差で発現有無が変わる
-  ("Preemptive" 10文字 vs "Cooperative" 11文字)。
+  crash 時 A1 = `0x001610A1`（BSS+1, 奇数）。`ssos_cop.x` は無傷だったが**偶然**（後述）。
+  文字列長 31 バイトで安定再現（12 バイトでは再現しなかった = 非決定的）。
 
-- **確定している事実**:
-  - crash 時 A1 = `0x0015E429` (奇数) = BSS start + 1 (off-by-one)
-  - Supervisor mode (`_B_PRINT` → `_B_SUPER` → `_dos_exit2`) → crash
-  - User mode (`_B_SUPER` → `_B_PRINT` → `_dos_exit2`) → no crash
-  - `_B_PRINT` 自体は両方の順序で正常動作（メッセージは表示される）
-  - `_dos_exit2` は `movew sp@(6),sp@-; .short 0xFF4C` の単純実装。cleanup なし
-  - 0xFFA870 は IPL-ROM 内の逆方向 memmove ルーチン
+- **IOCS trap#15 の共通呼出規約（前提）**:
+  Human68K の全 IOCS 関数（`_B_PRINT`=func 0x21, `_B_SUPER`=func 0x81 等）は trap#15 を使い、
+  **第1引数を a1**、関数番号を d0 で渡す（`elf2x68k` の `b_print.S`/`b_super.S` で確認: いずれも
+  `move.l <arg>,%a1` → `trap #15`）。`_B_SUPER(MD)` の MD も a1 経由:
+  - MD = 0: supervisor モードへ。**d0 は user モード時の A7（= USP）を返す**。
+  - MD > 0: user モードへ戻り、**USP = MD** を設定。
+  - (MD < 0 は supervisor 入りに使えない — IOCS が SSP を MD から導出し、エントリ直後にスタック
+    破壊で起動 crash する。元の enter コードが `d1=1` で動いていたのは a1 不定値がたまたま 0 相当
+    だったための偶然。)
+  したがって supervisor に入る時は `old_usp = _B_SUPER(-1)` の戻り値（USP）を保存し、抜ける時は
+  `_B_SUPER(old_usp)` で戻す。変数名は **`old_usp`**（かつて `old_ssp` と誤記していたのを訂正）。
 
-- **未確定の仮説**:
-  1. Human68K の PSP/MCB/プロセス管理情報がプログラム実行中に 1 バイト壊れている
-  2. `_B_SUPER` 前後での trap #15 ハンドラのスタック使用 (SSP=C runtime vs old_ssp) の
-     違いが、IOCS 内部動作を通じて PSP/MCB への「当たり方」を変えている
-  3. 文字列長の 1 バイト差は BSS alignment を変え、壊れる場所の parity を変えるだけ
+- **真因（B_PRINT が a1 を破壊する）**:
+  `_iocs_b_print(str)`（C ラッパ）は内部で `a1 = str` を設定して trap するが、**IOCS _B_PRINT
+  ハンドラは a1 を scratch（文字列カーソル／ワークポインタ）として使い、戻り時に復元しない**。
+  結果、B_PRINT 後の a1 は IOCS が内部で設定したワークアドレス（実行時のメモリ配置依存で BSS 直後の
+  奇数アドレス）が残る。観測（s33 CASE 8）: `SUP-BPRINT\r\n` 呼出前後で a1 が `0x0026A9D2`（文字列先頭）
+  → `0x00161187`（BSS+off）に変化。後続の `_B_SUPER(0x81)` が同じ trap#15 ABI で **MD を a1 から読む**
+  ため、a1=BSS+1（≥0）を MD と誤認 → user 復帰で **USP = BSS+1** → スタックが BSS（データ領域）を指す
+  → `_exit` の DOS 終了処理（`__fd_exit_clean`/`_dos_allclose`/PSP 復帰の memmove）が壊れたスタックを
+  歩き、IPL-ROM の逆方向 memmove (0xFFA870) で a1=奇数 → Address Error。
 
-- **応急処置** (`e8a268e`):
-  `_iocs_b_print()` を `_B_SUPER(old_ssp)` の後に移動。確実に回避できるが、
-  なぜ効くかの説明は不完全。
+  なぜ a1 が BSS 領域を指すか: IPL-ROM 内の _B_PRINT が文字列出力のために参照するコンソール制御ワーク
+  ／バッファのアドレスが、実行時のメモリ配置（ユーザープログラム直後の IOCS ワーク、または IOCS が
+  scratch に使う領域）に依存する。正確な計算は IPL-ROM の逆アセンブルが必要だが、観測的に一貫して
+  「BSS 開始位置 +1」の奇数アドレスになる（文字列長やコンパイル内容でわずかに変動するため非決定的）。
 
-- **次セッションの診断計画**:
-  ケース 1: `B_SUPER` → `dos_exit2` (B_PRINT なし)
-  ケース 2: `B_SUPER` → nop 1000回 → `dos_exit2`
-  ケース 3: `B_SUPER` → `_IOCS_B_KEYSNS` → `dos_exit2`
-  ケース 4: `B_SUPER` → `B_PRINT("A")` → `dos_exit2`
-  ケース 5: `B_SUPER` → `B_PRINT("AAAAAAAAAAAAAAAA")` → `dos_exit2`
+- **cooperative が無傷だった理由は偶然（Timer D は無関係）**:
+  cooperative と preemptive でコードサイズ/BSS 配置が異なり、B_PRINT 後の a1 の残留値が違った。
+  cooperative ではたまたま user 復帰で問題ない値が残り、preemptive では BSS+1 が残った。
+  **Timer D / プリエンプションは無関係**（当初の Timer D 仮説は誤り。CASE 11 で IPL=7 が OK だったのも、
+  B_PRINT 後の a1 がたまたま安全値だったための非決定的結果。後に normal path を IPL=7 のみにしても
+  同一 crash で確認）。
+
+- **決定的検証（CASE 9/10、preemptive・31バイト文字列）**:
+
+  | ケース | _B_SUPER の a1 設定 | 実機結果 |
+  |---|---|---|
+  | 9 | なし（d1 に old_usp、a1 は B_PRINT の残り BSS+1） | **CRASH**（PC=0xFFA870, A1=BSS+1） |
+  | 10 | trap 直前に a1=old_usp を明示設定 | **OK** |
+
+  - CASE 9 が元の normal path を完全再現。d1 に引数を渡しても IOCS は**無視して a1 を読む**。
+  - CASE 10 が真の fix。a1 を trap 直前に確実設定すれば B_PRINT の破壊は上書きされる。
+  - CASE 11 の IPL=7 は無関係（Timer D を止めても B_PRINT 自身の a1 破壊は防げない。OK は偶然）。
+  - **文字列長の役割**: 12 バイトでは再現しなかったのは、短い文字列では B_PRINT 後の a1 の残留値が
+    たまたま安全側に振れただけ（非決定的）。31 バイトで安定して BSS+1 が残った。文字列長/BSS
+    アライメント仮説（旧版）は否定。CASE 2 の旧クラッシュは別因（volatile ループが trap#15 直後に
+    `lea (16,%sp),%sp` を生成して A7 破壊。レジスタのみの asm ループで解消済み）。
+
+- **修正（a1 ABI を trap 直前に明示設定）**: supervisor で B_PRINT を呼んだ後、`_B_SUPER` の trap の
+  直前に a1 = MD = old_usp を書く。IPL 保護は不要（Timer D は無関係のため）。
+
+  ```c
+  /* enter: a1 = 0 (MD=0) → supervisor; old_usp = d0 (USP) */
+  /* exit:  a1 = old_usp (MD≥0) → user; then _exit */
+  _iocs_b_print("SSOS-Preemptive terminated.\r\n");
+  asm volatile(                    /* _B_SUPER(0x81): a1 = MD = old_usp で user へ戻る */
+      "move.l %0, %%a1\n\t"        /* a1 を再設定（B_PRINT が a1 を破壊したため必須） */
+      "moveq #-127, %%d0\n\t"      /* d0 = func 0x81 */
+      "trap #15\n\t"
+      : : "d"(old_usp) : "d0","a1");
+  _exit(0);
+  ```
+
+  - supervisor 入る側（enter）も a1 = 0（MD=0）を明示設定し、戻り値 d0（= USP）を old_usp に保存。
+  - normal path と trap14 例外ダンプパスの両方に適用。応急処置（`e8a268e` の B_SUPER 先順）は廃止、
+    本来の終了メッセージ順（B_PRINT 先）を取り戻した。一時入れた IPL=7 保護は Timer D 無関係と
+    判明したため削除。
+
+- **設計方針**: IOCS trap#15 の複数関数を連続して（生 trap で）呼ぶ場合、**各 trap の直前に a1 を
+  明示設定**すること。C ラッパ（`_iocs_b_print` 等）は内部で a1 を設定するが、IOCS ハンドラが a1 を
+  scratch に使うため呼出後の a1 は保証されない。生 trap で IOCS を呼ぶ際は常に自前で a1 を管理する。
+
+- **DIAG_CASE コード**: 検証終了につき削除（`standalone/main.c` の CASE 1-11 分岐・helpers 一括削除）。
+
+- **設計方針**: supervisor モードで IOCS trap#15 を呼ぶ場合は **(a) IPL 保護** と **(b) 引数レジスタの
+  trap 直前明示設定** の両方を行う（preemptive の Timer D プリエンプション ＋ IOCS ハンドラのレジスタ
+  破壊の二重対策）。
+
+- **DIAG_CASE コード**: 検証終了につき削除（`standalone/main.c` の CASE 1-11 分岐・helpers 一括削除）。
 
 #### s27-s29: OS モードのアクティブタイトル表示
 
