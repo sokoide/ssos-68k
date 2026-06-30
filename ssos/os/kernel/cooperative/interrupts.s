@@ -97,8 +97,6 @@ ss_set_interrupts:
 		| Save interrupt state for restore
 		| ============================================================
 	save_interrupts:
-		movem.l	d2-d7/a2-a6, -(sp)
-
 		lea		ss_save_data_base, a0
 
 		| Timer A
@@ -149,15 +147,12 @@ ss_set_interrupts:
 		move.l	d0, 28(a0)
 
 		move.w	#0x2700, %sr
-		movem.l	(sp)+, d2-d7/a2-a6
 		rts
 
 		| ============================================================
 		| ss_restore_interrupts - Restore original interrupt state
 		| ============================================================
 ss_restore_interrupts:
-		movem.l	d2-d7/a2-a6, -(sp)
-
 		move.w	#0x2700, %sr
 
 		| Reset pending
@@ -205,7 +200,6 @@ ss_restore_interrupts:
 		move.l	d0, 0x13c
 
 		move.w	#0x2700, %sr
-		movem.l	(sp)+, d2-d7/a2-a6
 		rts
 
 		| ============================================================
@@ -252,7 +246,6 @@ ss_vdisp_handler:
 		|   entry      = 20  (function pointer)
 		|   wait_until = 24  (uint32_t)
 		|   state      = 28  (uint8_t)
-		|   pri        = 29  (uint8_t)
 		|   pri        = 29  (uint8_t)
 		|   ctx_level  = 30  (uint8_t)
 		|   pad        = 31  (uint8_t)

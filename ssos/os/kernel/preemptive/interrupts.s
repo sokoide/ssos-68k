@@ -7,7 +7,6 @@
 		.globl	ss_tick_counter, ss_vsync_counter
 		.globl	ss_vsync_flag
 		.globl	ss_vdisp_fire_count, ss_timerd_fire_count
-		.globl	ss_wakeups_needed
 		.globl	ss_save_data_base
 		.globl	ss_task_yield
 		.globl	ss_context_switch_count
@@ -96,8 +95,6 @@ ss_set_interrupts:
 		| Save interrupt state for restore
 		| ============================================================
 save_interrupts:
-		movem.l	d2-d7/a2-a6, -(sp)
-
 		lea		ss_save_data_base, a0
 
 		| Timer A
@@ -148,15 +145,12 @@ save_interrupts:
 		move.l	d0, 28(a0)
 
 		move.w	#0x2700, %sr
-		movem.l	(sp)+, d2-d7/a2-a6
 		rts
 
 		| ============================================================
 		| ss_restore_interrupts - Restore original interrupt state
 		| ============================================================
 ss_restore_interrupts:
-		movem.l	d2-d7/a2-a6, -(sp)
-
 		move.w	#0x2700, %sr
 
 		| Reset pending
@@ -204,7 +198,6 @@ ss_restore_interrupts:
 		move.l	d0, 0x13c
 
 		move.w	#0x2700, %sr
-		movem.l	(sp)+, d2-d7/a2-a6
 		rts
 
 		| ============================================================
@@ -406,9 +399,6 @@ ss_vdisp_fire_count:
 		dc.l	0
 ss_timerd_fire_count:
 		dc.l	0
-ss_wakeups_needed:
-		dc.b	0
-		.even
 		.even
 
 		.section .bss
