@@ -20,7 +20,6 @@ uint32_t ss_stack_check(uint16_t id) {
 
     /* Bottom of stack = stack_base - stack_size + 4 */
     uint8_t* bottom = (uint8_t*)((uintptr_t)tcb->stack_base - tcb->stack_size + 4);
-    uint32_t* canary = (uint32_t*)bottom;
 
     /* Scan from bottom upward to find first non-canary word */
     uint32_t used = 0;

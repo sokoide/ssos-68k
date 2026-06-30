@@ -95,8 +95,6 @@ void* ss_alloc(uint32_t size) {
     }
     if (order > SS_BUDDY_MAX_ORDER) return NULL;
 
-    int idx = order_to_index(order);
-
     /* Find a free block of sufficient order */
     uint8_t found_order = order;
     while (found_order <= SS_BUDDY_MAX_ORDER) {
