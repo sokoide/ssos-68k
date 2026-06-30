@@ -5,7 +5,7 @@ SUBDIRS := tools/makedisk
 RUNNER := $(shell command -v pnpm >/dev/null 2>&1 && echo "pnpm dlx" || echo "npx")
 EXEC := $(shell command -v pnpm >/dev/null 2>&1 && echo "pnpm exec" || echo "npx")
 
-.PHONY: $(TOPTARGETS) $(SUBDIRS) all format ssos-cooperative ssos-preemptive test test-asm test-qemu
+.PHONY: $(TOPTARGETS) $(SUBDIRS) all format ssos-cooperative ssos-preemptive test test-asm test-qemu verify verify-check
 .default: all
 
 # Single unified tree under ssos/; the threading model is selected by SCHED=.
@@ -39,3 +39,13 @@ test-asm:
 
 test-qemu:
 	$(MAKE) -C tests test-qemu
+
+# Report which build targets need hardware verification for the current change
+# set. REF selects the diff target (default: working tree vs HEAD; use HEAD~1
+# to analyze the last commit, or main..HEAD for a branch).
+verify-check:
+	@tools/verify-check.sh $(REF)
+
+# One-shot: run all automated tests, confirm both SCHED variants build, then
+# report any targets that still need a manual hardware check.
+verify: test test-qemu all verify-check

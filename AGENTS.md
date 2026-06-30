@@ -14,7 +14,15 @@ Code is predominantly C with targeted 68000 assembly. Follow 4-space indentation
 
 ## Testing Guidelines
 
-The unit test suite under `tests/` has been removed because it referenced source files that no longer exist (e.g., `os/kernel/memory.c`, `os/kernel/task_manager.c`) and tested APIs that no longer match the current codebase (e.g., `ss_mem_alloc()`, `TaskControlBlock`). Only `tests/framework/ssos_test.h` is kept as a starting point for a future rewrite. Treat current test coverage as 0% (test suite removed — was testing old API, needs rewrite). Verify changes by building both `SCHED=cooperative` and `SCHED=preemptive` targets and running them under an emulator or on real hardware. Restore `make test` only after the suite is rewritten against the current kernel and window APIs.
+Three test families run from the repo root:
+
+- `make test` — Native C tests (host `cc`), 60 suites × cooperative + preemptive = 120. Covers pure logic (`numfmt`, `buddy`, `slab`), the scheduler queue/lifecycle/sleep, and window logic (graphics stubbed). Fast, CI-friendly, exit code reflects pass/fail.
+- `make test-qemu` — Drives the **real** `scheduler.c` (both variants) + a QEMU port of the context switch on `qemu-system-m68k -M virt`. Cooperative uses `movem.l`/`jmp`; preemptive fires `trap #0` to run the Timer D ISR path including `.resume_interrupted`/`rte`. This is the only place the rte path is exercised.
+- `make test-asm` — self-contained m68k primitive samples (`movem.l` save/restore) under QEMU.
+
+Out of scope (need a real emulator/hardware run): graphics/VRAM/DMA/IOCS/MFP, `premain.c`, `entry.s`, `boot/`, `standalone/main.c`, `app/main.c`, `ipc/`, and the MFP/ISR-registration portions of `interrupts.s`.
+
+**Verification flow**: run `make verify` (runs every automated test, builds both SCHED variants, then reports any hardware verification still needed) or `make verify-check` alone to see which of `ssos_cop.x`/`ssos_pre.x`/`ssos_cop.xdf`/`ssos_pre.xdf` need a manual check for the current change set. `make verify-check REF=HEAD~1` analyzes the last commit. See `tests/README.md` for the tier matrix and limitations. Add new suites under `tests/unit/` (C, host) or `tests/qemu/` (m68k + QEMU); register them in `tests/Makefile`.
 
 ## Commit & Pull Request Guidelines
 
