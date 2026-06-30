@@ -5,7 +5,7 @@ SUBDIRS := tools/makedisk
 RUNNER := $(shell command -v pnpm >/dev/null 2>&1 && echo "pnpm dlx" || echo "npx")
 EXEC := $(shell command -v pnpm >/dev/null 2>&1 && echo "pnpm exec" || echo "npx")
 
-.PHONY: $(TOPTARGETS) $(SUBDIRS) all format ssos-cooperative ssos-preemptive test test-asm
+.PHONY: $(TOPTARGETS) $(SUBDIRS) all format ssos-cooperative ssos-preemptive test test-asm test-qemu
 .default: all
 
 # Single unified tree under ssos/; the threading model is selected by SCHED=.
@@ -36,3 +36,6 @@ test:
 
 test-asm:
 	$(MAKE) -C tests test-asm
+
+test-qemu:
+	$(MAKE) -C tests test-qemu

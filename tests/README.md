@@ -8,6 +8,7 @@ Two test families, run from this directory:
 |-----------------|------------------------------------------------|------------------------------------|
 | `make test`     | Native C tests (host clang, fast, CI-friendly) | `cc` (Apple clang)                 |
 | `make test-asm` | m68k asm samples under QEMU                    | `m68k-elf-as/ld`, `qemu-system-m68k` |
+| `make test-qemu`| **SSOS scheduler + real ctx switch on QEMU**   | `m68k-elf-gcc`, `qemu-system-m68k` |
 
 ## Quick start
 
@@ -19,6 +20,10 @@ make test
 make test-asm
 # or a single sample:
 cd asm && make run S=t01_ctx_save_restore
+
+# QEMU: drive the REAL SSOS cooperative scheduler (with a QEMU port of the
+# context switch) and watch two tasks round-robin via movem.l:
+make test-qemu
 ```
 
 ## Layout
@@ -34,9 +39,31 @@ unit/
   test_scheduler.c stubbed HW — priority queue, task lifecycle, sleep/wakeup
   test_window.c    stubbed HW — window CRUD, z-order, dirty regions, hit-test
 asm/              self-contained m68k samples for QEMU virt (Goldfish TTY)
+qemu/             SSOS scheduler + ctx switch driven on QEMU (C + asm)
 Makefile.native   native build (SCHED=cooperative|preemptive)
 Makefile / Makefile.qemu  top-level routing
 ```
+
+## QEMU scheduler test (`qemu/`)
+
+This is the test the Native suite **cannot** do. The Native `ss_task_yield`
+stub drives only the queue rotation — it never swaps register state, so the
+real context switch (stack switch + `movem.l`) is untested there. `qemu/`
+fixes that:
+
+- `main_coop.c` registers main as a task, creates two workers, and yields in a
+  round-robin until both hit a goal.
+- The **unmodified** `ssos/os/kernel/cooperative/scheduler.c` is compiled with
+  `m68k-elf-gcc`.
+- `ctx_switch.s` is a port of `interrupts.s` (the `ss_task_yield` / `.resume_task`
+  / `.start_task` sequence) with all X68000-MFP / Human68K-TRAP dependencies
+  stripped — what's left is pure 68000 stack switching, which QEMU virt runs.
+- Workers print `1` / `2` as they run; seeing `121212...` proves tasks genuinely
+  trade the CPU via saved/restored registers.
+
+Scope: **cooperative only**. Preemptive Timer-D-driven preemption needs the MFP,
+which QEMU virt doesn't have. The `.resume_interrupted` (`rte`) path is therefore
+not exercised here.
 
 ## How native tests work
 

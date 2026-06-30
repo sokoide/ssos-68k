@@ -744,6 +744,7 @@ s26 当時の standalone ビルドは `obj/interrupts.o main.o scheduler.o buddy
 | :---              | :---                                          | :---                                        |
 | `make test`       | Native C テスト（ホスト clang、高速・CI 向き）| `cc`（Apple clang）                         |
 | `make test-asm`   | m68k asm サンプルを QEMU で実行               | `m68k-elf-as/ld`, `qemu-system-m68k`        |
+| `make test-qemu`  | **SSOS スケジューラ + 実 ctx switch を QEMU 駆動** | `m68k-elf-gcc`, `qemu-system-m68k`     |
 
 ```bash
 # リポジトリルートで（両 SCHED variant の Native テストを実行、失敗時は非 0 で終了）
@@ -753,6 +754,10 @@ make test
 make test-asm
 # または個別に
 cd tests/asm && make run S=t01_ctx_save_restore
+
+# QEMU で SSOS 本体の協調スケジューラ + ctx switch を実 m68k で駆動
+# （2 タスクが movem.l の保存/復元でラウンドロビンする様子を観察）
+make test-qemu
 ```
 
 ### Native テストの仕組み
@@ -786,11 +791,11 @@ cd tests/asm && make run S=t01_ctx_save_restore
 C ロジックのみを対象とし、以下は意図的に**テストしない**（実機/エミュレータで検証する）:
 
 - **グラフィックス/VRAM/DMA/IOCS/MFP** の直接操作（`ss_gfx_*` はスタブ）
-- **実コンテキストスイッチ**（`interrupts.s`）。`ss_task_yield` スタブはレジスタ交換しないため、並行性ではなく状態遷移を検証する
-- **プリエンプティブの ISR プリエンプション経路**（Timer D ISR が駆動する切り替え）。両 `SCHED=` で検証するのは共通 C ロジックのみ
+- **実コンテキストスイッチ**（`interrupts.s`）の協調的 yield 経路は `make test-qemu` で検証する（QEMU 上で SSOS 本体の scheduler.c + ctx switch を実レジスタで駆動）。ただし Native の `ss_task_yield` スタブはレジスタ交換しないため、並行性ではなく状態遷移のみ検証する
+- **プリエンプティブの ISR プリエンプション経路**（Timer D ISR が駆動する切り替え）。MFP がないと動かないため両 `SCHED=` で検証するのは共通 C ロジックのみ
 - **ブートローダ**（`boot/`）、`premain.c`、`app/main.c`、`standalone/main.c`
 
-`tests/asm/` の QEMU サンプルは、SSOS 本体の `interrupts.s` ではなく、それが基盤とする m68k プリミティブ（`movem.l` 保存/復元など）の教材サンプルである。`interrupts.s` は X68000 の MFP に依存するため QEMU virt では動かない。
+`tests/asm/` の QEMU サンプルは、SSOS 本体の `interrupts.s` ではなく、それが基盤とする m68k プリミティブ（`movem.l` 保存/復元など）の教材サンプルである。`tests/qemu/` は SSOS 本体の `scheduler.c` を**改変なし**で m68k-elf-gcc でビルドし、ctx switch を MFP 依存だけ削いだ移植版で動かす。いずれも `interrupts.s` の X68000/MFP 固有部分は QEMU virt では動かないため対象外。
 
 ## 参考
 

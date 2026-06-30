@@ -2,9 +2,10 @@
 #
 #   make test      -> native C tests (both SCHED variants), CI exit code
 #   make test-asm  -> m68k asm samples under QEMU
-#   make clean     -> clean both
+#   make test-qemu -> SSOS scheduler + ctx switch driven on QEMU (real m68k)
+#   make clean     -> clean all
 
-.PHONY: test test-native test-asm clean
+.PHONY: test test-native test-asm test-qemu clean
 
 test: test-native
 
@@ -17,6 +18,10 @@ test-native:
 test-asm:
 	$(MAKE) -C asm runall
 
+test-qemu:
+	$(MAKE) -C qemu run
+
 clean:
 	$(MAKE) -f Makefile.native clean
 	$(MAKE) -C asm clean
+	$(MAKE) -C qemu clean
