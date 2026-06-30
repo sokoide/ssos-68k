@@ -1,0 +1,4 @@
+# Alias entry point for the QEMU asm samples. Equivalent to `make -C asm runall`.
+.PHONY: test-asm
+test-asm:
+	$(MAKE) -C asm runall

@@ -12,8 +12,8 @@ extern int total_tests;
 extern int failed_tests;
 extern const char* current_test_name;
 
-// Mock functions
-void reset_scheduler_state(void);
+// Reset all stub/simulated HW state before a test (defined in test_mocks.c)
+void reset_test_state(void);
 
 // Test definition macros
 #define TEST(name) \
@@ -103,10 +103,10 @@ void reset_scheduler_state(void);
 // Memory-specific assertions
 #define ASSERT_ALIGNED_4K(ptr) \
     do { \
-        uint32_t addr = (uint32_t)(ptr); \
+        uintptr_t addr = (uintptr_t)(ptr); \
         if (addr & 0xFFF) { \
             printf("FAIL\n"); \
-            printf("  %s:%d: Address 0x%08x not 4K-aligned\n", __FILE__, __LINE__, addr); \
+            printf("  %s:%d: Address 0x%08lx not 4K-aligned\n", __FILE__, __LINE__, (unsigned long)addr); \
             failed_tests++; \
             return; \
         } \
@@ -134,7 +134,19 @@ void test_framework_report(void);
 int test_framework_exit_code(void);
 
 // Mock/stub support
-void reset_mocks(void);
+void reset_mocks(void);  /* deprecated alias of reset_test_state() */
+
+// String assertion helper (used by numfmt tests, etc.)
+#define ASSERT_STR_EQ(actual, expected) \
+    do { \
+        if (strcmp((actual), (expected)) != 0) { \
+            printf("FAIL\n"); \
+            printf("  %s:%d: Expected \"%s\", got \"%s\"\n", \
+                   __FILE__, __LINE__, (expected), (actual)); \
+            failed_tests++; \
+            return; \
+        } \
+    } while(0)
 
 // Helper function for printing values of different types
 static inline void _print_value(uintptr_t val) {

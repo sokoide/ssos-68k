@@ -738,29 +738,59 @@ s26 当時の standalone ビルドは `obj/interrupts.o main.o scheduler.o buddy
 
 ## テスト
 
-`tests/` 配下にクロス（M68K ターゲット）/ ネイティブ（macOS）両対応の単体テストがある。
+`tests/` に 2 種類のテストを置いている。詳細と制限事項は `tests/README.md` を参照。
+
+| ターゲット        | 内容                                          | ツールチェーン                              |
+| :---              | :---                                          | :---                                        |
+| `make test`       | Native C テスト（ホスト clang、高速・CI 向き）| `cc`（Apple clang）                         |
+| `make test-asm`   | m68k asm サンプルを QEMU で実行               | `m68k-elf-as/ld`, `qemu-system-m68k`        |
 
 ```bash
-# クロス（M68K ターゲット）
-cd tests && make test
-# ネイティブ（macOS 上でロジック検証）
-cd tests && make -f Makefile.native
+# リポジトリルートで（両 SCHED variant の Native テストを実行、失敗時は非 0 で終了）
+make test
+
+# QEMU asm サンプル
+make test-asm
+# または個別に
+cd tests/asm && make run S=t01_ctx_save_restore
 ```
+
+### Native テストの仕組み
+
+純粋ロジック（`numfmt` / `buddy` / `slab`）はホストコンパイラでそのまま実行する。カーネル（`scheduler.c`）とウィンドウ（`window.c`）のソースも**改変なし**でホストコンパイルし、X68000 HW/asm 依存部分だけ `tests/framework/test_mocks.c` でスタブ化する。
+
+| 実体                              | スタブ                                                    |
+| :---                              | :---                                                      |
+| `ss_disable/enable_interrupts`(asm)| no-op（テストはシングルスレッド）                         |
+| `ss_task_yield`(asm ctx switch)   | `ss_do_context_switch()` のみ呼出（レジスタ交換しない）   |
+| `ss_tick_counter` 等(ISR)         | ホスト変数（`ADVANCE_TICK` マクロで操作）                 |
+| `ss_task_stack_base`(app)         | 静的 512KB arena                                          |
+| `ss_gfx_rect` / `ss_gfx_fill_stipple`(VRAM/DMA) | 呼出カウンタ（描画発生のみ検証）           |
+| `ss_current_mode`                 | ダミーモード（128x128）                                   |
+
+スケジューラは `SCHED=cooperative` と `SCHED=preemptive` の両方でビルドする。キュー/タスク/スリープ/起床の C ロジックは共通なので、同一の `test_scheduler.c` を両方で走らせる。
 
 ### テスト構成
 
-| ファイル                        | 対象                                                           |
-| :---                            | :---                                                           |
-| `tests/unit/test_scheduler.c`   | タスクスケジューラ（16 優先度レディーキュー、`ss_task_yield`） |
-| `tests/unit/test_memory.c`      | Buddy + Slab アロケータ                                        |
-| `tests/unit/test_layers.c`      | ウィンドウ z-order / occlusion                                 |
-| `tests/unit/test_kernel.c`      | カーネル（割り込み、ベクタ）                                   |
-| `tests/unit/test_errors.c`      | エラーパス / エッジケース                                      |
-| `tests/unit/test_performance.c` | 性能ベンチマーク                                               |
-| `tests/unit/test_render_perf.c` | 描画性能                                                       |
-| `tests/framework/`              | テストフレームワーク（mocks, runner）                          |
+| ファイル                      | 対象                                                                 |
+| :---                          | :---                                                                 |
+| `tests/unit/test_numfmt.c`    | 数値フォーマット（`ss_utoa_dec` / `ss_itoa_dec` / `ss_utoa_hex`）    |
+| `tests/unit/test_mem.c`       | Buddy アロケータ + Slab キャッシュ                                   |
+| `tests/unit/test_scheduler.c` | 優先度レディーキュー、タスク lifecycle、スリープ/起床、ctx switch 回転 |
+| `tests/unit/test_window.c`    | ウィンドウ CRUD、z-order、dirty 領域、hit-test、render_all           |
+| `tests/asm/t01_ctx_save_restore.s` | m68k `movem.l` レジスタ保存/復元（QEMU）                        |
+| `tests/framework/`            | テストフレームワーク（`ssos_test.h`、runner、HW stubs）              |
 
-カバレッジは 95% 以上を維持する（`AGENTS.md` 参照）。
+### テスト範囲の制限
+
+C ロジックのみを対象とし、以下は意図的に**テストしない**（実機/エミュレータで検証する）:
+
+- **グラフィックス/VRAM/DMA/IOCS/MFP** の直接操作（`ss_gfx_*` はスタブ）
+- **実コンテキストスイッチ**（`interrupts.s`）。`ss_task_yield` スタブはレジスタ交換しないため、並行性ではなく状態遷移を検証する
+- **プリエンプティブの ISR プリエンプション経路**（Timer D ISR が駆動する切り替え）。両 `SCHED=` で検証するのは共通 C ロジックのみ
+- **ブートローダ**（`boot/`）、`premain.c`、`app/main.c`、`standalone/main.c`
+
+`tests/asm/` の QEMU サンプルは、SSOS 本体の `interrupts.s` ではなく、それが基盤とする m68k プリミティブ（`movem.l` 保存/復元など）の教材サンプルである。`interrupts.s` は X68000 の MFP に依存するため QEMU virt では動かない。
 
 ## 参考
 

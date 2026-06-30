@@ -12,7 +12,7 @@ empty.xdf
 compile_commands.json
 .cache
 tools/makedisk/makedisk
-test_runner_native
+test_runner_native_*
 
 # ---- OS / Editor ----
 .DS_Store

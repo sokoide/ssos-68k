@@ -1,0 +1,61 @@
+# Native unit tests - host clang, no cross toolchain.
+#
+# `make -f Makefile.native test` builds and runs the suite on the host. Pure
+# logic modules (numfmt/buddy/slab) need no stubs; HW/asm dependencies are
+# stubbed in framework/test_mocks.c (Phase 2 onwards).
+#
+# Scheduler variant: pass SCHED=preemptive to compile against the preemptive
+# scheduler.c. Default is cooperative.
+
+SCHED ?= cooperative
+ifeq ($(SCHED),cooperative)
+  SCHED_DIR   = ../ssos/os/kernel/cooperative
+  BUILD_DEF   = -DSS_BUILD_COOPERATIVE
+else ifeq ($(SCHED),preemptive)
+  SCHED_DIR   = ../ssos/os/kernel/preemptive
+  BUILD_DEF   = -DSS_BUILD_PREEMPTIVE
+else
+  $(error Invalid SCHED='$(SCHED)'. Use: make -f Makefile.native SCHED=cooperative|preemptive)
+endif
+
+CC      = cc
+CFLAGS  = -O2 -g -Wall -Wextra -Werror -std=c11 $(BUILD_DEF) \
+          -Iframework -I../ssos/os/util -I../ssos/os/mem \
+          -I../ssos/os/kernel -I../ssos/os/win -I../ssos/os/gfx
+
+SSOS    = ../ssos/os
+TARGET  = test_runner_native_$(SCHED)
+
+# Pure-logic + stubbed-HW sources. vram.c/message.c/premain.c/main.c and the
+# asm objects (entry.s, interrupts.s) are excluded: they touch X68000 HW.
+OS_SRCS = \
+	$(SSOS)/util/numfmt.c \
+	$(SSOS)/mem/buddy.c \
+	$(SSOS)/mem/slab.c \
+	$(SCHED_DIR)/scheduler.c \
+	$(SSOS)/win/window.c
+
+FRAMEWORK_SRCS = \
+	framework/test_runner.c \
+	framework/test_mocks.c
+
+UNIT_SRCS = \
+	unit/test_numfmt.c \
+	unit/test_mem.c \
+	unit/test_scheduler.c \
+	unit/test_window.c
+
+ALL_SRCS = $(FRAMEWORK_SRCS) $(UNIT_SRCS) $(OS_SRCS)
+
+.PHONY: all test clean
+all: $(TARGET)
+
+test: $(TARGET)
+	@echo "=== SSOS Native Tests (SCHED=$(SCHED)) ==="
+	./$(TARGET)
+
+$(TARGET): $(ALL_SRCS)
+	$(CC) $(CFLAGS) $^ -o $(TARGET)
+
+clean:
+	rm -f test_runner_native_cooperative test_runner_native_preemptive

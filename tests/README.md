@@ -1,17 +1,90 @@
-# SSOS Tests
+# SSOS-68k Tests
 
-The unit test suite that previously lived here has been removed.
+Unit tests for SSOS-68k, rebuilt against the current kernel/window API.
 
-It referenced source files that no longer exist (e.g., `os/kernel/memory.c`,
-`os/kernel/task_manager.c`) and tested APIs that no longer match the current
-codebase (e.g., `ss_mem_alloc()`, `TaskControlBlock`).
+Two test families, run from this directory:
 
-Only `framework/ssos_test.h` remains as a starting point for a future rewrite.
+| Target          | What it runs                                   | Toolchain                          |
+|-----------------|------------------------------------------------|------------------------------------|
+| `make test`     | Native C tests (host clang, fast, CI-friendly) | `cc` (Apple clang)                 |
+| `make test-asm` | m68k asm samples under QEMU                    | `m68k-elf-as/ld`, `qemu-system-m68k` |
 
-Current test coverage: **0%** (test suite removed — was testing old API, needs
-rewrite).
+## Quick start
 
-Verify changes by building both `SCHED=cooperative` and `SCHED=preemptive`
-targets and running them under an emulator or on real hardware. Restore
-`make test` only after the suite is rewritten against the current kernel and
-window APIs.
+```bash
+# Native: runs all C suites for both scheduler variants. Exits non-zero on any failure.
+make test
+
+# QEMU asm samples:
+make test-asm
+# or a single sample:
+cd asm && make run S=t01_ctx_save_restore
+```
+
+## Layout
+
+```
+framework/        TEST/RUN_TEST/ASSERT_* macros + HW stubs
+  ssos_test.h     test framework (reusable across suites)
+  test_runner.c   main(): runs every suite, prints the summary, sets exit code
+  test_mocks.c    HW/asm stubs so kernel/window C sources run on the host
+unit/
+  test_numfmt.c    pure logic — number formatting
+  test_mem.c       pure logic — buddy allocator + slab cache
+  test_scheduler.c stubbed HW — priority queue, task lifecycle, sleep/wakeup
+  test_window.c    stubbed HW — window CRUD, z-order, dirty regions, hit-test
+asm/              self-contained m68k samples for QEMU virt (Goldfish TTY)
+Makefile.native   native build (SCHED=cooperative|preemptive)
+Makefile / Makefile.qemu  top-level routing
+```
+
+## How native tests work
+
+The kernel (`scheduler.c`) and window (`window.c`) sources are compiled
+**unchanged** with the host compiler. Their X68000 HW/asm dependencies are
+stubbed in `framework/test_mocks.c`:
+
+| Real dependency                        | Stub in test_mocks.c                       |
+|----------------------------------------|--------------------------------------------|
+| `ss_disable/enable_interrupts` (asm)   | no-op (tests are single-threaded)          |
+| `ss_task_yield` (asm ctx switch)       | calls `ss_do_context_switch()` only — queue rotation, no register swap |
+| `ss_tick_counter` (bumped by ISR)      | host-controlled variable (`ADVANCE_TICK`)  |
+| `ss_task_stack_base` (from app)        | static 512 KB arena                        |
+| `ss_gfx_rect` / `ss_gfx_fill_stipple` (VRAM/DMA) | call counters (assert paint happened) |
+| `ss_current_mode`                      | dummy mode (128x128)                       |
+
+The scheduler is built twice via `SCHED=` — `cooperative` and `preemptive`
+share one `test_scheduler.c` because their queue/task/wakeup logic is
+identical.
+
+## Scope and limitations (read before trusting a green run)
+
+These tests cover **C logic only**. They deliberately do **not** exercise:
+
+- **Graphics / VRAM / DMA / IOCS / MFP** — direct HW access. `ss_gfx_*` are
+  stubs; rendering tests only assert that paint calls happened, not pixels.
+- **The real context switch** (`interrupts.s`). The `ss_task_yield` stub drives
+  the queue rotation but does **not** swap register state, so concurrency is
+  not tested. Sleep/wakeup are verified as state transitions, not as actual
+  task interleavings.
+- **Preemptive ISR preemption path** (Timer D ISR driving the switch). Only the
+  shared C logic is tested under both `SCHED=` variants.
+- **The boot loader** (`boot/`), `premain.c`, `app/main.c`, `standalone/main.c`.
+
+For those, build both `SCHED=` targets and run them on an emulator or real
+hardware (see the top-level README).
+
+The QEMU asm samples under `asm/` are self-contained teaching examples of the
+m68k primitives the SSOS context switch is built on (`movem.l` save/restore).
+They are **not** the SSOS `interrupts.s` itself — that file is X68000-MFP-
+specific and cannot run on QEMU virt.
+
+## Adding a new suite
+
+1. Write `unit/test_<module>.c` using the `TEST(name) { ... }` / `RUN_TEST()`
+   / `ASSERT_*` macros. Add `void run_<module>_tests(void);` and call it from
+   `framework/test_runner.c`.
+2. If the module touches HW, stub the dependency in `framework/test_mocks.c`
+   and reset its state in `reset_test_state()`.
+3. Add the suite source to `UNIT_SRCS` (and the module source to `OS_SRCS`) in
+   `Makefile.native`.

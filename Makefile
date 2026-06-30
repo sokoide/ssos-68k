@@ -5,7 +5,7 @@ SUBDIRS := tools/makedisk
 RUNNER := $(shell command -v pnpm >/dev/null 2>&1 && echo "pnpm dlx" || echo "npx")
 EXEC := $(shell command -v pnpm >/dev/null 2>&1 && echo "pnpm exec" || echo "npx")
 
-.PHONY: $(TOPTARGETS) $(SUBDIRS) all format ssos-cooperative ssos-preemptive
+.PHONY: $(TOPTARGETS) $(SUBDIRS) all format ssos-cooperative ssos-preemptive test test-asm
 .default: all
 
 # Single unified tree under ssos/; the threading model is selected by SCHED=.
@@ -29,3 +29,10 @@ format:
 	@echo "Formatting markdown files using $(RUNNER)..."
 	$(RUNNER) markdownlint-cli "**/*.md" --ignore "conductor/**" --ignore "CLAUDE.md" --ignore "node_modules/**" --fix
 	$(EXEC) textlint --fix "**/*.md"
+
+# Native C tests (both SCHED variants) and QEMU asm samples. See tests/README.md.
+test:
+	$(MAKE) -C tests test
+
+test-asm:
+	$(MAKE) -C tests test-asm
