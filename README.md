@@ -799,13 +799,13 @@ C ロジックのみを対象とし、以下は意図的に**テストしない*
 
 ### 変更の検証フローと `make verify-check`
 
-「この変更で実機確認がどこまで必要か」を `make verify-check` が自動判定する。変更ファイルを以下のティアに分類し、必要な実機確認ターゲット（`ssos_cop.x` / `ssos_pre.x` / `ssos_cop.xdf` / `ssos_pre.xdf`）を表示する。
+「この変更で実機確認がどこまで必要か」を `make verify-check` が自動判定する。`ssos/` 配下の変更ソースだけを分類対象にし（`tools/`, `tests/`, CI, ドキュメント等は実行バイナリに無関係なので無視）、各ファイルを3つのカバー状況のいずれかに分類:
 
-| ティア | ソース例 | 意味 |
+| カバー | ソース例 | 意味 |
 | :--- | :--- | :--- |
-| **Tier 1** | `numfmt.c`, `buddy.c`, `slab.c`, `cooperative|preemptive/scheduler.c` | `make test` / `make test-qemu` で完全カバー。**実機確認不要** |
-| **Tier 2** | `window.c`（gfx は stub）, `interrupts.s`（ctx switch は qemu カバー、MFP 経路は未）, `scheduler.h`/`kernel.h`（構造体レイアウト） | 部分カバー。変更内容に応じて実機確認 |
-| **Tier 3** | `gfx/vram.c`, `premain.c`, `entry.s`, `boot/*`, `standalone/main.c`, `app/main.c`, `ipc/*` | テスト未カバー。**実機確認必須** |
+| **covered** | `numfmt.c`, `buddy.c`, `slab.c`, `cooperative|preemptive/scheduler.c` | `make test` / `make test-qemu` で完全カバー。**実機確認不要** |
+| **partial** | `window.c`（gfx は stub）, `interrupts.s`（ctx switch は qemu カバー、MFP 経路は未）, `scheduler.h`/`kernel.h`（構造体レイアウト） | 部分カバー。変更内容に応じて実機確認 |
+| **uncovered** | `gfx/vram.c`, `premain.c`, `entry.s`, `boot/*`, `standalone/main.c`, `app/main.c`, `ipc/*` | テスト未カバー。**実機確認必須** |
 
 ```bash
 make verify-check                # ワーキングツリーを解析
@@ -814,11 +814,29 @@ make verify-check REF=main..HEAD # ブランチ全体を解析
 make verify                      # make test + test-qemu + ビルド + verify-check を一括
 ```
 
+出力例（covered のみ）:
+```
+→ 実機確認は不要です。
+  変更は全て make test / make test-qemu でカバーされています。
+```
+
+出力例（実機確認が必要。ターゲットごとに起因ファイルを表示）:
+```
+■ 実機確認が必要なターゲット:
+  ssos_cop.xdf   ← ssos/os/app/main.c ssos/os/kernel/premain.c
+  ssos_pre.xdf   ← ssos/os/app/main.c ssos/os/kernel/premain.c
+  （cooperative/preemptive は影響なし、等）
+
+理由:
+  - IOCS/HW 初期化。.x(standalone)は独自経路
+  - アプリ本体（.xdf 専用）
+```
+
 判定の軸:
 - **coop か pre か**: `cooperative/` 以下の変更は `ssos_cop.*` のみ、`preemptive/` 以下は `ssos_pre.*` のみ、共通ソースは両方
 - **.x か .xdf か**: `standalone/main.c` は `.x` 専用、`boot/`・`entry.s`・`premain.c`・`app/main.c` は `.xdf` 専用、それ以外は両方
 
-注意: Tier 1 でも `SSTask` 構造体レイアウト変更など asm と整合が必要な場合は実機リスク。`scheduler.h`/`kernel.h` は Tier 2 で注意書きを出す。不明ファイルは「実機確認を推奨」と安全側に倒す。
+注意: `covered` でも `SSTask` 構造体レイアウト変更など asm と整合が必要な場合は実機リスク。`scheduler.h`/`kernel.h` は `partial` で注意書きを出す。`ssos/` 配下のパターン外ファイルは安全のため `uncovered` 扱い（実機確認推奨）。
 
 ## 参考
 
