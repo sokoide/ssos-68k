@@ -63,12 +63,10 @@ static void wait_vsync(void) {
 
 static int cur_mx = 0, cur_my = 0, cur_btn = 0;
 static void update_mouse(void) {
-    int pos, dt;
-    asm volatile(
-        "moveq #0x75, %%d0\n\t"   "trap #15\n\t"   "move.l %%d0, %0\n\t"
-        "moveq #0x74, %%d0\n\t"   "trap #15\n\t"   "move.l %%d0, %1"
-        : "=d"(pos), "=d"(dt) :: "d0"
-    );
+    /* MS_CURGT (0x75): high word = X, low word = Y.
+     * MS_GETDT (0x74): button state (bit9 = left, bit0 = right). */
+    int pos = _iocs_ms_curgt();
+    int dt  = _iocs_ms_getdt();
     cur_mx = (int16_t)((pos >> 16) & 0xFFFF);
     cur_my = (int16_t)(pos & 0xFFFF);
     cur_btn = dt;

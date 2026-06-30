@@ -1,6 +1,7 @@
 #include "kernel.h"
 #include "../gfx/gfx.h"
 #include <stdint.h>
+#include <x68k/iocs.h>
 
 extern uint8_t __bss_start, __bss_end;
 
@@ -36,10 +37,7 @@ static void set_palette(void) {
         PAL_RGB(0, 0, 0),       /* 15: Black (duplicate) */
     };
     for (int i = 0; i < 16; i++) {
-        register int trapNo asm("d0") = 0x94;
-        register int pal   asm("d1") = i;
-        register int col   asm("d2") = cmap[i];
-        asm("trap #15" :: "d"(trapNo), "d"(pal), "d"(col));
+        _iocs_gpalet(i, cmap[i]);
     }
 }
 
@@ -47,17 +45,10 @@ void premain(void) {
     clear_bss();
 
     /* Set graphics mode via IOCS CRTMOD (D0=0x10, D1=mode) */
-    {
-        register int trapNo asm("d0") = 0x10;
-        register int mode   asm("d1") = 16;
-        asm("trap #15" :: "d"(trapNo), "d"(mode));
-    }
+    _iocs_crtmod(16);
 
     /* Enable graphics plane (G_CLR_ON) */
-    {
-        register int trapNo asm("d0") = 0x90;
-        asm("trap #15" :: "d"(trapNo));
-    }
+    _iocs_g_clr_on();
 
     /* 
      * ROM CRTMOD(16) handler misses SIZ bit. Set CRTC R20 bit10=1.
@@ -73,24 +64,13 @@ void premain(void) {
     set_palette();
 
     /* Turn off text cursor */
-    {
-        register int trapNo asm("d0") = 0x1F;
-        asm("trap #15" :: "d"(trapNo));
-    }
+    _iocs_b_curoff();
 
     /* Hide function key labels */
-    {
-        register int trapNo asm("d0") = 0x26;
-        register int mode   asm("d1") = 0;
-        asm("trap #15" :: "d"(trapNo), "d"(mode));
-    }
+    _iocs_b_up(0);
 
     /* Disable soft keyboard */
-    {
-        register int trapNo asm("d0") = 0x7D;
-        register int mode   asm("d1") = 0;
-        asm("trap #15" :: "d"(trapNo), "d"(mode));
-    }
+    _iocs_skey_mod(0, 0, 0);
 
     /* Clear Text VRAM to eliminate boot loader artifacts */
     {
@@ -115,10 +95,7 @@ void premain(void) {
      */
 
     /* Final cursor/display cleanup before OS takes over */
-    {
-        register int trapNo asm("d0") = 0x1F;   /* B_CUROFF again */
-        asm("trap #15" :: "d"(trapNo));
-    }
+    _iocs_b_curoff();   /* B_CUROFF again */
     /* Full Text VRAM clear (512KB) */
     {
         volatile uint32_t* tv = (volatile uint32_t*)0xE00000;
@@ -157,14 +134,8 @@ void premain(void) {
      * _MS_CURGT returns the stale value 00BC00FE because no SCC
      * receive interrupt has been routed to a vector.
      */
-    {
-        register int trapNo asm("d0") = 0x70;
-        asm("trap #15" :: "d"(trapNo));
-    }
-    {
-        register int trapNo asm("d0") = 0x71;
-        asm("trap #15" :: "d"(trapNo));
-    }
+    _iocs_ms_init();
+    _iocs_ms_curon();
 
     /*
      * baremetal 固有の MFP 調整 (AER のみ。IMR は Human68K 互換 $FF/$7F
