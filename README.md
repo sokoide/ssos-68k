@@ -760,6 +760,23 @@ cd tests/asm && make run S=t01_ctx_save_restore
 make test-qemu
 ```
 
+### `test-asm` と `test-qemu` の違い
+
+両方とも `qemu-system-m68k -M virt` で m68k コードを動かすが、**何を動かすか・何を確認するか**が違う。
+
+|                | `make test-asm`                                 | `make test-qemu`                                          |
+| :---           | :---                                            | :---                                                      |
+| 場所           | `tests/asm/`                                    | `tests/qemu/`                                             |
+| **対象**       | **SSOS 本体を使わない**純粋な m68k asm の教材サンプル | **SSOS 本体の `scheduler.c`**（改変なし）+ ctx switch の QEMU 移植版 |
+| **目的**       | m68k 命令（`movem.l` 等）の動作を QEMU で単体確認 | SSOS のスケジューラ + コンテキストスイッチを実 m68k で検証 |
+| ビルド         | `m68k-elf-as` + `ld`（asm のみ、C なし）        | `m68k-elf-gcc`（C + asm、`-nostdlib`）                    |
+| 中身           | `t01_ctx_save_restore.s`（レジスタ保存/復元の単体）など | coop 版（yield 経路）と preempt 版（`trap #0` で Timer D ISR をシミュレート、`rte` 経路）|
+| 確認できること | m68k プリミティブ自体が正しく動くこと            | タスクが実際にレジスタ退避/復元で切り替わること（`1212...` と交互に出力）|
+
+要約: **test-asm は「m68k 命令の学習・教材」**、**test-qemu は「SSOS 本体の動作検証」**。SSOS のスケジューラを検証したいなら `make test-qemu`、m68k アセンブリ自体を試したいなら `make test-asm`。
+
+> 補足: どちらも SSOS 本体の `interrupts.s`（X68000 の MFP 依存）をそのまま動かすわけではない。`test-qemu` は `interrupts.s` の ctx switch 部分から MFP 依存を削いだ移植版（`ctx_switch.s` / `preempt_ctx_switch.s`）を使う。MFP は QEMU virt に存在しないため。
+
 ### Native テストの仕組み
 
 純粋ロジック（`numfmt` / `buddy` / `slab`）はホストコンパイラでそのまま実行する。カーネル（`scheduler.c`）とウィンドウ（`window.c`）のソースも**改変なし**でホストコンパイルし、X68000 HW/asm 依存部分だけ `tests/framework/test_mocks.c` でスタブ化する。
@@ -816,12 +833,16 @@ make verify                      # make test + test-qemu + ビルド + verify-ch
 
 出力例（covered のみ）:
 ```
+❯ make verify-check REF=HEAD~7
+...
 → 実機確認は不要です。
   変更は全て make test / make test-qemu でカバーされています。
 ```
 
 出力例（実機確認が必要。ターゲットごとに起因ファイルを表示）:
 ```
+❯ make verify-check REF=HEAD~8
+...
 ■ 実機確認が必要なターゲット:
   ssos_cop.xdf   ← ssos/os/app/main.c ssos/os/kernel/premain.c
   ssos_pre.xdf   ← ssos/os/app/main.c ssos/os/kernel/premain.c
