@@ -49,21 +49,31 @@ Makefile / Makefile.qemu  top-level routing
 This is the test the Native suite **cannot** do. The Native `ss_task_yield`
 stub drives only the queue rotation — it never swaps register state, so the
 real context switch (stack switch + `movem.l`) is untested there. `qemu/`
-fixes that:
+fixes that, for **both** threading models:
 
-- `main_coop.c` registers main as a task, creates two workers, and yields in a
-  round-robin until both hit a goal.
-- The **unmodified** `ssos/os/kernel/cooperative/scheduler.c` is compiled with
-  `m68k-elf-gcc`.
-- `ctx_switch.s` is a port of `interrupts.s` (the `ss_task_yield` / `.resume_task`
-  / `.start_task` sequence) with all X68000-MFP / Human68K-TRAP dependencies
-  stripped — what's left is pure 68000 stack switching, which QEMU virt runs.
-- Workers print `1` / `2` as they run; seeing `121212...` proves tasks genuinely
-  trade the CPU via saved/restored registers.
+- `main_coop.c` (run via `make run`) drives the **cooperative** scheduler:
+  main registers as a task, creates two workers, and they yield (`movem.l` +
+  `jmp`) in a round-robin. The unmodified `cooperative/scheduler.c` is compiled
+  with `m68k-elf-gcc`; `ctx_switch.s` is a port of `interrupts.s` (the
+  `ss_task_yield` / `.resume_task` / `.start_task` sequence) with all
+  X68000-MFP / Human68K-TRAP dependencies stripped.
+- `main_preempt.c` (run via `make run-preempt`) drives the **preemptive**
+  scheduler through the real Timer D ISR path. `preempt_ctx_switch.s` ports the
+  `ss_timerd_handler` + `.resume_interrupted` (`rte`) machinery; tasks fire
+  `trap #0`, which lands in the handler via vector 0x80. A trap exception frame
+  (SR+PC) is byte-identical to a Timer D interrupt frame, so `rte`-based
+  preemption runs exactly as on hardware. The unmodified
+  `preemptive/scheduler.c` is compiled with `m68k-elf-gcc`.
 
-Scope: **cooperative only**. Preemptive Timer-D-driven preemption needs the MFP,
-which QEMU virt doesn't have. The `.resume_interrupted` (`rte`) path is therefore
-not exercised here.
+Workers print `1` / `2` as they run; seeing `121212...` proves tasks genuinely
+trade the CPU — via saved/restored registers (cooperative) and via the `rte`
+exception-frame path (preemptive).
+
+Scope: `trap` is a **synchronous** exception (the task fires it), so this is
+not a true asynchronous hardware preemption — but it validates the ISR-driven
+context-switch mechanics, which is the part Native cannot reach. The real
+kernel's MFP EOI and Timer-D period setup are out of scope (no MFP on QEMU
+virt).
 
 ## How native tests work
 

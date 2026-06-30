@@ -19,7 +19,7 @@ test-asm:
 	$(MAKE) -C asm runall
 
 test-qemu:
-	$(MAKE) -C qemu run
+	$(MAKE) -C qemu runall
 
 clean:
 	$(MAKE) -f Makefile.native clean

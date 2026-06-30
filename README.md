@@ -791,11 +791,11 @@ make test-qemu
 C ロジックのみを対象とし、以下は意図的に**テストしない**（実機/エミュレータで検証する）:
 
 - **グラフィックス/VRAM/DMA/IOCS/MFP** の直接操作（`ss_gfx_*` はスタブ）
-- **実コンテキストスイッチ**（`interrupts.s`）の協調的 yield 経路は `make test-qemu` で検証する（QEMU 上で SSOS 本体の scheduler.c + ctx switch を実レジスタで駆動）。ただし Native の `ss_task_yield` スタブはレジスタ交換しないため、並行性ではなく状態遷移のみ検証する
-- **プリエンプティブの ISR プリエンプション経路**（Timer D ISR が駆動する切り替え）。MFP がないと動かないため両 `SCHED=` で検証するのは共通 C ロジックのみ
+- **実コンテキストスイッチ**（`interrupts.s`）の**協調的 yield 経路とプリエンプティブの Timer D ISR 経路（`.resume_interrupted`/`rte` を含む）はどちらも `make test-qemu` で検証する**。QEMU 上で SSOS 本体の cooperative/preemptive 両 `scheduler.c` と ctx switch を実レジスタで駆動。プリエンプティブは `trap #0` で Timer D ISR をシミュレート（例外フレームが同一のため `rte` パスが同じく走る）。ただし Native の `ss_task_yield` スタブはレジスタ交換しないため、Native 側は状態遷移のみ検証する
+- **真の非同期プリエンプション**（実行中の任意ポイントでのハードウェア割込）。QEMU の `trap` は同期例外のため、ISR 駆動の切替機構は検証できるが完全な非同期性までは再現しない。MFP EOI / Timer D 周期設定も対象外
 - **ブートローダ**（`boot/`）、`premain.c`、`app/main.c`、`standalone/main.c`
 
-`tests/asm/` の QEMU サンプルは、SSOS 本体の `interrupts.s` ではなく、それが基盤とする m68k プリミティブ（`movem.l` 保存/復元など）の教材サンプルである。`tests/qemu/` は SSOS 本体の `scheduler.c` を**改変なし**で m68k-elf-gcc でビルドし、ctx switch を MFP 依存だけ削いだ移植版で動かす。いずれも `interrupts.s` の X68000/MFP 固有部分は QEMU virt では動かないため対象外。
+`tests/asm/` の QEMU サンプルは、SSOS 本体の `interrupts.s` ではなく、それが基盤とする m68k プリミティブ（`movem.l` 保存/復元など）の教材サンプルである。`tests/qemu/` は SSOS 本体の `scheduler.c` を**改変なし**で m68k-elf-gcc でビルドし、ctx switch を MFP 依存だけ削いだ移植版で動かす（協調的は yield 経路、プリエンプティブは trap でシミュレートした Timer D ISR 経路）。いずれも `interrupts.s` の X68000/MFP 固有部分は QEMU virt では動かないため対象外。
 
 ## 参考
 

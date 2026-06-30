@@ -1,9 +1,14 @@
-# QEMU cooperative-scheduler test.
+# QEMU scheduler tests.
 #
-# Builds the REAL ssos/os/kernel/cooperative/scheduler.c (unmodified) plus a
-# QEMU port of the context switch (ctx_switch.s) and runs it under
-# qemu-system-m68k -M virt. Two worker tasks round-robin with main via real
-# register save/restore (movem.l) — the scenario the Native stub can't test.
+# Two flavors, each driving the REAL SSOS scheduler.c (unmodified) on a real
+# m68k under qemu-system-m68k -M virt:
+#
+#   coop    (make run)         - cooperative: tasks yield via movem.l/jmp
+#   preempt (make run-preempt) - preemptive:  trap #0 -> Timer D ISR -> rte
+#
+# The cooperative build compiles cooperative/scheduler.c + ctx_switch.s.
+# The preemptive build compiles preemptive/scheduler.c + preempt_ctx_switch.s.
+# `make all` builds both; `make runall` runs both.
 
 CC      = m68k-elf-gcc
 ASFLAGS = -m68000 -Wa,--register-prefix-optional
@@ -18,15 +23,24 @@ TIMEOUT_SECS ?= 2
 
 SSOS    = ../../ssos/os
 
-OBJS = main_coop.o stub.o ctx_switch.o sched.o
-TARGET = coop_sched.elf
+# ---- cooperative ----
+COOP_OBJS = main_coop.o stub.o ctx_switch.o sched_coop.o
+COAP_ELF = coop_sched.elf
 
-.PHONY: all run clean
+# ---- preemptive ----
+PRE_OBJS = main_preempt.o stub.o preempt_ctx_switch.o sched_pre.o
+PRE_ELF = preempt_sched.elf
 
-all: $(TARGET)
+.PHONY: all run run-preempt runall clean
 
-# scheduler.c is shared source; compile it freestanding for m68k.
-sched.o: $(SSOS)/kernel/cooperative/scheduler.c
+all: $(COAP_ELF) $(PRE_ELF)
+
+# scheduler.c differs per variant; build to distinct object names to avoid
+# stale-mixing when switching.
+sched_coop.o: $(SSOS)/kernel/cooperative/scheduler.c
+	$(CC) $(CFLAGS) -c $< -o $@
+
+sched_pre.o: $(SSOS)/kernel/preemptive/scheduler.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 %.o: %.c
@@ -35,11 +49,19 @@ sched.o: $(SSOS)/kernel/cooperative/scheduler.c
 %.o: %.s
 	$(CC) $(ASFLAGS) -c $< -o $@
 
-$(TARGET): $(OBJS) linker.ld
-	$(CC) $(CFLAGS) $(OBJS) $(LDFLAGS) -o $(TARGET)
+$(COAP_ELF): $(COOP_OBJS) linker.ld
+	$(CC) $(CFLAGS) $(COOP_OBJS) $(LDFLAGS) -o $(COAP_ELF)
 
-run: $(TARGET)
-	timeout --foreground $(TIMEOUT_SECS) $(QEMU) $(QFLAGS) -kernel $(TARGET) || true
+$(PRE_ELF): $(PRE_OBJS) linker.ld
+	$(CC) $(CFLAGS) $(PRE_OBJS) $(LDFLAGS) -o $(PRE_ELF)
+
+run: $(COAP_ELF)
+	timeout --foreground $(TIMEOUT_SECS) $(QEMU) $(QFLAGS) -kernel $(COAP_ELF) || true
+
+run-preempt: $(PRE_ELF)
+	timeout --foreground $(TIMEOUT_SECS) $(QEMU) $(QFLAGS) -kernel $(PRE_ELF) || true
+
+runall: run run-preempt
 
 clean:
-	rm -f $(OBJS) $(TARGET)
+	rm -f *.o $(COAP_ELF) $(PRE_ELF)
