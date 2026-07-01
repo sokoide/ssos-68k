@@ -770,15 +770,18 @@ make test-qemu
 | **対象**       | **SSOS 本体を使わない**純粋な m68k asm の教材サンプル | **SSOS 本体の `scheduler.c`**（改変なし）+ ctx switch の QEMU 移植版 |
 | **目的**       | m68k 命令（`movem.l` 等）の動作を QEMU で単体確認 | SSOS のスケジューラ + コンテキストスイッチを実 m68k で検証 |
 | ビルド         | `m68k-elf-as` + `ld`（asm のみ、C なし）        | `m68k-elf-gcc`（C + asm、`-nostdlib`）                    |
-| 中身           | `t01_hello`（最小）→ `t02_subroutines`（bsr/rts）→ `t03_ctx_save_restore`（`movem.l`）と段階的に複雑化 | `coop/`（yield 経路）と `pre/`（`trap #0` で Timer D ISR シミュレート、`rte` 経路）に分割 |
+| 中身           | `t01_hello` → `t02_subroutines`(bsr/rts) → `t03_ctx_save_restore`(`movem.l`) → `t04_stack_frame`(yield フレーム) → `t05_trap_exception`(trap/rte) と段階的に複雑化 | `coop/`（yield 経路）と `pre/`（`trap #0` で Timer D ISR シミュレート、`rte` 経路）に分割 |
 | 確認できること | m68k プリミティブ自体が正しく動くこと            | タスクが実際にレジスタ退避/復元で切り替わること（`1212...` と交互に出力）|
 
 要約: **test-asm は「m68k 命令の学習・教材」**、**test-qemu は「SSOS 本体の動作検証」**。SSOS のスケジューラを検証したいなら `make test-qemu`、m68k アセンブリ自体を試したいなら `make test-asm`。
 
-#### `tests/asm/`（m68k 命令の教材サンプル、3段階）
+#### `tests/asm/`（m68k 命令の教材サンプル、5段階）
+SSOS の ctx switch が基盤とする m68k プリミティブを段階的に学ぶ（`.text` を 0x400 に置き、0x0-0x3FF の例外ベクタテーブルと衝突させない）:
 - `t01_hello.s` — 最小。Goldfish TTY に "Hello" を出すだけ（サブルーチンなし）
 - `t02_subroutines.s` — `bsr`/`rts` で `putchar`/`print_str` を切り出し、カウントループ
 - `t03_ctx_save_restore.s` — `movem.l` で全レジスタを保存→破壊→復元
+- `t04_stack_frame.s` — `pea`+SR+`movem.l` で yield フレームを手動構築→破壊→復元（`ss_task_yield` と同じ構造）
+- `t05_trap_exception.s` — `trap #0` でベクタ経由のハンドラに入り `rte` で戻る（preempt の基礎）
 
 #### `tests/qemu/`（SSOS スケジューラ検証、cop/pre に分割）
 共通部分（`common/`: `stub.c`、`tty.h`、`linker.ld`）を除き、協調的とプリエンプティブで別ディレクトリ。SSOS 本体の `scheduler.c` を**改変なし**でビルドし、ctx switch を QEMU 移植版で動かす。
@@ -818,7 +821,7 @@ make test-qemu
 | `tests/unit/test_scheduler.c` | 優先度レディーキュー、タスク lifecycle、スリープ/起床、ctx switch 回転 |
 | `tests/unit/test_window.c`    | ウィンドウ CRUD、z-order、dirty 領域、hit-test、render_all           |
 | `tests/unit/test_ipc.c`       | メッセージキュー（send/recv、FIFO、wraparound、満杯）                |
-| `tests/asm/t01_hello.s` 等    | m68k プリミティブ教材（hello → サブルーチン → `movem.l`、QEMU）      |
+| `tests/asm/t01_hello.s` 等    | m68k プリミティブ教材（hello → サブルーチン → `movem.l` → フレーム → trap/rte、QEMU）      |
 | `tests/framework/`            | テストフレームワーク（`ssos_test.h`、runner、HW stubs）              |
 
 ### テスト範囲の制限
@@ -874,6 +877,7 @@ make verify                      # make test + test-qemu + ビルド + verify-ch
 判定の軸:
 - **coop か pre か**: `cooperative/` 以下の変更は `ssos_cop.*` のみ、`preemptive/` 以下は `ssos_pre.*` のみ、共通ソースは両方
 - **.x か .xdf か**: `standalone/main.c` は `.x` 専用、`boot/`・`entry.s`・`premain.c`・`app/main.c` は `.xdf` 専用、それ以外は両方
+- **`interrupts.s` の関数コンテキスト**: 変更行がどの関数にあるかを `git diff` の hunk から特定し、純粋 ctx switch 関数（`ss_task_yield` / `.resume_task` / `.resume_interrupted` / `.start_task` / `ss_context_switch`）なら **`covered`**（実機不要）、ISR エントリ（`ss_timerd_handler` 等）は `partial`、MFP 初期化・保存復元（`ss_set_interrupts` 等）は `uncovered`（実機必要）。変更関数名を理由に表示。
 
 注意: `covered` でも `SSTask` 構造体レイアウト変更など asm と整合が必要な場合は実機リスク。`scheduler.h`/`kernel.h` は `partial` で注意書きを出す。`ssos/` 配下のパターン外ファイルは安全のため `uncovered` 扱い（実機確認推奨）。
 

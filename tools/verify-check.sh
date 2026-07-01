@@ -59,6 +59,70 @@ if [ "$src_count" -eq 0 ]; then
     exit 0
 fi
 
+# classify_interrupts: decide severity for an interrupts.s change by which
+# function the edited lines live in.
+#   covered   - pure context switch (ss_task_yield / .resume_task / .resume_*
+#               / .start_task / ss_context_switch) — qemu coop+preempt cover it
+#   partial   - ISR entry (ss_timerd_handler / ss_vdisp_handler / ss_nop_handler)
+#               — mixes ctx switch with MFP EOI / vector setup
+#   uncovered - MFP init/save/restore (ss_set_interrupts etc.) or data/unknown
+# Stdout: "<status>\t<reason>"
+classify_interrupts() {
+    local file="$1"
+    local diffout
+    if [ -n "$REF" ]; then
+        diffout=$(git diff -U0 "$REF" -- "$file" 2>/dev/null)
+    else
+        diffout=$(git diff -U0 HEAD -- "$file" 2>/dev/null)
+    fi
+    # No diff (shouldn't happen — file is in sources[]): default to partial.
+    if [ -z "$diffout" ]; then
+        printf 'partial\tinterrupts.s: 変更箇所特定不可（安全側 partial）\n'
+        return
+    fi
+
+    # Label table: "lineno<TAB>labelname" (global + indented local labels).
+    local labels
+    labels=$(grep -nE '^[[:space:]]*[.A-Za-z_][.A-Za-z_0-9]*:' "$file" 2>/dev/null \
+             | sed -E 's/^([0-9]+):[[:space:]]*([.A-Za-z_][.A-Za-z_0-9]*):.*/\1\t\2/')
+
+    # new-side start line of each diff hunk: @@ -o,oc +n,nc @@ -> n
+    local starts
+    starts=$(printf '%s\n' "$diffout" | sed -nE 's/^@@ -[0-9,]+ \+([0-9]+).*/\1/p')
+
+    local worst=0 touched=""   # 0=covered 1=partial 2=uncovered
+    local start label sev
+    while IFS= read -r start; do
+        [ -z "$start" ] && continue
+        # find nearest label at or before `start`
+        label="(data/unknown)"
+        local ln nm
+        while IFS=$'\t' read -r ln nm; do
+            [ -z "$ln" ] && continue
+            if [ "$ln" -le "$start" ]; then label="$nm"; fi
+        done <<< "$labels"
+
+        case "$label" in
+            ss_context_switch|.resume_task|.resume_interrupted|.start_task|ss_task_yield|.yield_resume)
+                sev=0 ;;
+            ss_timerd_handler|ss_vdisp_handler|ss_nop_handler|ss_key_handler)
+                sev=1 ;;
+            ss_set_interrupts|ss_restore_interrupts|save_interrupts|restore_interrupts|ss_save_data_base)
+                sev=2 ;;
+            *)
+                sev=2 ;;   # .data/.bss or unknown -> safe side
+        esac
+        [ "$sev" -gt "$worst" ] && worst=$sev
+        case " $touched " in *" $label "*) ;; *) touched="${touched}${touched:+ }$label";; esac
+    done <<< "$starts"
+
+    case "$worst" in
+        0) printf 'covered\t\n' ;;
+        1) printf 'partial\tISR 関数(%s): ctx switch 部分は qemu カバー、MFP/EOI 部分は未カバー\n' "$touched" ;;
+        2) printf 'uncovered\tMFP/HW 関連(%s): テスト未カバー\n' "$touched" ;;
+    esac
+}
+
 # Classify each SSOS source.
 # Output fields per source: <status>\t<scheds>\t<modes>\t<reason>
 #   status  : covered | partial | uncovered
@@ -78,10 +142,11 @@ classify() {
             printf 'covered\tpre\tx xdf\t\n' ;;
         ssos/os/win/window.c|ssos/os/win/win.h)
             printf 'partial\tcop pre\tx xdf\tロジックは Native カバー。描画部分は gfx stub で未検証\n' ;;
-        ssos/os/kernel/cooperative/interrupts.s)
-            printf 'partial\tcop\tx xdf\tctx switch は qemu coop カバー。MFP/Timer/ISR 登録は未カバー\n' ;;
-        ssos/os/kernel/preemptive/interrupts.s)
-            printf 'partial\tpre\tx xdf\tctx switch は qemu preempt カバー。MFP/Timer/ISR 登録は未カバー\n' ;;
+        ssos/os/kernel/cooperative/interrupts.s|ssos/os/kernel/preemptive/interrupts.s)
+            local ir sched
+            case "$f" in *cooperative*) sched="cop";; *) sched="pre";; esac
+            ir=$(classify_interrupts "$f")
+            printf '%s\t%s\tx xdf\t%s\n' "${ir%%$'\t'*}" "$sched" "${ir#*$'\t'}" ;;
         ssos/os/kernel/scheduler.h|ssos/os/kernel/kernel.h|ssos/os/kernel/work_queue.c|ssos/os/kernel/work_queue.h)
             printf 'partial\tcop pre\tx xdf\t構造体レイアウト変更等は asm と整合要。変更内容によって実機必要\n' ;;
         ssos/os/gfx/vram.c|ssos/os/gfx/gfx.h)
