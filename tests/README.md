@@ -39,35 +39,38 @@ unit/
   test_scheduler.c stubbed HW — priority queue, task lifecycle, sleep/wakeup
   test_window.c    stubbed HW — window CRUD, z-order, dirty regions, hit-test
 asm/              self-contained m68k samples for QEMU virt (Goldfish TTY)
+  t01_hello.s, t02_subroutines.s, t03_ctx_save_restore.s (progressive)
 qemu/             SSOS scheduler + ctx switch driven on QEMU (C + asm)
+  common/  stub.c, tty.h, linker.ld (shared)
+  coop/    ctx_switch.s + t01_single_yield, t02_round_robin, t03_register_save
+  pre/     preempt_ctx_switch.s + t01_round_robin, t02_register_save, t03_sleep_wakeup
 Makefile.native   native build (SCHED=cooperative|preemptive)
 Makefile / Makefile.qemu  top-level routing
 ```
 
-## QEMU scheduler test (`qemu/`)
+## QEMU scheduler tests (`qemu/`)
 
-This is the test the Native suite **cannot** do. The Native `ss_task_yield`
+These are the tests the Native suite **cannot** do. The Native `ss_task_yield`
 stub drives only the queue rotation — it never swaps register state, so the
-real context switch (stack switch + `movem.l`) is untested there. `qemu/`
-fixes that, for **both** threading models:
+real context switch (stack switch + `movem.l`) is untested there. `qemu/` fixes
+that, for both threading models. Each test compiles the **unmodified**
+`cooperative/scheduler.c` or `preemptive/scheduler.c` with `m68k-elf-gcc` and
+links against a QEMU port of the context switch.
 
-- `main_coop.c` (run via `make run`) drives the **cooperative** scheduler:
-  main registers as a task, creates two workers, and they yield (`movem.l` +
-  `jmp`) in a round-robin. The unmodified `cooperative/scheduler.c` is compiled
-  with `m68k-elf-gcc`; `ctx_switch.s` is a port of `interrupts.s` (the
-  `ss_task_yield` / `.resume_task` / `.start_task` sequence) with all
-  X68000-MFP / Human68K-TRAP dependencies stripped.
-- `main_preempt.c` (run via `make run-preempt`) drives the **preemptive**
-  scheduler through the real Timer D ISR path. `preempt_ctx_switch.s` ports the
-  `ss_timerd_handler` + `.resume_interrupted` (`rte`) machinery; tasks fire
-  `trap #0`, which lands in the handler via vector 0x80. A trap exception frame
-  (SR+PC) is byte-identical to a Timer D interrupt frame, so `rte`-based
-  preemption runs exactly as on hardware. The unmodified
-  `preemptive/scheduler.c` is compiled with `m68k-elf-gcc`.
-
-Workers print `1` / `2` as they run; seeing `121212...` proves tasks genuinely
-trade the CPU — via saved/restored registers (cooperative) and via the `rte`
-exception-frame path (preemptive).
+- **`coop/`** — cooperative path (`movem.l` save on yield, restore on resume
+  via `jmp`). `ctx_switch.s` ports `interrupts.s` (`ss_task_yield` /
+  `.resume_task` / `.start_task`) with MFP/Human68K-TRAP dependencies stripped.
+  - `t01_single_yield` — one worker yields and returns to main (`TM`)
+  - `t02_round_robin` — two workers round-robin (`1212...`)
+  - `t03_register_save` — distinct d2-d7 patterns survive each yield
+- **`pre/`** — preemptive path (ISR driven by `trap #0`; resume via
+  `.resume_interrupted` / `rte`). `preempt_ctx_switch.s` ports
+  `ss_timerd_handler` + `.resume_task`. A trap exception frame (SR+PC) is
+  byte-identical to a Timer D interrupt frame.
+  - `t01_round_robin` — two workers round-robin via `rte`
+  - `t02_register_save` — distinct d2-d7 patterns survive each `rte`
+  - `t03_sleep_wakeup` — `ss_task_sleep(N)` blocks, ticks advance in the ISR,
+    task resumes after N ticks
 
 Scope: `trap` is a **synchronous** exception (the task fires it), so this is
 not a true asynchronous hardware preemption — but it validates the ISR-driven

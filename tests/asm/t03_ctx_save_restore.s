@@ -1,4 +1,4 @@
-# t01_ctx_save_restore.s - movem.l register save/restore
+# t03_ctx_save_restore.s - movem.l register save/restore
 #
 # Learning objective: confirm that `movem.l %d0-%d7/%a0-%a6, -(%sp)` saves all
 # 15 caller registers and `movem.l (%sp)+, %d0-%d7/%a0-%a6` restores them
@@ -103,6 +103,6 @@ putchar:
 
 # ---- Data ----
 ok_msg:
-    .asciz "t01: OK\n"
+    .asciz "t03: OK\n"
 fail_msg:
-    .asciz "t01: FAIL\n"
+    .asciz "t03: FAIL\n"

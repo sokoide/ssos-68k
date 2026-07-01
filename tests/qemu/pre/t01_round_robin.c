@@ -1,4 +1,4 @@
-/* main_preempt.c - preemptive (Timer D ISR) scheduler test under QEMU.
+/* t01_round_robin.c - preemptive (Timer D ISR) scheduler test under QEMU.
  *
  * This is the test Phase B and Native tests cannot do: drive the SSOS
  * preemptive scheduler through the REAL ISR path. The unmodified
@@ -17,11 +17,8 @@
  */
 
 #include "scheduler.h"   /* kernel.h: SSTask, SSTaskInfo, API */
+#include "tty.h"
 #include <stdint.h>
-
-void tty_putc(char c);
-void tty_puts(const char* s);
-void tty_putu(unsigned v);
 
 #define GOAL 6
 

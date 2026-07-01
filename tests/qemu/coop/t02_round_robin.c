@@ -1,5 +1,5 @@
-/* main_coop.c - cooperative scheduler test driving the REAL SSOS scheduler
- * under QEMU.
+/* t02_round_robin.c - cooperative scheduler test driving the REAL SSOS
+ * scheduler under QEMU.
  *
  * This is the test Native tests cannot do: the SSOS scheduler.c and the
  * ctx switch (ctx_switch.s, a port of interrupts.s) run on a real m68k, so
@@ -13,11 +13,8 @@
  */
 
 #include "scheduler.h"   /* pulls in kernel.h: SSTask, SSTaskInfo, API */
+#include "tty.h"
 #include <stdint.h>
-
-void tty_putc(char c);
-void tty_puts(const char* s);
-void tty_putu(unsigned v);
 
 #define GOAL 6
 

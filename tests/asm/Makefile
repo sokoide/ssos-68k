@@ -6,7 +6,7 @@
 # X68000-MFP-specific and cannot run on QEMU virt). They teach the primitives
 # the SSOS context switch is built on.
 
-SOURCES = t01_ctx_save_restore
+SOURCES = t01_hello t02_subroutines t03_ctx_save_restore
 
 AS      = m68k-elf-as
 LD      = m68k-elf-ld

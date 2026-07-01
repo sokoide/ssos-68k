@@ -770,12 +770,29 @@ make test-qemu
 | **対象**       | **SSOS 本体を使わない**純粋な m68k asm の教材サンプル | **SSOS 本体の `scheduler.c`**（改変なし）+ ctx switch の QEMU 移植版 |
 | **目的**       | m68k 命令（`movem.l` 等）の動作を QEMU で単体確認 | SSOS のスケジューラ + コンテキストスイッチを実 m68k で検証 |
 | ビルド         | `m68k-elf-as` + `ld`（asm のみ、C なし）        | `m68k-elf-gcc`（C + asm、`-nostdlib`）                    |
-| 中身           | `t01_ctx_save_restore.s`（レジスタ保存/復元の単体）など | coop 版（yield 経路）と preempt 版（`trap #0` で Timer D ISR をシミュレート、`rte` 経路）|
+| 中身           | `t01_hello`（最小）→ `t02_subroutines`（bsr/rts）→ `t03_ctx_save_restore`（`movem.l`）と段階的に複雑化 | `coop/`（yield 経路）と `pre/`（`trap #0` で Timer D ISR シミュレート、`rte` 経路）に分割 |
 | 確認できること | m68k プリミティブ自体が正しく動くこと            | タスクが実際にレジスタ退避/復元で切り替わること（`1212...` と交互に出力）|
 
 要約: **test-asm は「m68k 命令の学習・教材」**、**test-qemu は「SSOS 本体の動作検証」**。SSOS のスケジューラを検証したいなら `make test-qemu`、m68k アセンブリ自体を試したいなら `make test-asm`。
 
-> 補足: どちらも SSOS 本体の `interrupts.s`（X68000 の MFP 依存）をそのまま動かすわけではない。`test-qemu` は `interrupts.s` の ctx switch 部分から MFP 依存を削いだ移植版（`ctx_switch.s` / `preempt_ctx_switch.s`）を使う。MFP は QEMU virt に存在しないため。
+#### `tests/asm/`（m68k 命令の教材サンプル、3段階）
+- `t01_hello.s` — 最小。Goldfish TTY に "Hello" を出すだけ（サブルーチンなし）
+- `t02_subroutines.s` — `bsr`/`rts` で `putchar`/`print_str` を切り出し、カウントループ
+- `t03_ctx_save_restore.s` — `movem.l` で全レジスタを保存→破壊→復元
+
+#### `tests/qemu/`（SSOS スケジューラ検証、cop/pre に分割）
+共通部分（`common/`: `stub.c`、`tty.h`、`linker.ld`）を除き、協調的とプリエンプティブで別ディレクトリ。SSOS 本体の `scheduler.c` を**改変なし**でビルドし、ctx switch を QEMU 移植版で動かす。
+
+| テスト | 経路 | 検証内容（Native では不可能）|
+| :--- | :--- | :--- |
+| `coop/t01_single_yield.c` | yield/jmp | 1タスクが yield で main に往復する最小動作（`TM`）|
+| `coop/t02_round_robin.c` | yield/jmp | 2タスクが `movem.l` でラウンドロビン（`1212...`）|
+| `coop/t03_register_save.c` | yield/jmp | d2-d7 の固有値が yield 切替後も復元されるか（レジスタ整合性）|
+| `pre/t01_round_robin.c` | trap/rte | 2タスクが `trap #0`→ISR→`rte` でラウンドロビン |
+| `pre/t02_register_save.c` | trap/rte | d2-d7 の固有値が `rte` 復元後も保持されるか |
+| `pre/t03_sleep_wakeup.c` | trap/rte | `ss_task_sleep` で他タスクに譲り、tick 経過後に復帰するか |
+
+> 補足: `test-qemu` の ctx switch は SSOS 本体の `interrupts.s`（X68000 MFP 依存）から MFP 依存を削いだ移植版（`ctx_switch.s` / `preempt_ctx_switch.s`）。MFP は QEMU virt に存在しないため。`trap` は同期例外なので真の非同期プリエンプションではないが、ISR 駆動の切替機構は検証可。
 
 ### Native テストの仕組み
 
