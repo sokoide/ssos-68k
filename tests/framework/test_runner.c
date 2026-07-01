@@ -11,6 +11,7 @@ void run_numfmt_tests(void);
 void run_mem_tests(void);
 void run_scheduler_tests(void);
 void run_window_tests(void);
+void run_ipc_tests(void);
 
 /* Global statistics, referenced by the ASSERT_* macros in ssos_test.h */
 int total_tests = 0;
@@ -38,6 +39,7 @@ int main(void) {
     run_mem_tests();
     run_scheduler_tests();
     run_window_tests();
+    run_ipc_tests();
 
     test_framework_report();
     return test_framework_exit_code();

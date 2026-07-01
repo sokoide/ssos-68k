@@ -817,7 +817,8 @@ make test-qemu
 | `tests/unit/test_mem.c`       | Buddy アロケータ + Slab キャッシュ                                   |
 | `tests/unit/test_scheduler.c` | 優先度レディーキュー、タスク lifecycle、スリープ/起床、ctx switch 回転 |
 | `tests/unit/test_window.c`    | ウィンドウ CRUD、z-order、dirty 領域、hit-test、render_all           |
-| `tests/asm/t01_ctx_save_restore.s` | m68k `movem.l` レジスタ保存/復元（QEMU）                        |
+| `tests/unit/test_ipc.c`       | メッセージキュー（send/recv、FIFO、wraparound、満杯）                |
+| `tests/asm/t01_hello.s` 等    | m68k プリミティブ教材（hello → サブルーチン → `movem.l`、QEMU）      |
 | `tests/framework/`            | テストフレームワーク（`ssos_test.h`、runner、HW stubs）              |
 
 ### テスト範囲の制限

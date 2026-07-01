@@ -38,6 +38,7 @@ unit/
   test_mem.c       pure logic — buddy allocator + slab cache
   test_scheduler.c stubbed HW — priority queue, task lifecycle, sleep/wakeup
   test_window.c    stubbed HW — window CRUD, z-order, dirty regions, hit-test
+  test_ipc.c       stubbed HW — message queue: send/recv, FIFO, wraparound, full
 asm/              self-contained m68k samples for QEMU virt (Goldfish TTY)
   t01_hello.s, t02_subroutines.s, t03_ctx_save_restore.s (progressive)
 qemu/             SSOS scheduler + ctx switch driven on QEMU (C + asm)

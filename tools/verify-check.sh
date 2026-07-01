@@ -91,7 +91,7 @@ classify() {
         ssos/os/kernel/entry.s|ssos/os/kernel/linker.ld)
             printf 'uncovered\tcop pre\txdf\tOS エントリ/リンカ（.xdf 専用）\n' ;;
         ssos/os/ipc/message.c|ssos/os/ipc/ipc.h)
-            printf 'uncovered\tcop pre\txdf\tIPC（テスト対象外、.xdf 専用）\n' ;;
+            printf 'covered\tcop pre\txdf\t\n' ;;
         ssos/os/app/main.c)
             printf 'uncovered\tcop pre\txdf\tアプリ本体（.xdf 専用）\n' ;;
         ssos/boot/*)
