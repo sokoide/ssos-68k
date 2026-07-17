@@ -48,6 +48,15 @@ static volatile SSDmaReg* dma_ch2 = (volatile SSDmaReg*)SS_DMA_CH2_BASE;
 static uint16_t dma_fill_buf[512];
 static SSXfrInf xfr_table;
 
+#define DMA_CSR_COC 0x80
+#define DMA_CSR_ERR 0x10
+#define DMA_CSR_ACT 0x08
+#define DMA_CCR_SAB 0x10
+/* A timeout indicates that waiting for this DMA path is not productive for
+ * the rest of the process.  Keep the decision outside the per-phase profile,
+ * which is reset between benchmark phases. */
+static uint8_t dma_disabled_after_timeout;
+
 const uint8_t ss_font_data[][SS_FONT_H] = {
     {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, /* 0x20 ' ' */
     {0x20, 0x20, 0x20, 0x20, 0x20, 0x00, 0x20, 0x00}, /* 0x21 ! */
@@ -163,6 +172,7 @@ static void dma_fill_init(void) {
     dma_ch2->scr = 0x05;
     dma_ch2->mfc = 0x05;
     dma_ch2->dfc = 0x05;
+    dma_ch2->bfc = 0x05;
 }
 
 void ss_dma_fill_setup(uint16_t value, int count) {
@@ -181,14 +191,26 @@ int ss_dma_fill_row(volatile uint16_t* dst, int count) {
     dma_ch2->btc = 1;
     dma_ch2->ccr = 0x80;
 
-    while (!(dma_ch2->csr & 0x10) && --timeout > 0) {
-        if (dma_ch2->csr & 0x02) {
+    while (timeout-- > 0) {
+        uint8_t csr = dma_ch2->csr;
+        if (csr & DMA_CSR_ERR) {
             dma_ch2->csr = 0xFF;
             return -1;
         }
+        if (csr & DMA_CSR_COC) {
+            dma_ch2->csr = 0xFF;
+            return 0;
+        }
     }
+    /* A status clear does not stop an active channel.  Abort before the CPU
+     * fallback so a late DMA write cannot race with the same VRAM row. */
+    dma_ch2->ccr = DMA_CCR_SAB;
+    timeout = 10000;
+    while ((dma_ch2->csr & DMA_CSR_ACT) && --timeout > 0) {
+    }
+    dma_ch2->ccr = 0x00;
     dma_ch2->csr = 0xFF;
-    return (timeout > 0) ? 0 : -2;
+    return -2;
 }
 
 void ss_gfx_init(void) {
@@ -242,7 +264,8 @@ void ss_gfx_rect(int x, int y, int w, int h, uint16_t color) {
     volatile uint16_t* vram_start = ss_draw_page;
     volatile uint16_t* vram_end = ss_draw_page + ss_current_mode->page_size / 2;
 
-    if (w > SS_DMA_FILL_THRESHOLD && w <= 512 && h > 4) {
+    if (w > SS_DMA_FILL_THRESHOLD && w <= 512 && h > 4 &&
+        !dma_disabled_after_timeout) {
         ss_dma_fill_setup(color, w);
         dma_fill_init();
         int ok = 1;
@@ -260,8 +283,12 @@ void ss_gfx_rect(int x, int y, int w, int h, uint16_t color) {
                 SS_PROFILE_DMA_OK();
                 dma_rows++;
             } else {
-                if (dma_result == -2) SS_PROFILE_DMA_TIMEOUT();
-                else SS_PROFILE_DMA_ERROR();
+                if (dma_result == -2) {
+                    SS_PROFILE_DMA_TIMEOUT();
+                    dma_disabled_after_timeout = 1;
+                } else {
+                    SS_PROFILE_DMA_ERROR();
+                }
                 ok = 0;
             }
         }
