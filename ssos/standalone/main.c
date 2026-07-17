@@ -768,6 +768,13 @@ int main(int argc, char** argv) {
                                                       .stack = NULL});
     ss_task_start(t_data);
 
+#if SS_PROFILE_GFX
+    /* Exclude startup drawing and task setup from the normal runtime sample. */
+    uint32_t runtime_start_vsync = ss_vsync_counter;
+    SSGfxProfile runtime_profile;
+    ss_gfx_profile_reset();
+#endif
+
     for (;;) {
         /* Process timer-based wakeups before anything else */
         ss_process_wakeups();
@@ -927,6 +934,20 @@ cleanup:
             fclose(bench_log_file);
             bench_log_file = NULL;
             _iocs_b_print("SSPERF file=bench.txt\r\n");
+        }
+    } else {
+        ss_gfx_profile_snapshot(&runtime_profile);
+        bench_log_file = fopen("runtime.txt", "w");
+        if (bench_log_file == NULL) {
+            _iocs_b_print("SSPERF file=open-failed name=runtime.txt\r\n");
+        }
+        print_bench_profile("runtime", frame,
+                            ss_vsync_counter - runtime_start_vsync,
+                            ss_current_mode, &runtime_profile);
+        if (bench_log_file != NULL) {
+            fclose(bench_log_file);
+            bench_log_file = NULL;
+            _iocs_b_print("SSPERF file=runtime.txt\r\n");
         }
     }
 #endif

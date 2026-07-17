@@ -102,6 +102,18 @@ cp bench.txt bench-pre.txt
 
 ログの `vsync`、`dma timeout`、`gvram write`、`zmap` を同じフェーズ間で比較する。`vsync` は少ないほど速い。`SSPERF file=bench.txt` が表示されれば、ファイルのオープンとクローズまで完了している。
 
+通常操作の実測では、`-bench` を付けずに起動し、Windowのドラッグや重なりを試してから ESC で終了する。
+
+```text
+ssos_cop.x -8
+cp runtime.txt runtime-cop.txt
+
+ssos_pre.x -8
+cp runtime.txt runtime-pre.txt
+```
+
+`runtime.txt` には終了までの `phase=runtime` 集計が保存される。`rounds` は描画frame数、`vsync` は計測期間のVSync数であり、異なる実行時間でも `gvram write / rounds` や `glyph clip / rounds` を比較できる。`-bench` 実行時は従来どおり `bench.txt` だけを出力する。
+
 ### 性能改善の採用結果と今後の計画
 
 現在の256色DMA成功時の基準値は次の通りである。

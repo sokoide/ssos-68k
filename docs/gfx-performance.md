@@ -97,6 +97,20 @@ type bench.txt
 
 `SSPERF file=bench.txt` が表示されれば、ファイルを開いて閉じる処理まで完了している。`open-failed` の場合は、実行したカレントディレクトリの書き込み可否またはHuman68Kのファイルシステム設定を確認する。
 
+### 通常操作時の runtime ログ
+
+`-bench` なしで起動した場合も、ESC終了時に同じSSPERF形式を `runtime.txt` に保存する。Windowの重なりやドラッグを含む実使用の描画量を測る用途であり、決定的ベンチマークの `bench.txt` とは混在させない。
+
+```text
+ssos_cop.x -8
+cp runtime.txt runtime-cop.txt
+
+ssos_pre.x -8
+cp runtime.txt runtime-pre.txt
+```
+
+先頭行の `phase=runtime` にある `rounds` は描画frame数、`vsync` は計測区間のVSync数である。比較時は実行時間を揃えるか、`gvram write`、`glyph clip`、`dma attempts` を `rounds` で割って比較する。`SSPERF file=runtime.txt` が表示されれば保存完了である。
+
 DMAエラーが残る場合は、まず `-bench 1` で診断ログを取得する。
 
 ```text
