@@ -112,6 +112,8 @@ void ss_gfx_draw_text(int x, int y, const char* str, uint16_t fg, uint16_t bg);
  * hot text paths where the bounding rect is already known in-bounds. */
 void ss_gfx_char_fast(int x, int y, char ch, uint16_t fg, uint16_t bg);
 void ss_gfx_draw_text_fast(int x, int y, const char* str, uint16_t fg, uint16_t bg);
+void ss_gfx_draw_text_region(int x, int y, const char* str, uint16_t fg, uint16_t bg,
+                             const SSGfxRect* clip);
 void ss_gfx_char_clip(int x, int y, char ch, uint16_t fg, uint16_t bg,
                       const int* clip_wins, int nclip, int zpos);
 void ss_gfx_draw_text_clip(int x, int y, const char* str, uint16_t fg, uint16_t bg,

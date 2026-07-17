@@ -14,6 +14,20 @@ extern int gfx_rect_calls;
 extern int gfx_rect_region_calls;
 extern int gfx_fill_stipple_calls;
 
+static int render_callback_calls;
+static int render_callback_saw_null;
+static SSGfxRect render_callback_clip;
+
+static void record_render_clip(SSWindow* self, const SSGfxRect* clip) {
+    (void)self;
+    render_callback_calls++;
+    if (clip == NULL) {
+        render_callback_saw_null = 1;
+    } else {
+        render_callback_clip = *clip;
+    }
+}
+
 /* ---- init / create ---- */
 
 TEST(win_init_clears_slots) {
@@ -197,6 +211,25 @@ TEST(render_region_clips_standard_frame_only) {
     ASSERT_EQ(gfx_rect_region_calls, 7);
 }
 
+TEST(render_callback_receives_explicit_region_clip) {
+    ss_win_init();
+    render_callback_calls = 0;
+    render_callback_saw_null = 0;
+    uint16_t id = ss_win_create(10, 10, 40, 40, 1);
+    ss_win_set_render(id, record_render_clip);
+
+    ss_win_render_all();
+    ASSERT_EQ(render_callback_calls, 1);
+    ASSERT_EQ(render_callback_saw_null, 1);
+
+    ss_win_render_region(15, 20, 5, 6);
+    ASSERT_EQ(render_callback_calls, 2);
+    ASSERT_EQ(render_callback_clip.x, 15);
+    ASSERT_EQ(render_callback_clip.y, 20);
+    ASSERT_EQ(render_callback_clip.w, 5);
+    ASSERT_EQ(render_callback_clip.h, 6);
+}
+
 /* ---- invalid ids ---- */
 
 TEST(getters_return_zero_for_invalid_id) {
@@ -225,5 +258,6 @@ void run_window_tests(void) {
     RUN_TEST(render_all_paints_visible_window);
     RUN_TEST(render_all_skips_hidden);
     RUN_TEST(render_region_clips_standard_frame_only);
+    RUN_TEST(render_callback_receives_explicit_region_clip);
     RUN_TEST(getters_return_zero_for_invalid_id);
 }

@@ -2,6 +2,7 @@
 #define SS_WIN_H
 
 #include <stdint.h>
+#include "../gfx/gfx.h"
 
 #define SS_MAX_WINDOWS  32
 #define SS_WIN_VISIBLE  0x01
@@ -17,7 +18,7 @@ struct SSWindow {
     uint16_t z;
     uint16_t flags;
     uint16_t dirty_x, dirty_y, dirty_w, dirty_h;
-    void (*render)(SSWindow* self);
+    void (*render)(SSWindow* self, const SSGfxRect* clip);
     uint16_t id;
     char title[20];
     char content[3][30];
@@ -42,7 +43,7 @@ int      ss_win_get_z(uint16_t id);
 SSWindow* ss_win_get_ptr(uint16_t id);
 void     ss_win_set_title(uint16_t id, const char* title);
 void     ss_win_set_content_line(uint16_t id, int line, const char* text);
-void     ss_win_set_render(uint16_t id, void (*render)(SSWindow*));
+void     ss_win_set_render(uint16_t id, void (*render)(SSWindow*, const SSGfxRect*));
 void     ss_win_set_z(uint16_t id, uint16_t z);
 void     ss_win_mark_dirty(uint16_t id);
 

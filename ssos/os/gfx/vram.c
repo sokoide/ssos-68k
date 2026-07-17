@@ -455,6 +455,45 @@ void ss_gfx_draw_text_fast(int x, int y, const char* str, uint16_t fg, uint16_t 
     }
 }
 
+static void ss_gfx_char_region(int x, int y, char ch, uint16_t fg, uint16_t bg,
+                               const SSGfxRect* clip) {
+    uint8_t c = (uint8_t)ch;
+    SS_PROFILE_PRIMITIVE_CALL();
+    SS_PROFILE_GLYPH_CLIP();
+    if (c < 0x20 || c > 0x7E) c = ' ';
+    const uint8_t* g = ss_font_data[c - 0x20];
+    uint32_t stride = ss_current_mode->bytes_per_line / 2;
+    uint32_t writes = 0;
+    for (int r = 0; r < SS_FONT_H; r++) {
+        int yy = y + r;
+        if (yy < 0 || yy >= ss_current_mode->display_h ||
+            yy < clip->y || yy >= clip->y + clip->h) continue;
+        volatile uint16_t* row = ss_draw_page + yy * stride;
+        uint8_t bits = g[r];
+        for (int b = 0; b < SS_FONT_W; b++) {
+            int xx = x + b;
+            if (xx < 0 || xx >= ss_current_mode->display_w ||
+                xx < clip->x || xx >= clip->x + clip->w) continue;
+            row[xx] = (bits & (0x80 >> b)) ? fg : bg;
+            writes++;
+        }
+    }
+    SS_PROFILE_GVRAM_WRITE(writes);
+}
+
+void ss_gfx_draw_text_region(int x, int y, const char* str, uint16_t fg, uint16_t bg,
+                             const SSGfxRect* clip) {
+    if (clip == NULL) {
+        ss_gfx_draw_text_fast(x, y, str, fg, bg);
+        return;
+    }
+    SS_PROFILE_TEXT_CALL();
+    while (*str) {
+        ss_gfx_char_region(x, y, *str++, fg, bg, clip);
+        x += SS_FONT_ADV;
+    }
+}
+
 void ss_gfx_xor_rect(int x, int y, int w, int h) {
     /* XOR 0xFFFF on the rectangle perimeter, clipped to the screen.
      * Self-erasing: two passes over the same rect restore the original,

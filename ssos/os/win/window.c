@@ -237,7 +237,7 @@ static void paint_windows_zorder(int highest_z,
         }
 
         if (win->render) {
-            win->render(win);
+            win->render(win, clip);
         } else {
             draw_frame(win, (int)win->z == highest_z, clip);
         }
@@ -374,7 +374,7 @@ void ss_win_set_content_line(uint16_t id, int line, const char* text) {
     ss_enable_interrupts();
 }
 
-void ss_win_set_render(uint16_t id, void (*render)(SSWindow*)) {
+void ss_win_set_render(uint16_t id, void (*render)(SSWindow*, const SSGfxRect*)) {
     if (id == 0 || id > SS_MAX_WINDOWS) return;
     windows[id - 1].render = render;
 }

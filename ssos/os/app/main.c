@@ -115,20 +115,38 @@ static void draw_content_dirty(uint16_t id) {
  * Active (topmost) window: gray title bar with black hash stripes flanking
  * the title (matches standalone draw_frame).  Inactive: plain white bar.
  */
-static void render_win(SSWindow* self) {
+static int rect_contains(const SSGfxRect* outer, int x, int y, int w, int h) {
+    return outer == NULL ||
+           (x >= outer->x && y >= outer->y &&
+            x + w <= outer->x + outer->w && y + h <= outer->y + outer->h);
+}
+
+static void draw_win_rect(int x, int y, int w, int h, uint16_t color,
+                          const SSGfxRect* clip) {
+    if (clip == NULL) ss_gfx_rect(x, y, w, h, color);
+    else ss_gfx_rect_region((SSGfxRect){x, y, w, h}, clip, color);
+}
+
+static void draw_win_text(int x, int y, const char* text, uint16_t fg, uint16_t bg,
+                          const SSGfxRect* clip) {
+    if (clip == NULL) ss_gfx_draw_text_fast(x, y, text, fg, bg);
+    else ss_gfx_draw_text_region(x, y, text, fg, bg, clip);
+}
+
+static void render_win(SSWindow* self, const SSGfxRect* clip) {
     if (self->id == 0 || self->id > APP_MAX_WINS) return;
     WinContent* c = &win_content[self->id - 1];
     int x = self->x, y = self->y, w = self->w, h = self->h;
     int is_fg = (self->z == ss_win_active_z);
     uint16_t t_bg = is_fg ? PAL_GRAY : PAL_WHITE;
 
-    ss_gfx_rect(x + 1, y + 1, w - 2, TITLE_H - 2, t_bg);
-    ss_gfx_rect(x + 1, y + TITLE_H, w - 2, h - TITLE_H - 1, PAL_WHITE);
-    ss_gfx_rect(x, y, w, 1, PAL_BLACK);
-    ss_gfx_rect(x, y + h - 1, w, 1, PAL_BLACK);
-    ss_gfx_rect(x, y, 1, h, PAL_BLACK);
-    ss_gfx_rect(x + w - 1, y, 1, h, PAL_BLACK);
-    ss_gfx_rect(x + 1, y + TITLE_H - 1, w - 2, 1, PAL_BLACK);
+    draw_win_rect(x + 1, y + 1, w - 2, TITLE_H - 2, t_bg, clip);
+    draw_win_rect(x + 1, y + TITLE_H, w - 2, h - TITLE_H - 1, PAL_WHITE, clip);
+    draw_win_rect(x, y, w, 1, PAL_BLACK, clip);
+    draw_win_rect(x, y + h - 1, w, 1, PAL_BLACK, clip);
+    draw_win_rect(x, y, 1, h, PAL_BLACK, clip);
+    draw_win_rect(x + w - 1, y, 1, h, PAL_BLACK, clip);
+    draw_win_rect(x + 1, y + TITLE_H - 1, w - 2, 1, PAL_BLACK, clip);
 
     int tw = (int)strlen(c->title) * SS_FONT_ADV;
     int tx = x + (w - tw) / 2;
@@ -137,18 +155,22 @@ static void render_win(SSWindow* self) {
         for (int i = 0; i < 5; i++) {
             int ly = y + 2 + i * 2;
             if (tx > x + 12)
-                ss_gfx_rect(x + 4, ly, tx - 8 - (x + 4) + 1, 1, PAL_BLACK);
+                draw_win_rect(x + 4, ly, tx - 8 - (x + 4) + 1, 1, PAL_BLACK, clip);
             if (tx + tw + 8 < x + w - 4)
-                ss_gfx_rect(tx + tw + 8, ly, (x + w - 5) - (tx + tw + 8) + 1, 1, PAL_BLACK);
+                draw_win_rect(tx + tw + 8, ly, (x + w - 5) - (tx + tw + 8) + 1, 1, PAL_BLACK, clip);
         }
     }
-    ss_gfx_draw_text_fast(tx, y + 2, c->title, PAL_BLACK, t_bg);
+    draw_win_text(tx, y + 2, c->title, PAL_BLACK, t_bg, clip);
 
-    for (int i = 0; i < 3; i++)
-        ss_gfx_draw_text_fast(x + 4, y + CONTENT_Y + i * LINE_H, c->line[i], PAL_BLACK, PAL_WHITE);
-    memcpy(c->prev[0], c->line[0], 30);
-    memcpy(c->prev[1], c->line[1], 30);
-    memcpy(c->prev[2], c->line[2], 30);
+    for (int i = 0; i < 3; i++) {
+        int line_x = x + 4;
+        int line_y = y + CONTENT_Y + i * LINE_H;
+        draw_win_text(line_x, line_y, c->line[i], PAL_BLACK, PAL_WHITE, clip);
+        /* Do not advance the snapshot while any glyph area remains unpainted. */
+        int line_w = (LINE_LEN - 1) * SS_FONT_ADV + SS_FONT_W;
+        if (rect_contains(clip, line_x, line_y, line_w, SS_FONT_H))
+            memcpy(c->prev[i], c->line[i], 30);
+    }
 }
 
 void ss_init(void) {
