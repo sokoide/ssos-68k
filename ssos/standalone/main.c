@@ -179,7 +179,8 @@ static void draw_frame(SSWindow* w, int is_fg) {
     uint16_t t_bg = is_fg ? C_GRAY_L : C_WHITE;
 
     ss_gfx_rect(w->x + 1, w->y + 1, w->w - 2, TITLE_H - 2, t_bg);
-    ss_gfx_rect(w->x + 1, w->y + TITLE_H, w->w - 2, w->h - TITLE_H - 1, C_WHITE);
+    ss_gfx_rect(w->x + 1, w->y + TITLE_H, w->w - 2,
+                w->h - TITLE_H - 1, C_WHITE);
 
     /* Border lines */
     ss_gfx_rect(w->x, w->y, w->w, 1, C_BLACK);
@@ -195,9 +196,12 @@ static void draw_frame(SSWindow* w, int is_fg) {
         for (int i = 0; i < 5; i++) {
             int ly = w->y + 2 + i * 2;
             if (tx > w->x + 12)
-                ss_gfx_rect(w->x + 4, ly, tx - 8 - (w->x + 4) + 1, 1, C_BLACK);
+                ss_gfx_rect(w->x + 4, ly, tx - 8 - (w->x + 4) + 1, 1,
+                            C_BLACK);
             if (tx + tw + 8 < w->x + w->w - 4)
-                ss_gfx_rect(tx + tw + 8, ly, (w->x + w->w - 5) - (tx + tw + 8) + 1, 1, C_BLACK);
+                ss_gfx_rect(tx + tw + 8, ly,
+                            (w->x + w->w - 5) - (tx + tw + 8) + 1, 1,
+                            C_BLACK);
         }
     }
 
@@ -206,20 +210,95 @@ static void draw_frame(SSWindow* w, int is_fg) {
 
 /* ---- Dirty content update ---- */
 
-static void draw_content_dirty(SSWindow* w) {
+/* Return visible windows in ascending z-order.  ss_gfx_draw_text_clip()
+ * then skips every pixel covered by an entry after target_pos, so an update
+ * to a lower window never writes through a higher window on the visible
+ * single page. */
+static int build_text_clip_windows(SSWindow* target, int clip_wins[3 * 4],
+                                   int* target_pos) {
+    int order[3];
+    int n = 0;
+
     for (int i = 0; i < 3; i++) {
-        if (memcmp(w->content[i], w->content_prev[i], 30) != 0) {
+        SSWindow* w = ss_win_get_ptr(win_ids[i]);
+        if (!(w->flags & SS_WIN_VISIBLE)) continue;
+        int j = n;
+        while (j > 0 && ss_win_get_z(win_ids[order[j - 1]]) > w->z) {
+            order[j] = order[j - 1];
+            j--;
+        }
+        order[j] = i;
+        n++;
+    }
+
+    *target_pos = -1;
+    for (int i = 0; i < n; i++) {
+        SSWindow* w = ss_win_get_ptr(win_ids[order[i]]);
+        clip_wins[i * 4] = w->x;
+        clip_wins[i * 4 + 1] = w->y;
+        clip_wins[i * 4 + 2] = w->w;
+        clip_wins[i * 4 + 3] = w->h;
+        if (w == target) *target_pos = i;
+    }
+    return n;
+}
+
+static int draw_content_dirty(SSWindow* w) {
+    int changed = 0;
+    int clip_wins[3 * 4];
+    int target_pos;
+    int nclip = build_text_clip_windows(w, clip_wins, &target_pos);
+
+    for (int i = 0; i < 3; i++) {
+        char current[30];
+
+        /* The data task updates content under the same interrupt guard.
+         * Snapshot first, then draw with interrupts enabled; otherwise a
+         * Timer D preemption can leave a mixed old/new string in VRAM while
+         * content_prev incorrectly records the new string as complete. */
+        ss_disable_interrupts();
+        memcpy(current, w->content[i], sizeof(current));
+        ss_enable_interrupts();
+
+        if (memcmp(current, w->content_prev[i], sizeof(current)) != 0) {
+            changed = 1;
             /* Redraw only the changed suffix. Content is space-padded by
              * ss_win_set_content_line, so the first differing column marks
              * the visible change and the padded tail erases any shrink. */
             int j = 0;
-            while (j < LINE_LEN && w->content[i][j] == w->content_prev[i][j]) j++;
-            ss_gfx_draw_text_fast(w->x + 4 + j * SS_FONT_ADV,
-                             w->y + CONTENT_Y + i * LINE_H,
-                             w->content[i] + j, C_BLACK, C_WHITE);
-            memcpy(w->content_prev[i], w->content[i], 30);
+            while (j < LINE_LEN && current[j] == w->content_prev[i][j]) j++;
+
+            int x = w->x + 4 + j * SS_FONT_ADV;
+            int y = w->y + CONTENT_Y + i * LINE_H;
+            int text_w = (LINE_LEN - j - 1) * SS_FONT_ADV + SS_FONT_W;
+            int needs_clip = 0;
+            for (int k = target_pos + 1; k < nclip; k++) {
+                int* upper = &clip_wins[k * 4];
+                if (x < upper[0] + upper[2] && x + text_w > upper[0] &&
+                    y < upper[1] + upper[3] && y + SS_FONT_H > upper[1]) {
+                    needs_clip = 1;
+                    break;
+                }
+            }
+
+            if (target_pos >= 0 && needs_clip) {
+                ss_gfx_draw_text_clip(w->x + 4 + j * SS_FONT_ADV,
+                                      y, current + j, C_BLACK, C_WHITE,
+                                      clip_wins, nclip, target_pos);
+            } else {
+                ss_gfx_draw_text_fast(x, y, current + j, C_BLACK, C_WHITE);
+            }
+
+            /* Do not acknowledge a value that changed while it was drawn.
+             * Leaving content_prev untouched schedules one clean redraw on
+             * the next frame. */
+            ss_disable_interrupts();
+            if (memcmp(w->content[i], current, sizeof(current)) == 0)
+                memcpy(w->content_prev[i], current, sizeof(current));
+            ss_enable_interrupts();
         }
     }
+    return changed;
 }
 
 /* Recompose the desktop in z-order.  Dragging temporarily hides the moved
