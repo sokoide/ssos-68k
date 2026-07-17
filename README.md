@@ -102,6 +102,40 @@ cp bench.txt bench-pre.txt
 
 ログの `vsync`、`dma timeout`、`gvram write`、`zmap` を同じフェーズ間で比較する。`vsync` は少ないほど速い。`SSPERF file=bench.txt` が表示されれば、ファイルのオープンとクローズまで完了している。
 
+### 性能改善の採用結果と今後の計画
+
+現在の256色DMA成功時の基準値は次の通りである。
+
+| phase | vsync | DMA状態 |
+| :--- | ---: | :--- |
+| full | 1020 | `ok=13500 error=0 timeout=0` |
+| region | 188 | `ok=9000 error=0 timeout=0` |
+| z-expose | 416 | `ok=13500 error=0 timeout=0` |
+
+採用済みの改善:
+
+- DMAのCSR完了判定、BFC設定、timeout時のSAB停止
+- DMAチェインテーブルの偶数アラインメント
+- RAMからGVRAMへのDMA転送方向修正（`OCR=0x19`）
+- DMAエラーの`CSR/CER`診断ログ
+- z-mapの再構築キャッシュ
+
+測定の結果、次の施策は採用しない。
+
+- 16色モード: `full=1393`で256色の`full=1020`より36.6%遅い
+- stippleのDMA化: 256色`full=1875`となり、CPUの`ss_fill_long`より遅かった
+- 8×8 z-mapだけを根拠にした遮蔽skip拡大: 部分遮蔽を完全遮蔽と誤判定する危険がある
+
+今後の実装順:
+
+1. `render_region`の背景・枠・タイトル・本文をdirty矩形でクリップする
+2. full/region/dragの実アプリ経路にメトリクスを追加する
+3. 実際に重なるウィンドウを使う正しいz-exposeベンチを追加する
+4. 上位の不透明矩形が下位ウィンドウ全体を包含する場合だけ遮蔽skipする
+5. DMAの矩形単位チェイン化を、VRAM行strideと部分転送のテスト後に再検討する
+
+クリップ化の採用条件は、描画結果を変えずに`region`の`vsync`とGVRAM書き込み量を削減し、`dma error=0`、`dma timeout=0`を維持することである。
+
 ### その他のビルドコマンド
 
 ```bash
