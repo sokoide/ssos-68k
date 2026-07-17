@@ -166,7 +166,7 @@ void ss_fill_long(volatile uint32_t* dst, uint32_t val, uint32_t count) {
 
 static void dma_fill_init(void) {
     const uint8_t dcr = 0x08;
-    const uint8_t ocr = 0x99;
+    const uint8_t ocr = 0x19; /* MAR=RAM (dma_fill_buf) -> DAR=GVRAM */
     const uint8_t scr = 0x05;
     const uint8_t mfc = 0x05;
     const uint8_t dfc = 0x05;
