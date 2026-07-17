@@ -150,6 +150,7 @@ static volatile int mx, my;  /* Initialized in main() based on current mode */
 static volatile uint8_t mb_left, mb_right;
 static volatile int exit_flag = 0;
 static int drag = -1, dox, doy;
+static uint16_t drag_prev_active;
 static int need_full = 1;
 static int highest_active_z = -1;
 
@@ -175,19 +176,24 @@ static int ol_x, ol_y;
 
 /* ---- Window frame drawing ---- */
 
-static void draw_frame(SSWindow* w, int is_fg) {
+static void draw_frame(SSWindow* w, int is_fg, const SSGfxRect* clip) {
     uint16_t t_bg = is_fg ? C_GRAY_L : C_WHITE;
 
-    ss_gfx_rect(w->x + 1, w->y + 1, w->w - 2, TITLE_H - 2, t_bg);
-    ss_gfx_rect(w->x + 1, w->y + TITLE_H, w->w - 2,
-                w->h - TITLE_H - 1, C_WHITE);
+    ss_gfx_rect_region((SSGfxRect){w->x + 1, w->y + 1, w->w - 2,
+                                   TITLE_H - 2}, clip, t_bg);
+    ss_gfx_rect_region((SSGfxRect){w->x + 1, w->y + TITLE_H, w->w - 2,
+                                   w->h - TITLE_H - 1}, clip, C_WHITE);
 
     /* Border lines */
-    ss_gfx_rect(w->x, w->y, w->w, 1, C_BLACK);
-    ss_gfx_rect(w->x, w->y + w->h - 1, w->w, 1, C_BLACK);
-    ss_gfx_rect(w->x, w->y + 1, 1, w->h - 2, C_BLACK);
-    ss_gfx_rect(w->x + w->w - 1, w->y + 1, 1, w->h - 2, C_BLACK);
-    ss_gfx_rect(w->x + 1, w->y + TITLE_H - 1, w->w - 2, 1, C_BLACK);
+    ss_gfx_rect_region((SSGfxRect){w->x, w->y, w->w, 1}, clip, C_BLACK);
+    ss_gfx_rect_region((SSGfxRect){w->x, w->y + w->h - 1, w->w, 1}, clip,
+                       C_BLACK);
+    ss_gfx_rect_region((SSGfxRect){w->x, w->y + 1, 1, w->h - 2}, clip,
+                       C_BLACK);
+    ss_gfx_rect_region((SSGfxRect){w->x + w->w - 1, w->y + 1, 1, w->h - 2},
+                       clip, C_BLACK);
+    ss_gfx_rect_region((SSGfxRect){w->x + 1, w->y + TITLE_H - 1, w->w - 2, 1},
+                       clip, C_BLACK);
 
     int tw = (int)strlen(w->title) * SS_FONT_ADV;
     int tx = w->x + (w->w - tw) / 2;
@@ -196,16 +202,22 @@ static void draw_frame(SSWindow* w, int is_fg) {
         for (int i = 0; i < 5; i++) {
             int ly = w->y + 2 + i * 2;
             if (tx > w->x + 12)
-                ss_gfx_rect(w->x + 4, ly, tx - 8 - (w->x + 4) + 1, 1,
-                            C_BLACK);
+                ss_gfx_rect_region((SSGfxRect){w->x + 4, ly,
+                                               tx - 8 - (w->x + 4) + 1, 1},
+                                   clip, C_BLACK);
             if (tx + tw + 8 < w->x + w->w - 4)
-                ss_gfx_rect(tx + tw + 8, ly,
-                            (w->x + w->w - 5) - (tx + tw + 8) + 1, 1,
-                            C_BLACK);
+                ss_gfx_rect_region((SSGfxRect){tx + tw + 8, ly,
+                                               (w->x + w->w - 5) -
+                                                   (tx + tw + 8) + 1,
+                                               1},
+                                   clip, C_BLACK);
         }
     }
 
-    ss_gfx_draw_text_fast(tx, w->y + 2, w->title, C_BLACK, t_bg);
+    if (clip == NULL)
+        ss_gfx_draw_text_fast(tx, w->y + 2, w->title, C_BLACK, t_bg);
+    else
+        ss_gfx_draw_text_region(tx, w->y + 2, w->title, C_BLACK, t_bg, clip);
 }
 
 /* ---- Dirty content update ---- */
@@ -328,11 +340,72 @@ static void redraw_desktop(void) {
     for (int k = 0; k < n; k++) {
         SSWindow* w = ss_win_get_ptr(win_ids[order[k]]);
         if (!(w->flags & SS_WIN_VISIBLE)) continue;
-        draw_frame(w, w->z == highest_active_z);
+        draw_frame(w, w->z == highest_active_z, NULL);
         memset(w->content_prev, 0xFF, sizeof(w->content_prev));
         draw_content_dirty(w);
     }
     need_full = 0;
+}
+
+/* Paint only one region. Content is snapshotted per line so a preempting
+ * data task cannot make content_prev acknowledge a mixed value. */
+static void draw_content_region(SSWindow* w, const SSGfxRect* clip) {
+    for (int i = 0; i < 3; i++) {
+        char current[30];
+        int x = w->x + 4;
+        int y = w->y + CONTENT_Y + i * LINE_H;
+
+        ss_disable_interrupts();
+        memcpy(current, w->content[i], sizeof(current));
+        ss_enable_interrupts();
+
+        ss_gfx_draw_text_region(x, y, current, C_BLACK, C_WHITE, clip);
+
+        int line_w = (LINE_LEN - 1) * SS_FONT_ADV + SS_FONT_W;
+        int fully_clipped = x >= clip->x && y >= clip->y &&
+                            x + line_w <= clip->x + clip->w &&
+                            y + SS_FONT_H <= clip->y + clip->h;
+        ss_disable_interrupts();
+        if (fully_clipped && memcmp(w->content[i], current, sizeof(current)) == 0)
+            memcpy(w->content_prev[i], current, sizeof(current));
+        ss_enable_interrupts();
+    }
+}
+
+static int rect_overlaps_window(const SSGfxRect* clip, const SSWindow* w) {
+    return w->x < clip->x + clip->w && w->x + w->w > clip->x &&
+           w->y < clip->y + clip->h && w->y + w->h > clip->y;
+}
+
+/* Recompose only clip: background first, then overlapping visible windows in
+ * ascending z-order so higher windows restore their occlusion naturally. */
+static void redraw_region(SSGfxRect clip) {
+    int order[3];
+    int n = 0;
+
+    ss_gfx_fill_stipple(clip.x, clip.y, clip.w, clip.h, C_WHITE, C_GRAY_M);
+
+    highest_active_z = -1;
+    for (int i = 0; i < 3; i++) {
+        SSWindow* w = ss_win_get_ptr(win_ids[i]);
+        if (!(w->flags & SS_WIN_VISIBLE)) continue;
+        if (w->z > highest_active_z) highest_active_z = w->z;
+        if (!rect_overlaps_window(&clip, w)) continue;
+
+        int j = n;
+        while (j > 0 && ss_win_get_z(win_ids[order[j - 1]]) > w->z) {
+            order[j] = order[j - 1];
+            j--;
+        }
+        order[j] = i;
+        n++;
+    }
+
+    for (int k = 0; k < n; k++) {
+        SSWindow* w = ss_win_get_ptr(win_ids[order[k]]);
+        draw_frame(w, w->z == highest_active_z, &clip);
+        draw_content_region(w, &clip);
+    }
 }
 
 /* ---- Marching ants outline ---- */
@@ -826,17 +899,34 @@ int main(int argc, char** argv) {
                 drag = id_to_idx(hid);
                 dox = cur_mx - ss_win_get_x(hid);
                 doy = cur_my - ss_win_get_y(hid);
+                drag_prev_active = 0;
+                if (ss_win_get_z(hid) == highest_active_z) {
+                    int best_z = -1;
+                    for (int i = 0; i < 3; i++) {
+                        uint16_t other = win_ids[i];
+                        if (other == hid) continue;
+                        SSWindow* ow = ss_win_get_ptr(other);
+                        if ((ow->flags & SS_WIN_VISIBLE) && ow->z > best_z) {
+                            best_z = ow->z;
+                            drag_prev_active = other;
+                        }
+                    }
+                }
                 ss_win_set_z(hid, next_z);
                 if (++next_z > 255) next_z = 4;
                 ss_win_hide(hid);
-                redraw_desktop();
-                SSWindow* dw = ss_win_get_ptr(hid);
+                int old_x = ss_win_get_x(hid), old_y = ss_win_get_y(hid);
+                int old_w = ss_win_get_w(hid), old_h = ss_win_get_h(hid);
+                redraw_region((SSGfxRect){old_x, old_y, old_w, old_h});
+                if (drag_prev_active != 0) {
+                    SSWindow* prev = ss_win_get_ptr(drag_prev_active);
+                    redraw_region((SSGfxRect){prev->x, prev->y, prev->w,
+                                              prev->h});
+                }
                 /* Self-erasing XOR outline at the grab position. */
-                ss_gfx_xor_rect(ss_win_get_x(hid), ss_win_get_y(hid),
-                                ss_win_get_w(hid), ss_win_get_h(hid));
-                ol_x = ss_win_get_x(hid);
-                ol_y = ss_win_get_y(hid);
-                memset(dw->content_prev, 0xFF, sizeof(dw->content_prev));
+                ss_gfx_xor_rect(old_x, old_y, old_w, old_h);
+                ol_x = old_x;
+                ol_y = old_y;
             }
         }
         if (!left && drag >= 0) {
@@ -845,8 +935,15 @@ int main(int argc, char** argv) {
             /* Erase the XOR outline at its last position. */
             ss_gfx_xor_rect(ol_x, ol_y, ww, wh);
             ss_win_show(did);
-            redraw_desktop();
+            ss_win_move(did, ol_x, ol_y);
+            redraw_region((SSGfxRect){ol_x, ol_y, ww, wh});
+            if (drag_prev_active != 0) {
+                SSWindow* prev = ss_win_get_ptr(drag_prev_active);
+                redraw_region((SSGfxRect){prev->x, prev->y, prev->w,
+                                          prev->h});
+            }
             drag = -1;
+            drag_prev_active = 0;
         }
         if (drag >= 0) {
             uint16_t did = win_ids[drag];
@@ -863,15 +960,7 @@ int main(int argc, char** argv) {
         }
 
         if (need_full) {
-            ss_gfx_fill_stipple(0, 0, ss_current_mode->display_w, ss_current_mode->display_h,
-                                C_WHITE, C_GRAY_M);
-            for (int i = 0; i < 3; i++) {
-                SSWindow* w = ss_win_get_ptr(win_ids[i]);
-                draw_frame(w, ss_win_get_z(win_ids[i]) == highest_active_z);
-                memset(w->content_prev, 0xFF, sizeof(w->content_prev));
-                draw_content_dirty(w);
-            }
-            need_full = 0;
+            redraw_desktop();
         } else if (drag >= 0) {
             /* Self-erasing XOR outline: erase the old rect, draw the new
              * one — and only when the window actually moved this frame. */
