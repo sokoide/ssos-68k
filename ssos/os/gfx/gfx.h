@@ -22,6 +22,13 @@ typedef struct {
     volatile uint16_t* page1;  /* Page 1 VRAM address (NULL if single page) */
 } SSGfxMode;
 
+typedef struct {
+    int x;
+    int y;
+    int w;
+    int h;
+} SSGfxRect;
+
 /* Current graphics mode (extern, defined in gfx.c) */
 extern const SSGfxMode* ss_current_mode;
 
@@ -94,6 +101,7 @@ void ss_gfx_init(void);
 void ss_gfx_flip(void);
 void ss_gfx_clear(uint16_t color);
 void ss_gfx_rect(int x, int y, int w, int h, uint16_t color);
+void ss_gfx_rect_region(SSGfxRect rect, const SSGfxRect* clip, uint16_t color);
 void ss_gfx_hline(int x, int y, int w, uint16_t color);
 void ss_fill_long(volatile uint32_t* dst, uint32_t val, uint32_t count);
 void ss_gfx_fill_stipple(int x, int y, int w, int h, uint16_t c1, uint16_t c2);

@@ -58,11 +58,17 @@ volatile uint8_t ss_wakeups_needed = 0;
 /* Count calls so render_all tests can assert the window system actually
  * painted (and skipped occluded / hidden windows). */
 int gfx_rect_calls         = 0;
+int gfx_rect_region_calls  = 0;
 int gfx_fill_stipple_calls = 0;
 
 void ss_gfx_rect(int x, int y, int w, int h, uint16_t color) {
     (void)x; (void)y; (void)w; (void)h; (void)color;
     gfx_rect_calls++;
+}
+
+void ss_gfx_rect_region(SSGfxRect rect, const SSGfxRect* clip, uint16_t color) {
+    (void)rect; (void)clip; (void)color;
+    gfx_rect_region_calls++;
 }
 
 void ss_gfx_fill_stipple(int x, int y, int w, int h, uint16_t c1, uint16_t c2) {
@@ -91,6 +97,7 @@ void reset_test_state(void) {
     ss_wakeups_needed = 0;
 #endif
     gfx_rect_calls = 0;
+    gfx_rect_region_calls = 0;
     gfx_fill_stipple_calls = 0;
     /* scheduler/window static state is reset by ss_sched_init()/ss_win_init()
      * at the start of each test that touches them. */

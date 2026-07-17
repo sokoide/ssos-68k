@@ -11,6 +11,7 @@
 
 /* gfx stub call counters (defined in test_mocks.c) */
 extern int gfx_rect_calls;
+extern int gfx_rect_region_calls;
 extern int gfx_fill_stipple_calls;
 
 /* ---- init / create ---- */
@@ -184,6 +185,18 @@ TEST(render_all_skips_hidden) {
     ASSERT_EQ(gfx_rect_calls, 0);
 }
 
+TEST(render_region_clips_standard_frame_only) {
+    ss_win_init();
+    uint16_t id = ss_win_create(10, 10, 40, 40, 1);
+    (void)id;
+    gfx_rect_calls = 0;
+    gfx_rect_region_calls = 0;
+
+    ss_win_render_region(15, 20, 5, 6);
+    ASSERT_EQ(gfx_rect_calls, 0);
+    ASSERT_EQ(gfx_rect_region_calls, 7);
+}
+
 /* ---- invalid ids ---- */
 
 TEST(getters_return_zero_for_invalid_id) {
@@ -211,5 +224,6 @@ void run_window_tests(void) {
     RUN_TEST(hit_test_skips_hidden);
     RUN_TEST(render_all_paints_visible_window);
     RUN_TEST(render_all_skips_hidden);
+    RUN_TEST(render_region_clips_standard_frame_only);
     RUN_TEST(getters_return_zero_for_invalid_id);
 }

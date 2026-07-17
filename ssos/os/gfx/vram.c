@@ -332,6 +332,23 @@ void ss_gfx_rect(int x, int y, int w, int h, uint16_t color) {
     }
 }
 
+void ss_gfx_rect_region(SSGfxRect rect, const SSGfxRect* clip, uint16_t color) {
+    if (clip == NULL) {
+        ss_gfx_rect(rect.x, rect.y, rect.w, rect.h, color);
+        return;
+    }
+
+    int left = rect.x > clip->x ? rect.x : clip->x;
+    int top = rect.y > clip->y ? rect.y : clip->y;
+    int right = rect.x + rect.w < clip->x + clip->w
+                    ? rect.x + rect.w : clip->x + clip->w;
+    int bottom = rect.y + rect.h < clip->y + clip->h
+                     ? rect.y + rect.h : clip->y + clip->h;
+    if (right <= left || bottom <= top) return;
+
+    ss_gfx_rect(left, top, right - left, bottom - top, color);
+}
+
 void ss_gfx_hline(int x, int y, int w, uint16_t color) {
     SS_PROFILE_HLINE_CALL();
     ss_gfx_rect(x, y, w, 1, color);

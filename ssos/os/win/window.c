@@ -145,21 +145,34 @@ static void ensure_zmap(void) {
     if (!zmap_valid) rebuild_zmap();
 }
 
-static void draw_frame(SSWindow* win, int is_fg) {
+static void draw_frame_rect(SSGfxRect rect, const SSGfxRect* clip, uint16_t color) {
+    if (clip == NULL) {
+        ss_gfx_rect(rect.x, rect.y, rect.w, rect.h, color);
+    } else {
+        ss_gfx_rect_region(rect, clip, color);
+    }
+}
+
+static void draw_frame(SSWindow* win, int is_fg, const SSGfxRect* clip) {
     int th = 12; /* title bar height */
     uint16_t t_bg = is_fg ? 8 : 7;  /* fg: dark gray(8), bg: white(7) */
 
     /* Title bar */
-    ss_gfx_rect(win->x + 1, win->y + 1, win->w - 2, th - 2, t_bg);
+    draw_frame_rect((SSGfxRect){win->x + 1, win->y + 1, win->w - 2, th - 2},
+                    clip, t_bg);
     /* Content area */
-    ss_gfx_rect(win->x + 1, win->y + th, win->w - 2, win->h - th - 1, 7);
+    draw_frame_rect((SSGfxRect){win->x + 1, win->y + th, win->w - 2,
+                               win->h - th - 1}, clip, 7);
     /* Outer border */
-    ss_gfx_rect(win->x, win->y, win->w, 1, 0);
-    ss_gfx_rect(win->x, win->y + win->h - 1, win->w, 1, 0);
-    ss_gfx_rect(win->x, win->y, 1, win->h, 0);
-    ss_gfx_rect(win->x + win->w - 1, win->y, 1, win->h, 0);
+    draw_frame_rect((SSGfxRect){win->x, win->y, win->w, 1}, clip, 0);
+    draw_frame_rect((SSGfxRect){win->x, win->y + win->h - 1, win->w, 1},
+                    clip, 0);
+    draw_frame_rect((SSGfxRect){win->x, win->y, 1, win->h}, clip, 0);
+    draw_frame_rect((SSGfxRect){win->x + win->w - 1, win->y, 1, win->h},
+                    clip, 0);
     /* Title separator */
-    ss_gfx_rect(win->x + 1, win->y + th - 1, win->w - 2, 1, 0);
+    draw_frame_rect((SSGfxRect){win->x + 1, win->y + th - 1, win->w - 2, 1},
+                    clip, 0);
 }
 
 /*
@@ -173,7 +186,7 @@ static void draw_frame(SSWindow* win, int is_fg) {
  */
 static void paint_windows_zorder(int highest_z,
                                  int rx, int ry, int rw, int rh,
-                                 int use_region) {
+                                 int use_region, const SSGfxRect* clip) {
     SSWindow* order[SS_MAX_WINDOWS];
     int n = 0;
 
@@ -226,7 +239,7 @@ static void paint_windows_zorder(int highest_z,
         if (win->render) {
             win->render(win);
         } else {
-            draw_frame(win, (int)win->z == highest_z);
+            draw_frame(win, (int)win->z == highest_z, clip);
         }
         SS_PROFILE_WINDOW_RENDERED();
         win->flags &= ~SS_WIN_DIRTY;
@@ -256,7 +269,7 @@ void ss_win_render_all(void) {
     int highest_z = compute_highest_z();
     ss_win_active_z = (uint16_t)highest_z;
 
-    paint_windows_zorder(highest_z, 0, 0, 0, 0, 0);
+    paint_windows_zorder(highest_z, 0, 0, 0, 0, 0, NULL);
 }
 
 /*
@@ -286,7 +299,8 @@ void ss_win_render_region(int rx, int ry, int rw, int rh) {
     int highest_z = compute_highest_z();
     ss_win_active_z = (uint16_t)highest_z;
 
-    paint_windows_zorder(highest_z, rx, ry, rw, rh, 1);
+    SSGfxRect clip = {rx, ry, rw, rh};
+    paint_windows_zorder(highest_z, rx, ry, rw, rh, 1, &clip);
 }
 
 int ss_win_hit_test(int mx, int my) {
