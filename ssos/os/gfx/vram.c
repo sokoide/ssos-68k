@@ -46,7 +46,7 @@ uint8_t ss_display_idx;
 
 static volatile SSDmaReg* dma_ch2 = (volatile SSDmaReg*)SS_DMA_CH2_BASE;
 static uint16_t dma_fill_buf[512];
-static SSXfrInf xfr_table;
+static SSXfrInf xfr_table __attribute__((aligned(2)));
 
 #define DMA_CSR_COC 0x80
 #define DMA_CSR_ERR 0x10
