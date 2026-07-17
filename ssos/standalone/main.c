@@ -351,10 +351,18 @@ static void redraw_desktop(void) {
 /* Paint only one region. Content is snapshotted per line so a preempting
  * data task cannot make content_prev acknowledge a mixed value. */
 static void draw_content_region(SSWindow* w, const SSGfxRect* clip) {
+    int x = w->x + 4;
+    int line_w = (LINE_LEN - 1) * SS_FONT_ADV + SS_FONT_W;
+
     for (int i = 0; i < 3; i++) {
         char current[30];
-        int x = w->x + 4;
         int y = w->y + CONTENT_Y + i * LINE_H;
+
+        /* Avoid copying and clipping every glyph when this line cannot
+         * contribute a pixel to the damage region. */
+        if (x >= clip->x + clip->w || x + line_w <= clip->x ||
+            y >= clip->y + clip->h || y + SS_FONT_H <= clip->y)
+            continue;
 
         ss_disable_interrupts();
         memcpy(current, w->content[i], sizeof(current));
@@ -362,7 +370,6 @@ static void draw_content_region(SSWindow* w, const SSGfxRect* clip) {
 
         ss_gfx_draw_text_region(x, y, current, C_BLACK, C_WHITE, clip);
 
-        int line_w = (LINE_LEN - 1) * SS_FONT_ADV + SS_FONT_W;
         int fully_clipped = x >= clip->x && y >= clip->y &&
                             x + line_w <= clip->x + clip->w &&
                             y + SS_FONT_H <= clip->y + clip->h;
@@ -409,11 +416,37 @@ static void redraw_region(SSGfxRect clip) {
     }
 }
 
-/* A foreground change only alters the title fill and its decorations.  Keep
- * the repair to that strip; redraw_region still restores any higher window
- * that overlaps it in z-order. */
+/* A foreground change only alters the title fill and its decorations.  The
+ * target window completely covers this strip, so unlike redraw_region there
+ * is no exposed background to stipple.  Lower windows are hidden by target;
+ * repaint only target and higher overlapping windows in z-order. */
 static void redraw_title_region(const SSWindow* w) {
-    redraw_region((SSGfxRect){w->x, w->y, w->w, TITLE_H});
+    SSGfxRect clip = {w->x, w->y, w->w, TITLE_H};
+    int order[3];
+    int n = 0;
+
+    highest_active_z = -1;
+    for (int i = 0; i < 3; i++) {
+        SSWindow* other = ss_win_get_ptr(win_ids[i]);
+        if ((other->flags & SS_WIN_VISIBLE) && other->z > highest_active_z)
+            highest_active_z = other->z;
+        if (!(other->flags & SS_WIN_VISIBLE) || other->z < w->z ||
+            !rect_overlaps_window(&clip, other))
+            continue;
+        int j = n;
+        while (j > 0 && ss_win_get_z(win_ids[order[j - 1]]) > other->z) {
+            order[j] = order[j - 1];
+            j--;
+        }
+        order[j] = i;
+        n++;
+    }
+
+    for (int i = 0; i < n; i++) {
+        SSWindow* other = ss_win_get_ptr(win_ids[order[i]]);
+        draw_frame(other, other->z == highest_active_z, &clip);
+        if (other != w) draw_content_region(other, &clip);
+    }
 }
 
 /* ---- Marching ants outline ---- */

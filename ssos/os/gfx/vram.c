@@ -494,6 +494,28 @@ void ss_gfx_draw_text_region(int x, int y, const char* str, uint16_t fg, uint16_
     }
 }
 
+static uint32_t ss_gfx_xor_hline(volatile uint16_t* row, int x0, int x1) {
+    uint32_t accesses = 0;
+
+    /* Keep the long access word-aligned: each pixel occupies one word. */
+    if (x0 & 1) {
+        row[x0] ^= 0xFFFF;
+        x0++;
+        accesses++;
+    }
+    while (x0 + 1 < x1) {
+        volatile uint32_t* row32 = (volatile uint32_t*)row;
+        row32[x0 / 2] ^= 0xFFFFFFFFUL;
+        x0 += 2;
+        accesses += 2;
+    }
+    if (x0 < x1) {
+        row[x0] ^= 0xFFFF;
+        accesses++;
+    }
+    return accesses;
+}
+
 void ss_gfx_xor_rect(int x, int y, int w, int h) {
     /* XOR 0xFFFF on the rectangle perimeter, clipped to the screen.
      * Self-erasing: two passes over the same rect restore the original,
@@ -505,12 +527,19 @@ void ss_gfx_xor_rect(int x, int y, int w, int h) {
     uint32_t accesses = 0;
     SS_PROFILE_PRIMITIVE_CALL();
     SS_PROFILE_XOR_RECT_CALL();
-    for (int dx = 0; dx < w; dx++) {
-        int xx = x + dx;
-        if (xx < 0 || xx >= W) continue;
-        if (y >= 0 && y < H) { v[y * stride + xx] ^= 0xFFFF; accesses++; }
-        int y2 = y + h - 1;
-        if (y2 >= 0 && y2 < H) { v[y2 * stride + xx] ^= 0xFFFF; accesses++; }
+    if (w > 0) {
+        int x0 = x < 0 ? 0 : x;
+        int x1 = x + w;
+        if (x1 > W) x1 = W;
+        if (x0 < x1) {
+            if (y >= 0 && y < H) {
+                accesses += ss_gfx_xor_hline(v + y * stride, x0, x1);
+            }
+            int y2 = y + h - 1;
+            if (y2 >= 0 && y2 < H) {
+                accesses += ss_gfx_xor_hline(v + y2 * stride, x0, x1);
+            }
+        }
     }
     for (int dy = 0; dy < h; dy++) {
         int yy = y + dy;
