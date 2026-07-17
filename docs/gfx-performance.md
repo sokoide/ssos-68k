@@ -101,7 +101,7 @@ DMAエラーが残る場合は、まず `-bench 1` で診断ログを取得す�
 
 ```text
 ssos_cop.x -8 -bench 1
-copy bench.txt bench-cop-dma-diagnostic.txt
+cp bench.txt bench-cop-dma-diagnostic.txt
 ```
 
 `SSPERF dma` 行の `status_samples`、`csr`、`cer` を確認する。`error` はDMAエラーが発生した矩形行数であり、`cer` が原因コードである。`config_samples` と `dcr/ocr/scr/mfc/dfc/bfc` はDMA開始時の設定値を示す。`ok=0` のままではDMA高速化とは判定せず、CPUフォールバックによる高速化と区別する。

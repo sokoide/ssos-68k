@@ -92,10 +92,10 @@ SS_PROFILE_GFX=1 make
 
 ```text
 ssos_cop.x -8 -bench 100
-copy bench.txt bench-cop.txt
+cp bench.txt bench-cop.txt
 
 ssos_pre.x -8 -bench 100
-copy bench.txt bench-pre.txt
+cp bench.txt bench-pre.txt
 ```
 
 `-8` は256色モード、`-bench 100` は各フェーズを100回実行する指定である。`bench.txt` は実行時のカレントディレクトリに作成され、毎回上書きされるため、2つの実行結果を比較する場合は上記のように別名で退避する。
