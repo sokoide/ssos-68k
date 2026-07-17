@@ -116,13 +116,15 @@ cp runtime.txt runtime-pre.txt
 
 ### 性能改善の採用結果と今後の計画
 
-現在の256色DMA成功時の基準値は次の通りである。
+現在の256色DMA成功時の基準値は次の通りである。`drag-region` は重なったWindowの固定ドラッグ経路である。
 
 | phase | vsync | DMA状態 |
 | :--- | ---: | :--- |
-| full | 1020 | `ok=13500 error=0 timeout=0` |
-| region | 188 | `ok=9000 error=0 timeout=0` |
-| z-expose | 416 | `ok=13500 error=0 timeout=0` |
+| full | 1019 | `ok=13500 error=0 timeout=0` |
+| region | 65 | `ok=4900 error=0 timeout=0` |
+| z-expose | 340 | `ok=9000 error=0 timeout=0` |
+| drag-region | 314 | `ok=7600 error=0 timeout=0` |
+| xor-move | 16 | DMA未使用 |
 
 採用済みの改善:
 
@@ -131,12 +133,19 @@ cp runtime.txt runtime-pre.txt
 - RAMからGVRAMへのDMA転送方向修正（`OCR=0x19`）
 - DMAエラーの`CSR/CER`診断ログ
 - z-mapの再構築キャッシュ
+- region描画の背景・枠・タイトル・本文クリップ
+- ドラッグ中の前面切替をタイトルバーだけ再合成し、覆われるタイトル背景stippleを省略
+- damage region外の本文テキストをスキップ
+- XOR枠の水平辺を68000の整列済みlongアクセスで処理
+
+固定`drag-region`の改善結果は、初期値 `vsync=554` / `gvram write=8878350` から、`vsync=314` / `gvram write=4634800` になった。VSyncは43.3%、GVRAM書込みは47.8%削減し、DMA error/timeoutは0を維持している。
 
 測定の結果、次の施策は採用しない。
 
 - 16色モード: `full=1393`で256色の`full=1020`より36.6%遅い
 - stippleのDMA化: 256色`full=1875`となり、CPUの`ss_fill_long`より遅かった
 - 8×8 z-mapだけを根拠にした遮蔽skip拡大: 部分遮蔽を完全遮蔽と誤判定する危険がある
+- 16色モードでのドラッグ最適化: `drag-region=358`で256色より速くならず、full描画も遅い
 
 完了した測定基盤:
 
@@ -144,10 +153,13 @@ cp runtime.txt runtime-pre.txt
 - 通常操作時の`runtime.txt`メトリクス
 - 実際の領域再合成経路を測る固定`drag-region`ベンチ
 
-次の候補は、`drag-region`と通常操作の両方で効果を確認してから選ぶ。
+性能最適化はいったん完了とする。次に着手するなら、性能ではなく`next_z`が255を超えた後も前面化を正しく保つz値正規化を先に行う。
 
-1. 上位の不透明矩形が下位Window全体を包含する場合だけ遮蔽skipする
-2. DMAの矩形単位チェイン化を、VRAM行strideと部分転送のテスト後に再検討する
+追加の性能候補は、実験用ビルドでのみ検証する。
+
+1. HD63450の矩形アレイチェインDMA（行stride・転送方向・CPUフォールバックを個別に実機検証）
+2. damage regionを走査線/spanへ分割し、最終的にWindowで覆われる背景stippleを描かない
+3. 上位の不透明矩形が下位Window全体を包含する場合だけ遮蔽skipする
 
 クリップ化の採用条件は、描画結果を変えずに`region`の`vsync`とGVRAM書き込み量を削減し、`dma error=0`、`dma timeout=0`を維持することである。
 
