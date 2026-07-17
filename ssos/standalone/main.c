@@ -150,6 +150,7 @@ static volatile int mx, my;  /* Initialized in main() based on current mode */
 static volatile uint8_t mb_left, mb_right;
 static volatile int exit_flag = 0;
 static int drag = -1, dox, doy;
+/* Highest other visible window while the dragged one is hidden. */
 static uint16_t drag_prev_active;
 static int need_full = 1;
 static int highest_active_z = -1;
@@ -408,6 +409,13 @@ static void redraw_region(SSGfxRect clip) {
     }
 }
 
+/* A foreground change only alters the title fill and its decorations.  Keep
+ * the repair to that strip; redraw_region still restores any higher window
+ * that overlaps it in z-order. */
+static void redraw_title_region(const SSWindow* w) {
+    redraw_region((SSGfxRect){w->x, w->y, w->w, TITLE_H});
+}
+
 /* ---- Marching ants outline ---- */
 
 /* The drag outline is now the shared self-erasing ss_gfx_xor_rect — no
@@ -535,6 +543,10 @@ static void* data_thread(void* arg) {
 #define SS_BENCH_OUTLINE_X0     96
 #define SS_BENCH_OUTLINE_X1     128
 #define SS_BENCH_OUTLINE_Y      220
+#define SS_BENCH_DRAG_X0        80
+#define SS_BENCH_DRAG_Y0        120
+#define SS_BENCH_DRAG_X1        128
+#define SS_BENCH_DRAG_Y1        96
 
 static int parse_bench_rounds(const char* text, uint32_t* rounds) {
     uint32_t value = 0;
@@ -572,7 +584,7 @@ typedef struct {
     SSGfxProfile profile;
 } SSBenchResult;
 
-static SSBenchResult bench_results[5];
+static SSBenchResult bench_results[6];
 static uint32_t bench_result_count;
 static const SSGfxMode* bench_mode;
 static FILE* bench_log_file;
@@ -702,6 +714,69 @@ static void bench_text_update(uint32_t rounds) {
     }
 }
 
+static SSWindow bench_drag_saved[3];
+static int bench_drag_saved_highest_active_z;
+
+/* Set up a fixed scene outside the profile interval. */
+static void bench_drag_region_prepare(void) {
+    SSWindow* dragged = ss_win_get_ptr(win_ids[2]);
+
+    ss_disable_interrupts();
+    for (int i = 0; i < 3; i++)
+        memcpy(&bench_drag_saved[i], ss_win_get_ptr(win_ids[i]),
+               sizeof(bench_drag_saved[i]));
+    bench_drag_saved_highest_active_z = highest_active_z;
+    ss_enable_interrupts();
+
+    ss_win_move(dragged->id, SS_BENCH_DRAG_X0, SS_BENCH_DRAG_Y0);
+    ss_win_show(dragged->id);
+    ss_win_set_z(dragged->id, 4);
+    redraw_desktop();
+}
+
+/* Exercise the same hide/XOR/move/show region path as a drag.  The fixed
+ * starting scene is prepared before the profile is reset, so the result is
+ * only the cost of the repeated drag path. */
+static void bench_drag_region(uint32_t rounds) {
+    SSWindow* dragged = ss_win_get_ptr(win_ids[2]);
+    SSWindow* previous = ss_win_get_ptr(win_ids[1]);
+    SSGfxRect base = {SS_BENCH_DRAG_X0, SS_BENCH_DRAG_Y0, WIN_W, WIN_H};
+    SSGfxRect moved = {SS_BENCH_DRAG_X1, SS_BENCH_DRAG_Y1, WIN_W, WIN_H};
+
+    for (uint32_t i = 0; i < rounds; i++) {
+        SSGfxRect old_rect = (i & 1U) ? moved : base;
+        SSGfxRect new_rect = (i & 1U) ? base : moved;
+
+        ss_win_hide(dragged->id);
+        redraw_region(old_rect);
+        redraw_title_region(previous);
+        ss_gfx_xor_rect(old_rect.x, old_rect.y, old_rect.w, old_rect.h);
+        ss_gfx_xor_rect(old_rect.x, old_rect.y, old_rect.w, old_rect.h);
+        ss_win_move(dragged->id, new_rect.x, new_rect.y);
+        ss_win_show(dragged->id);
+        redraw_region(new_rect);
+        redraw_title_region(previous);
+    }
+
+}
+
+/* Restore outside the profile interval.  redraw_desktop updates content_prev,
+ * so copy the exact model one final time after repainting. */
+static void bench_drag_region_restore(void) {
+    ss_disable_interrupts();
+    for (int i = 0; i < 3; i++)
+        memcpy(ss_win_get_ptr(win_ids[i]), &bench_drag_saved[i],
+               sizeof(bench_drag_saved[i]));
+    ss_enable_interrupts();
+    redraw_desktop();
+    ss_disable_interrupts();
+    for (int i = 0; i < 3; i++)
+        memcpy(ss_win_get_ptr(win_ids[i]), &bench_drag_saved[i],
+               sizeof(bench_drag_saved[i]));
+    highest_active_z = bench_drag_saved_highest_active_z;
+    ss_enable_interrupts();
+}
+
 typedef void (*SSBenchPhase)(uint32_t rounds);
 
 static void run_bench_phase(const char* name, uint32_t rounds,
@@ -709,7 +784,7 @@ static void run_bench_phase(const char* name, uint32_t rounds,
     SSBenchResult* result;
     uint32_t start_vsync;
 
-    if (bench_result_count >= 5) return;
+    if (bench_result_count >= 6) return;
     result = &bench_results[bench_result_count++];
     strncpy(result->phase, name, sizeof(result->phase) - 1);
     result->phase[sizeof(result->phase) - 1] = '\0';
@@ -728,6 +803,9 @@ static void run_benchmark(uint32_t rounds) {
     run_bench_phase("region", rounds, bench_small_region);
     run_bench_phase("z-expose", rounds, bench_z_exposure);
     run_bench_phase("text-update", rounds, bench_text_update);
+    bench_drag_region_prepare();
+    run_bench_phase("drag-region", rounds, bench_drag_region);
+    bench_drag_region_restore();
     run_bench_phase("xor-move", rounds, bench_xor_outline);
 }
 
@@ -900,16 +978,15 @@ int main(int argc, char** argv) {
                 dox = cur_mx - ss_win_get_x(hid);
                 doy = cur_my - ss_win_get_y(hid);
                 drag_prev_active = 0;
-                if (ss_win_get_z(hid) == highest_active_z) {
-                    int best_z = -1;
-                    for (int i = 0; i < 3; i++) {
-                        uint16_t other = win_ids[i];
-                        if (other == hid) continue;
-                        SSWindow* ow = ss_win_get_ptr(other);
-                        if ((ow->flags & SS_WIN_VISIBLE) && ow->z > best_z) {
-                            best_z = ow->z;
-                            drag_prev_active = other;
-                        }
+                int was_active = ss_win_get_z(hid) == highest_active_z;
+                int best_z = -1;
+                for (int i = 0; i < 3; i++) {
+                    uint16_t other = win_ids[i];
+                    if (other == hid) continue;
+                    SSWindow* ow = ss_win_get_ptr(other);
+                    if ((ow->flags & SS_WIN_VISIBLE) && ow->z > best_z) {
+                        best_z = ow->z;
+                        drag_prev_active = other;
                     }
                 }
                 ss_win_set_z(hid, next_z);
@@ -918,10 +995,9 @@ int main(int argc, char** argv) {
                 int old_x = ss_win_get_x(hid), old_y = ss_win_get_y(hid);
                 int old_w = ss_win_get_w(hid), old_h = ss_win_get_h(hid);
                 redraw_region((SSGfxRect){old_x, old_y, old_w, old_h});
-                if (drag_prev_active != 0) {
+                if (was_active && drag_prev_active != 0) {
                     SSWindow* prev = ss_win_get_ptr(drag_prev_active);
-                    redraw_region((SSGfxRect){prev->x, prev->y, prev->w,
-                                              prev->h});
+                    redraw_title_region(prev);
                 }
                 /* Self-erasing XOR outline at the grab position. */
                 ss_gfx_xor_rect(old_x, old_y, old_w, old_h);
@@ -939,8 +1015,7 @@ int main(int argc, char** argv) {
             redraw_region((SSGfxRect){ol_x, ol_y, ww, wh});
             if (drag_prev_active != 0) {
                 SSWindow* prev = ss_win_get_ptr(drag_prev_active);
-                redraw_region((SSGfxRect){prev->x, prev->y, prev->w,
-                                          prev->h});
+                redraw_title_region(prev);
             }
             drag = -1;
             drag_prev_active = 0;

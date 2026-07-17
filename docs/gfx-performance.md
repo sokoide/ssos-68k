@@ -69,7 +69,7 @@ cp ~/tmp/ssos_pre.x ~/tmp/ssos_pre_8bench.x
 ```
 
 実行時は `-8 -bench 100` を付ける。
-`-8` は 256 色モード、`-bench 100` は各決定的フェーズを100回実行する指定である。実行順は `full`、`region`、`z-expose`、`text-update`、`xor-move`。マウスやキーボードの操作は不要で、終了後は通常の復元処理を通る。
+`-8` は 256 色モード、`-bench 100` は各決定的フェーズを100回実行する指定である。実行順は `full`、`region`、`z-expose`、`text-update`、`drag-region`、`xor-move`。`drag-region` は固定した2位置の間で、実アプリと同じ hide → 旧領域再合成 → XOR → move/show → 新領域再合成を繰り返す。マウスやキーボードの操作は不要で、終了後は通常の復元処理を通る。
 
 ## 実行
 

@@ -100,7 +100,7 @@ cp bench.txt bench-pre.txt
 
 `-8` は256色モード、`-bench 100` は各フェーズを100回実行する指定である。`bench.txt` は実行時のカレントディレクトリに作成され、毎回上書きされるため、2つの実行結果を比較する場合は上記のように別名で退避する。
 
-ログの `vsync`、`dma timeout`、`gvram write`、`zmap` を同じフェーズ間で比較する。`vsync` は少ないほど速い。`SSPERF file=bench.txt` が表示されれば、ファイルのオープンとクローズまで完了している。
+実行順は `full`、`region`、`z-expose`、`text-update`、`drag-region`、`xor-move` である。`drag-region` は固定した2位置の間で、実アプリと同じ hide → 旧領域再合成 → XOR → move/show → 新領域再合成を繰り返す。ログの `vsync`、`dma timeout`、`gvram write`、`zmap` を同じフェーズ間で比較する。`vsync` は少ないほど速い。`SSPERF file=bench.txt` が表示されれば、ファイルのオープンとクローズまで完了している。
 
 通常操作の実測では、`-bench` を付けずに起動し、Windowのドラッグや重なりを試してから ESC で終了する。
 
@@ -138,13 +138,16 @@ cp runtime.txt runtime-pre.txt
 - stippleのDMA化: 256色`full=1875`となり、CPUの`ss_fill_long`より遅かった
 - 8×8 z-mapだけを根拠にした遮蔽skip拡大: 部分遮蔽を完全遮蔽と誤判定する危険がある
 
-今後の実装順:
+完了した測定基盤:
 
-1. `render_region`の背景・枠・タイトル・本文をdirty矩形でクリップする
-2. full/region/dragの実アプリ経路にメトリクスを追加する
-3. 実際に重なるウィンドウを使う正しいz-exposeベンチを追加する
-4. 上位の不透明矩形が下位ウィンドウ全体を包含する場合だけ遮蔽skipする
-5. DMAの矩形単位チェイン化を、VRAM行strideと部分転送のテスト後に再検討する
+- `render_region`の背景・枠・タイトル・本文のdirty矩形クリップ
+- 通常操作時の`runtime.txt`メトリクス
+- 実際の領域再合成経路を測る固定`drag-region`ベンチ
+
+次の候補は、`drag-region`と通常操作の両方で効果を確認してから選ぶ。
+
+1. 上位の不透明矩形が下位Window全体を包含する場合だけ遮蔽skipする
+2. DMAの矩形単位チェイン化を、VRAM行strideと部分転送のテスト後に再検討する
 
 クリップ化の採用条件は、描画結果を変えずに`region`の`vsync`とGVRAM書き込み量を削減し、`dma error=0`、`dma timeout=0`を維持することである。
 
