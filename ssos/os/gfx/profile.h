@@ -26,6 +26,16 @@ typedef struct {
     uint32_t dma_error;
     uint32_t dma_timeout;
     uint32_t dma_fallback_rows;
+    uint32_t dma_error_status_samples;
+    uint8_t dma_last_csr;
+    uint8_t dma_last_cer;
+    uint32_t dma_config_samples;
+    uint8_t dma_dcr;
+    uint8_t dma_ocr;
+    uint8_t dma_scr;
+    uint8_t dma_mfc;
+    uint8_t dma_dfc;
+    uint8_t dma_bfc;
     uint32_t render_all_calls;
     uint32_t render_region_calls;
     uint32_t full_background_fills;
@@ -65,6 +75,22 @@ extern SSGfxProfile ss_gfx_profile;
 #define SS_PROFILE_DMA_ERROR()           do { ss_gfx_profile.dma_error++; } while (0)
 #define SS_PROFILE_DMA_TIMEOUT()         do { ss_gfx_profile.dma_timeout++; } while (0)
 #define SS_PROFILE_DMA_FALLBACK_ROWS(n) do { ss_gfx_profile.dma_fallback_rows += (uint32_t)(n); } while (0)
+#define SS_PROFILE_DMA_ERROR_STATUS(csr, cer) do { \
+        ss_gfx_profile.dma_error_status_samples++; \
+        ss_gfx_profile.dma_last_csr = (uint8_t)(csr); \
+        ss_gfx_profile.dma_last_cer = (uint8_t)(cer); \
+    } while (0)
+#define SS_PROFILE_DMA_CONFIG(dcr, ocr, scr, mfc, dfc, bfc) do { \
+        if (ss_gfx_profile.dma_config_samples == 0) { \
+            ss_gfx_profile.dma_config_samples = 1; \
+            ss_gfx_profile.dma_dcr = (uint8_t)(dcr); \
+            ss_gfx_profile.dma_ocr = (uint8_t)(ocr); \
+            ss_gfx_profile.dma_scr = (uint8_t)(scr); \
+            ss_gfx_profile.dma_mfc = (uint8_t)(mfc); \
+            ss_gfx_profile.dma_dfc = (uint8_t)(dfc); \
+            ss_gfx_profile.dma_bfc = (uint8_t)(bfc); \
+        } \
+    } while (0)
 #define SS_PROFILE_RENDER_ALL()         do { ss_gfx_profile.render_all_calls++; } while (0)
 #define SS_PROFILE_RENDER_REGION()      do { ss_gfx_profile.render_region_calls++; } while (0)
 #define SS_PROFILE_FULL_BG_FILL()       do { ss_gfx_profile.full_background_fills++; } while (0)
@@ -97,6 +123,8 @@ extern SSGfxProfile ss_gfx_profile;
 #define SS_PROFILE_DMA_ERROR()           do { } while (0)
 #define SS_PROFILE_DMA_TIMEOUT()         do { } while (0)
 #define SS_PROFILE_DMA_FALLBACK_ROWS(n)  do { } while (0)
+#define SS_PROFILE_DMA_ERROR_STATUS(csr, cer) do { } while (0)
+#define SS_PROFILE_DMA_CONFIG(dcr, ocr, scr, mfc, dfc, bfc) do { } while (0)
 #define SS_PROFILE_RENDER_ALL()          do { } while (0)
 #define SS_PROFILE_RENDER_REGION()       do { } while (0)
 #define SS_PROFILE_FULL_BG_FILL()        do { } while (0)

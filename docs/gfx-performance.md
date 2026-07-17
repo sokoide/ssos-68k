@@ -97,6 +97,15 @@ type bench.txt
 
 `SSPERF file=bench.txt` が表示されれば、ファイルを開いて閉じる処理まで完了している。`open-failed` の場合は、実行したカレントディレクトリの書き込み可否またはHuman68Kのファイルシステム設定を確認する。
 
+DMAエラーが残る場合は、まず `-bench 1` で診断ログを取得する。
+
+```text
+ssos_cop.x -8 -bench 1
+copy bench.txt bench-cop-dma-diagnostic.txt
+```
+
+`SSPERF dma` 行の `status_samples`、`csr`、`cer` を確認する。`error` はDMAエラーが発生した矩形行数であり、`cer` が原因コードである。`config_samples` と `dcr/ocr/scr/mfc/dfc/bfc` はDMA開始時の設定値を示す。`ok=0` のままではDMA高速化とは判定せず、CPUフォールバックによる高速化と区別する。
+
 ```sh
 ~/tmp/ssos_cop.x -8 -bench 100 > logs/gfx-cop-8bench.log 2>&1
 ```

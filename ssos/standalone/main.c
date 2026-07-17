@@ -485,10 +485,15 @@ static void print_bench_profile(const char* phase, uint32_t rounds,
              (unsigned long)p->clipped_area);
     bench_print_line(buf);
     snprintf(buf, sizeof(buf),
-             "SSPERF dma attempts=%lu ok=%lu error=%lu timeout=%lu fallback_rows=%lu\r\n",
+             "SSPERF dma attempts=%lu ok=%lu error=%lu timeout=%lu fallback_rows=%lu status_samples=%lu csr=%02X cer=%02X config_samples=%lu dcr=%02X ocr=%02X scr=%02X mfc=%02X dfc=%02X bfc=%02X\r\n",
              (unsigned long)p->dma_attempts, (unsigned long)p->dma_ok,
              (unsigned long)p->dma_error, (unsigned long)p->dma_timeout,
-             (unsigned long)p->dma_fallback_rows);
+             (unsigned long)p->dma_fallback_rows,
+             (unsigned long)p->dma_error_status_samples,
+             (unsigned)p->dma_last_csr, (unsigned)p->dma_last_cer,
+             (unsigned long)p->dma_config_samples,
+             (unsigned)p->dma_dcr, (unsigned)p->dma_ocr, (unsigned)p->dma_scr,
+             (unsigned)p->dma_mfc, (unsigned)p->dma_dfc, (unsigned)p->dma_bfc);
     bench_print_line(buf);
     snprintf(buf, sizeof(buf),
              "SSPERF render all=%lu region=%lu background=%lu zmap=%lu\r\n",

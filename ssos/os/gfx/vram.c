@@ -165,14 +165,22 @@ void ss_fill_long(volatile uint32_t* dst, uint32_t val, uint32_t count) {
 }
 
 static void dma_fill_init(void) {
+    const uint8_t dcr = 0x08;
+    const uint8_t ocr = 0x99;
+    const uint8_t scr = 0x05;
+    const uint8_t mfc = 0x05;
+    const uint8_t dfc = 0x05;
+    const uint8_t bfc = 0x05;
+
     dma_ch2->ccr = 0x00;
     dma_ch2->csr = 0xFF;
-    dma_ch2->dcr = 0x08;
-    dma_ch2->ocr = 0x99;
-    dma_ch2->scr = 0x05;
-    dma_ch2->mfc = 0x05;
-    dma_ch2->dfc = 0x05;
-    dma_ch2->bfc = 0x05;
+    dma_ch2->dcr = dcr;
+    dma_ch2->ocr = ocr;
+    dma_ch2->scr = scr;
+    dma_ch2->mfc = mfc;
+    dma_ch2->dfc = dfc;
+    dma_ch2->bfc = bfc;
+    SS_PROFILE_DMA_CONFIG(dcr, ocr, scr, mfc, dfc, bfc);
 }
 
 void ss_dma_fill_setup(uint16_t value, int count) {
@@ -194,6 +202,7 @@ int ss_dma_fill_row(volatile uint16_t* dst, int count) {
     while (timeout-- > 0) {
         uint8_t csr = dma_ch2->csr;
         if (csr & DMA_CSR_ERR) {
+            SS_PROFILE_DMA_ERROR_STATUS(csr, dma_ch2->cer);
             dma_ch2->csr = 0xFF;
             return -1;
         }
