@@ -213,28 +213,12 @@ static void paint_windows_zorder(int highest_z,
     for (int k = 0; k < n; k++) {
         SSWindow* win = order[k];
 
-        /* Occlusion check via zmap: if every covered block is owned by a
-         * strictly higher window, this one is fully hidden. */
-        int bx0 = win->x / SS_BLOCK_SIZE;
-        int by0 = win->y / SS_BLOCK_SIZE;
-        int bx1 = (win->x + win->w) / SS_BLOCK_SIZE;
-        int by1 = (win->y + win->h) / SS_BLOCK_SIZE;
-
-        int fully_occluded = 1;
-        for (int by = by0; by <= by1 && fully_occluded; by++) {
-            for (int bx = bx0; bx <= bx1; bx++) {
-                if (bx >= 0 && bx < SS_ZMAP_W && by >= 0 && by < SS_ZMAP_H) {
-                    if (zmap[by * SS_ZMAP_W + bx] <= (int)win->z) {
-                        fully_occluded = 0;
-                        break;
-                    }
-                }
-            }
-        }
-        if (fully_occluded) {
-            SS_PROFILE_WINDOW_SKIP_OCCLUDED();
-            continue;
-        }
+        /* Do not use the coarse 8x8 max-z map as a draw skip.  A block can
+         * contain both exposed pixels of this window and pixels covered by a
+         * higher window, so max-z cannot prove full rectangle occlusion.
+         * Recompose every overlapping window in z-order; with the small
+         * window limit this is cheaper than repairing stale pixels after a
+         * drag and is the correctness baseline for a future exact occluder. */
 
         if (win->render) {
             win->render(win, clip);

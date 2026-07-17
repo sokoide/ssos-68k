@@ -211,6 +211,25 @@ TEST(render_region_clips_standard_frame_only) {
     ASSERT_EQ(gfx_rect_region_calls, 7);
 }
 
+TEST(render_region_keeps_exposed_part_of_same_zmap_block) {
+    ss_win_init();
+    render_callback_calls = 0;
+    render_callback_saw_null = 0;
+
+    /* The higher window covers only the left half of the lower window, but
+     * both fit in the same 8x8 z-map block.  The region is the exposed right
+     * half, so the lower callback must still be rendered. */
+    uint16_t lower = ss_win_create(0, 0, 4, 8, 1);
+    uint16_t higher = ss_win_create(0, 0, 3, 8, 2);
+    ss_win_set_render(lower, record_render_clip);
+    ss_win_set_render(higher, record_render_clip);
+
+    ss_win_render_region(2, 0, 2, 8);
+
+    ASSERT_EQ(render_callback_calls, 2);
+    ASSERT_EQ(render_callback_saw_null, 0);
+}
+
 TEST(render_callback_receives_explicit_region_clip) {
     ss_win_init();
     render_callback_calls = 0;
@@ -258,6 +277,7 @@ void run_window_tests(void) {
     RUN_TEST(render_all_paints_visible_window);
     RUN_TEST(render_all_skips_hidden);
     RUN_TEST(render_region_clips_standard_frame_only);
+    RUN_TEST(render_region_keeps_exposed_part_of_same_zmap_block);
     RUN_TEST(render_callback_receives_explicit_region_clip);
     RUN_TEST(getters_return_zero_for_invalid_id);
 }

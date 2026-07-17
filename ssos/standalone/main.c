@@ -150,9 +150,8 @@ static volatile int mx, my;  /* Initialized in main() based on current mode */
 static volatile uint8_t mb_left, mb_right;
 static volatile int exit_flag = 0;
 static int drag = -1, dox, doy;
-static uint16_t win_save_buf[WIN_W * WIN_H];
-static int win_save_valid;
 static int need_full = 1;
+static int highest_active_z = -1;
 
 static uint32_t saved_copy_vec;
 static uint32_t saved_nmi_vec;
@@ -173,60 +172,6 @@ static SSTask main_tcb;
 /* Drag outline position tracker (self-erasing XOR rect via ss_gfx_xor_rect).
  * No save buffer: the outline is erased by re-XORing the same rect. */
 static int ol_x, ol_y;
-
-/* ---- GVRAM bitmap save/restore (direct page 0 access) ---- */
-
-static void save_win_bitmap(int x, int y, int w, int h) {
-    uint32_t stride = ss_current_mode->bytes_per_line / 2;  /* words per line */
-    int disp_w = ss_current_mode->display_w;
-    int disp_h = ss_current_mode->display_h;
-
-    /* Clip to screen bounds */
-    if (x < 0) { w += x; x = 0; }
-    if (y < 0) { h += y; y = 0; }
-    if (x + w > disp_w) w = disp_w - x;
-    if (y + h > disp_h) h = disp_h - y;
-    if (w <= 0 || h <= 0) return;
-
-    volatile uint16_t* s = ss_draw_page + (uint32_t)y * stride + x;
-    for (int row = 0; row < h; row++) {
-        for (int i = 0; i < w; i++) win_save_buf[row * w + i] = s[i];
-        s += stride;
-    }
-    SS_PROFILE_GVRAM_READ((uint32_t)w * (uint32_t)h);
-    SS_PROFILE_DRAG_SAVE((uint32_t)w * (uint32_t)h);
-    win_save_valid = 1;
-}
-
-static void restore_win_bitmap(int x, int y, int w, int h) {
-    uint32_t stride = ss_current_mode->bytes_per_line / 2;  /* words per line */
-    int disp_w = ss_current_mode->display_w;
-    int disp_h = ss_current_mode->display_h;
-
-    /* Clip to screen bounds */
-    if (x < 0) { w += x; x = 0; }
-    if (y < 0) { h += y; y = 0; }
-    if (x + w > disp_w) w = disp_w - x;
-    if (y + h > disp_h) h = disp_h - y;
-    if (w <= 0 || h <= 0) return;
-
-    volatile uint16_t* d = ss_draw_page + (uint32_t)y * stride + x;
-    for (int row = 0; row < h; row++) {
-        uint16_t* src = win_save_buf + row * w;
-        if ((x & 1) == 0) {
-            volatile uint32_t* dl = (volatile uint32_t*)d;
-            uint32_t* sl = (uint32_t*)src;
-            for (int i = 0; i < w / 2; i++) dl[i] = sl[i];
-            if (w & 1) d[w - 1] = src[w - 1];
-        } else {
-            for (int i = 0; i < w; i++) d[i] = src[i];
-        }
-        d += stride;
-    }
-    SS_PROFILE_GVRAM_WRITE((uint32_t)w * (uint32_t)h);
-    SS_PROFILE_DRAG_RESTORE((uint32_t)w * (uint32_t)h);
-    win_save_valid = 0;
-}
 
 /* ---- Window frame drawing ---- */
 
@@ -275,6 +220,40 @@ static void draw_content_dirty(SSWindow* w) {
             memcpy(w->content_prev[i], w->content[i], 30);
         }
     }
+}
+
+/* Recompose the desktop in z-order.  Dragging temporarily hides the moved
+ * window; rebuilding from the background avoids copying a stale composite
+ * bitmap from the old position into the new position. */
+static void redraw_desktop(void) {
+    int order[3];
+    int n = 0;
+
+    ss_gfx_fill_stipple(0, 0, ss_current_mode->display_w,
+                        ss_current_mode->display_h, C_WHITE, C_GRAY_M);
+
+    highest_active_z = -1;
+    for (int i = 0; i < 3; i++) {
+        SSWindow* w = ss_win_get_ptr(win_ids[i]);
+        if ((w->flags & SS_WIN_VISIBLE) && w->z > highest_active_z)
+            highest_active_z = w->z;
+        int j = n;
+        while (j > 0 && ss_win_get_z(win_ids[order[j - 1]]) > w->z) {
+            order[j] = order[j - 1];
+            j--;
+        }
+        order[j] = i;
+        n++;
+    }
+
+    for (int k = 0; k < n; k++) {
+        SSWindow* w = ss_win_get_ptr(win_ids[order[k]]);
+        if (!(w->flags & SS_WIN_VISIBLE)) continue;
+        draw_frame(w, w->z == highest_active_z);
+        memset(w->content_prev, 0xFF, sizeof(w->content_prev));
+        draw_content_dirty(w);
+    }
+    need_full = 0;
 }
 
 /* ---- Marching ants outline ---- */
@@ -710,8 +689,6 @@ int main(int argc, char** argv) {
                                                       .stack = NULL});
     ss_task_start(t_data);
 
-    int highest_active_z = -1;
-
     for (;;) {
         /* Process timer-based wakeups before anything else */
         ss_process_wakeups();
@@ -765,27 +742,8 @@ int main(int argc, char** argv) {
                 doy = cur_my - ss_win_get_y(hid);
                 ss_win_set_z(hid, next_z);
                 if (++next_z > 255) next_z = 4;
-                save_win_bitmap(ss_win_get_x(hid), ss_win_get_y(hid),
-                                ss_win_get_w(hid), ss_win_get_h(hid));
-                ss_gfx_fill_stipple(ss_win_get_x(hid), ss_win_get_y(hid),
-                                    ss_win_get_w(hid), ss_win_get_h(hid),
-                                    C_WHITE, C_GRAY_M);
-
-                /* Recalculate highest_active_z after z-order change */
-                highest_active_z = -1;
-                for (int i = 0; i < 3; i++) {
-                    int z = ss_win_get_z(win_ids[i]);
-                    if (z > highest_active_z) highest_active_z = z;
-                }
-
-                for (int i = 0; i < 3; i++) {
-                    uint16_t id = win_ids[i];
-                    if (id == hid) continue;
-                    SSWindow* w = ss_win_get_ptr(id);
-                    draw_frame(w, ss_win_get_z(id) == highest_active_z);
-                    memset(w->content_prev, 0xFF, sizeof(w->content_prev));
-                    draw_content_dirty(w);
-                }
+                ss_win_hide(hid);
+                redraw_desktop();
                 SSWindow* dw = ss_win_get_ptr(hid);
                 /* Self-erasing XOR outline at the grab position. */
                 ss_gfx_xor_rect(ss_win_get_x(hid), ss_win_get_y(hid),
@@ -793,35 +751,15 @@ int main(int argc, char** argv) {
                 ol_x = ss_win_get_x(hid);
                 ol_y = ss_win_get_y(hid);
                 memset(dw->content_prev, 0xFF, sizeof(dw->content_prev));
-                need_full = 0;
             }
         }
         if (!left && drag >= 0) {
             uint16_t did = win_ids[drag];
-            int wx = ss_win_get_x(did), wy = ss_win_get_y(did);
             int ww = ss_win_get_w(did), wh = ss_win_get_h(did);
-            SSWindow* dw = ss_win_get_ptr(did);
             /* Erase the XOR outline at its last position. */
             ss_gfx_xor_rect(ol_x, ol_y, ww, wh);
-            if (win_save_valid && wx >= 0 && wy >= 0 &&
-                wx + ww <= ss_current_mode->display_w && wy + wh <= ss_current_mode->display_h) {
-                restore_win_bitmap(wx, wy, ww, wh);
-                ss_gfx_rect(wx + 1, wy + 1, ww - 2, TITLE_H - 2, C_GRAY_L);
-                int tw = (int)strlen(dw->title) * SS_FONT_ADV;
-                int tx = wx + (ww - tw) / 2;
-                for (int li = 0; li < 5; li++) {
-                    int ly = wy + 2 + li * 2;
-                    if (tx > wx + 12)
-                        ss_gfx_rect(wx + 4, ly, tx - 8 - (wx + 4) + 1, 1, C_BLACK);
-                    if (tx + tw + 8 < wx + ww - 4)
-                        ss_gfx_rect(tx + tw + 8, ly, (wx + ww - 5) - (tx + tw + 8) + 1, 1, C_BLACK);
-                }
-                ss_gfx_draw_text_fast(tx, wy + 2, dw->title, C_BLACK, C_GRAY_L);
-            } else {
-                draw_frame(dw, 1);
-            }
-            memset(dw->content_prev, 0xFF, sizeof(dw->content_prev));
-            draw_content_dirty(dw);
+            ss_win_show(did);
+            redraw_desktop();
             drag = -1;
         }
         if (drag >= 0) {
