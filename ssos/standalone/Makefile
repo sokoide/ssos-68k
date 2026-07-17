@@ -10,6 +10,9 @@ else
 $(error Invalid SCHED='$(SCHED)'. Use: make SCHED=cooperative|preemptive)
 endif
 
+# GFX profiling foundation. Set to 1 to enable counters; 0 compiles them out.
+SS_PROFILE_GFX ?= 0
+
 # Output name reflects the threading model.
 ifeq ($(SCHED),cooperative)
 TARGET=ssos_cop.x
@@ -25,6 +28,7 @@ SRCS=	main.c \
 		$(KDIR)/scheduler.c \
 		../os/mem/buddy.c \
 		../os/mem/slab.c \
+		../os/gfx/profile.c \
 		../os/gfx/vram.c \
 		../os/win/window.c \
 		../os/util/numfmt.c
@@ -45,7 +49,7 @@ READELF=m68k-elf-readelf
 INCLUDE=-I$(XELF_BASE)/m68k-elf/include -I../include -I../os/kernel -I$(KDIR) -I../os/mem -I../os/gfx -I../os/win -I../os/util
 LIB=-L$(XELF_BASE)/m68k-elf/lib
 
-CCFLAGS=$(INCLUDE) -O2 -g -DLOCAL_MODE $(CDEFINES)
+CCFLAGS=$(INCLUDE) -O2 -g -DLOCAL_MODE $(CDEFINES) -DSS_PROFILE_GFX=$(SS_PROFILE_GFX)
 LDFLAGS=$(LIB) -lx68kiocs -nostdlib -lc -lm -lgcc
 
 .PHONY: all clean install dump readelf

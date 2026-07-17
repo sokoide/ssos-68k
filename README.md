@@ -47,6 +47,17 @@ make standalone SCHED=cooperative
 # 出力: ~/tmp/ssos_cop.x （プリエンプティブ版は SCHED=preemptive で ~/tmp/ssos_pre.x）
 ```
 
+協調版とプリエンプティブ版をまとめて作る場合は、リポジトリルートから実行する。
+
+```bash
+cd /path/to/ssos-68k
+. ~/.elf2x68k
+SS_PROFILE_GFX=1 make clean
+SS_PROFILE_GFX=1 make
+```
+
+このコマンドは `ssos/standalone/ssos_cop.x` と `ssos/standalone/ssos_pre.x`、および両モデルの `.xdf` を生成する。通常は `~/tmp` にもコピーされるが、コピー先の権限エラーが出た場合でも、`ssos/standalone/` 内の生成物は利用できる。
+
 **`make clean`が必要な理由**: `.x` と `.xdf` でコンパイルフラグが異なるため（`LOCAL_MODE` 定義の有無）。
 
 ### OS ビルド（起動可能ディスク）
@@ -66,13 +77,30 @@ make SCHED=cooperative
 
 ```bash
 # リポジトリルートで
-make
+SS_PROFILE_GFX=1 make clean
+SS_PROFILE_GFX=1 make
 # 成果物: ~/tmp/ssos_cop.x, ~/tmp/ssos_cop.xdf, ~/tmp/ssos_pre.x, ~/tmp/ssos_pre.xdf
 ```
 
 生成された XDF ファイルを X68000 エミュレータで起動:
 
 ![ssos](./docs/ssos.png)
+
+### グラフィックス性能ベンチマーク
+
+`SS_PROFILE_GFX=1` でビルドしたスタンドアロン版は、Human68K上で決定的な描画フェーズを測定できる。
+
+```text
+ssos_cop.x -8 -bench 100
+copy bench.txt bench-cop.txt
+
+ssos_pre.x -8 -bench 100
+copy bench.txt bench-pre.txt
+```
+
+`-8` は256色モード、`-bench 100` は各フェーズを100回実行する指定である。`bench.txt` は実行時のカレントディレクトリに作成され、毎回上書きされるため、2つの実行結果を比較する場合は上記のように別名で退避する。
+
+ログの `vsync`、`dma timeout`、`gvram write`、`zmap` を同じフェーズ間で比較する。`vsync` は少ないほど速い。`SSPERF file=bench.txt` が表示されれば、ファイルのオープンとクローズまで完了している。
 
 ### その他のビルドコマンド
 

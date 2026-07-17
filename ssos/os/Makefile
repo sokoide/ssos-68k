@@ -10,6 +10,9 @@ else
 $(error Invalid SCHED='$(SCHED)'. Use: make SCHED=cooperative|preemptive)
 endif
 
+# GFX profiling foundation. Set to 1 to enable counters; 0 compiles them out.
+SS_PROFILE_GFX ?= 0
+
 # Per-variant sources live under kernel/$(SCHED)/; shared kernel code stays at kernel/.
 KDIR=kernel/$(SCHED)
 
@@ -21,6 +24,7 @@ SRCS= \
 	util/numfmt.c \
 	mem/buddy.c \
 	mem/slab.c \
+	gfx/profile.c \
 	gfx/vram.c \
 	win/window.c \
 	ipc/message.c \
@@ -41,7 +45,7 @@ READELF=m68k-elf-readelf
 INCLUDE=-I$(XELF_BASE)/m68k-elf/include -I../include -I./kernel -I./$(KDIR) -I./mem -I./app -I./gfx -I./win -I./ipc -I./util
 LIB=-L$(XELF_BASE)/m68k-elf/lib -L$(shell dirname $(shell m68k-xelf-gcc -print-libgcc-file-name))
 
-CCFLAGS=$(INCLUDE) -g -O2 -Wa,-adhlns="$@.lst"
+CCFLAGS=$(INCLUDE) -g -O2 -Wa,-adhlns="$@.lst" -DSS_PROFILE_GFX=$(SS_PROFILE_GFX)
 LDFLAGS=$(LIB) -lx68kiocs -Tkernel/linker.ld -nostdlib -lc -lm -lgcc -lnosys
 ASFLAGS=-m68000 --register-prefix-optional --traditional-format -I../include -I./kernel
 

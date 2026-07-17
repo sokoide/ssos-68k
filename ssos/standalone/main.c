@@ -14,6 +14,7 @@
 #include "../os/kernel/scheduler.h"
 #include "../os/mem/memory.h"
 #include "../os/gfx/gfx.h"
+#include "../os/gfx/profile.h"
 #include "../os/win/win.h"
 
 #include <stdint.h>
@@ -192,6 +193,8 @@ static void save_win_bitmap(int x, int y, int w, int h) {
         for (int i = 0; i < w; i++) win_save_buf[row * w + i] = s[i];
         s += stride;
     }
+    SS_PROFILE_GVRAM_READ((uint32_t)w * (uint32_t)h);
+    SS_PROFILE_DRAG_SAVE((uint32_t)w * (uint32_t)h);
     win_save_valid = 1;
 }
 
@@ -220,6 +223,8 @@ static void restore_win_bitmap(int x, int y, int w, int h) {
         }
         d += stride;
     }
+    SS_PROFILE_GVRAM_WRITE((uint32_t)w * (uint32_t)h);
+    SS_PROFILE_DRAG_RESTORE((uint32_t)w * (uint32_t)h);
     win_save_valid = 0;
 }
 
@@ -384,6 +389,222 @@ static void* data_thread(void* arg) {
     return NULL;
 }
 
+#if SS_PROFILE_GFX
+
+#define SS_BENCH_DEFAULT_ROUNDS 100U
+#define SS_BENCH_MAX_ROUNDS     100000U
+#define SS_BENCH_REGION_X       160
+#define SS_BENCH_REGION_Y       80
+#define SS_BENCH_REGION_W       96
+#define SS_BENCH_REGION_H       64
+#define SS_BENCH_EXPOSE_X       80
+#define SS_BENCH_EXPOSE_Y       60
+#define SS_BENCH_EXPOSE_W       360
+#define SS_BENCH_EXPOSE_H       140
+#define SS_BENCH_OUTLINE_X0     96
+#define SS_BENCH_OUTLINE_X1     128
+#define SS_BENCH_OUTLINE_Y      220
+
+static int parse_bench_rounds(const char* text, uint32_t* rounds) {
+    uint32_t value = 0;
+
+    if (text == NULL || *text == '\0') return 0;
+    for (; *text != '\0'; text++) {
+        uint32_t digit;
+
+        if (*text < '0' || *text > '9') return 0;
+        digit = (uint32_t)(*text - '0');
+        if (value > (SS_BENCH_MAX_ROUNDS - digit) / 10U) return 0;
+        value = value * 10U + digit;
+    }
+    if (value == 0) return 0;
+
+    *rounds = value;
+    return 1;
+}
+
+static int find_bench_option(int argc, char** argv, uint32_t* rounds) {
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "-bench") != 0) continue;
+
+        *rounds = SS_BENCH_DEFAULT_ROUNDS;
+        if (i + 1 < argc) parse_bench_rounds(argv[i + 1], rounds);
+        return 1;
+    }
+    return 0;
+}
+
+typedef struct {
+    char phase[16];
+    uint32_t rounds;
+    uint32_t vsyncs;
+    SSGfxProfile profile;
+} SSBenchResult;
+
+static SSBenchResult bench_results[5];
+static uint32_t bench_result_count;
+static const SSGfxMode* bench_mode;
+static FILE* bench_log_file;
+
+static void bench_print_line(const char* line) {
+    _iocs_b_print(line);
+    if (bench_log_file != NULL) {
+        fputs(line, bench_log_file);
+    }
+}
+
+static void print_bench_profile(const char* phase, uint32_t rounds,
+                                uint32_t vsyncs, const SSGfxMode* mode,
+                                const SSGfxProfile* p) {
+    char buf[256];
+
+    snprintf(buf, sizeof(buf), "SSPERF phase=%s rounds=%lu vsync=%lu\r\n",
+             phase, (unsigned long)rounds, (unsigned long)vsyncs);
+    bench_print_line(buf);
+    snprintf(buf, sizeof(buf),
+             "SSPERF mode crtmod=%d display=%dx%d color=%d pages=%d\r\n",
+             mode->crtmod, mode->display_w, mode->display_h,
+             mode->color_count, mode->page_count);
+    bench_print_line(buf);
+    snprintf(buf, sizeof(buf),
+             "SSPERF calls primitive=%lu rect=%lu hline=%lu stipple=%lu xor=%lu\r\n",
+             (unsigned long)p->primitive_calls, (unsigned long)p->rect_calls,
+             (unsigned long)p->hline_calls, (unsigned long)p->stipple_calls,
+             (unsigned long)p->xor_rect_calls);
+    bench_print_line(buf);
+    snprintf(buf, sizeof(buf),
+             "SSPERF glyph slow=%lu fast=%lu clip=%lu text=%lu\r\n",
+             (unsigned long)p->glyph_slow, (unsigned long)p->glyph_fast,
+             (unsigned long)p->glyph_clip, (unsigned long)p->text_calls);
+    bench_print_line(buf);
+    snprintf(buf, sizeof(buf),
+             "SSPERF gvram read=%lu write=%lu area=%lu clipped=%lu\r\n",
+             (unsigned long)p->gvram_words_read,
+             (unsigned long)p->gvram_words_written,
+             (unsigned long)p->submitted_area,
+             (unsigned long)p->clipped_area);
+    bench_print_line(buf);
+    snprintf(buf, sizeof(buf),
+             "SSPERF dma attempts=%lu ok=%lu error=%lu timeout=%lu fallback_rows=%lu\r\n",
+             (unsigned long)p->dma_attempts, (unsigned long)p->dma_ok,
+             (unsigned long)p->dma_error, (unsigned long)p->dma_timeout,
+             (unsigned long)p->dma_fallback_rows);
+    bench_print_line(buf);
+    snprintf(buf, sizeof(buf),
+             "SSPERF render all=%lu region=%lu background=%lu zmap=%lu\r\n",
+             (unsigned long)p->render_all_calls,
+             (unsigned long)p->render_region_calls,
+             (unsigned long)p->full_background_fills,
+             (unsigned long)p->zmap_rebuilds);
+    bench_print_line(buf);
+    snprintf(buf, sizeof(buf),
+             "SSPERF windows considered=%lu rendered=%lu skip_overlap=%lu skip_occluded=%lu\r\n",
+             (unsigned long)p->windows_considered,
+             (unsigned long)p->windows_rendered,
+             (unsigned long)p->windows_skipped_no_overlap,
+             (unsigned long)p->windows_skipped_occluded);
+    bench_print_line(buf);
+    snprintf(buf, sizeof(buf),
+             "SSPERF dirty marks=%lu submitted=%lu clipped=%lu\r\n",
+             (unsigned long)p->dirty_marks,
+             (unsigned long)p->dirty_area_submitted,
+             (unsigned long)p->dirty_area_clipped);
+    bench_print_line(buf);
+    snprintf(buf, sizeof(buf), "SSPERF drag save_words=%lu restore_words=%lu\r\n",
+             (unsigned long)p->drag_save_words,
+             (unsigned long)p->drag_restore_words);
+    bench_print_line(buf);
+}
+
+static void bench_full_render(uint32_t rounds) {
+    for (uint32_t i = 0; i < rounds; i++) ss_win_render_all();
+}
+
+static void bench_small_region(uint32_t rounds) {
+    for (uint32_t i = 0; i < rounds; i++) {
+        ss_win_render_region(SS_BENCH_REGION_X, SS_BENCH_REGION_Y,
+                             SS_BENCH_REGION_W, SS_BENCH_REGION_H);
+    }
+}
+
+static void bench_z_exposure(uint32_t rounds) {
+    for (uint32_t i = 0; i < rounds; i++) {
+        if (i & 1U) {
+            ss_win_set_z(win_ids[1], 3);
+            ss_win_set_z(win_ids[2], 2);
+        } else {
+            ss_win_set_z(win_ids[1], 2);
+            ss_win_set_z(win_ids[2], 3);
+        }
+        ss_win_render_region(SS_BENCH_EXPOSE_X, SS_BENCH_EXPOSE_Y,
+                             SS_BENCH_EXPOSE_W, SS_BENCH_EXPOSE_H);
+    }
+    ss_win_set_z(win_ids[1], 2);
+    ss_win_set_z(win_ids[2], 3);
+}
+
+static void bench_xor_outline(uint32_t rounds) {
+    int x = SS_BENCH_OUTLINE_X0;
+
+    ss_gfx_xor_rect(x, SS_BENCH_OUTLINE_Y, WIN_W, WIN_H);
+    for (uint32_t i = 0; i < rounds; i++) {
+        ss_gfx_xor_rect(x, SS_BENCH_OUTLINE_Y, WIN_W, WIN_H);
+        x = (x == SS_BENCH_OUTLINE_X0) ? SS_BENCH_OUTLINE_X1
+                                        : SS_BENCH_OUTLINE_X0;
+        ss_gfx_xor_rect(x, SS_BENCH_OUTLINE_Y, WIN_W, WIN_H);
+    }
+    ss_gfx_xor_rect(x, SS_BENCH_OUTLINE_Y, WIN_W, WIN_H);
+}
+
+static void bench_text_update(uint32_t rounds) {
+    static const char text_a[] = "Vsync: 00000000             ";
+    static const char text_b[] = "Vsync: 11111111             ";
+
+    for (uint32_t i = 0; i < rounds; i++) {
+        ss_gfx_draw_text_fast(34, 34, (i & 1U) ? text_a : text_b,
+                              C_BLACK, C_WHITE);
+    }
+}
+
+typedef void (*SSBenchPhase)(uint32_t rounds);
+
+static void run_bench_phase(const char* name, uint32_t rounds,
+                            SSBenchPhase phase) {
+    SSBenchResult* result;
+    uint32_t start_vsync;
+
+    if (bench_result_count >= 5) return;
+    result = &bench_results[bench_result_count++];
+    strncpy(result->phase, name, sizeof(result->phase) - 1);
+    result->phase[sizeof(result->phase) - 1] = '\0';
+    result->rounds = rounds;
+    ss_gfx_profile_reset();
+    start_vsync = ss_vsync_counter;
+    phase(rounds);
+    result->vsyncs = ss_vsync_counter - start_vsync;
+    ss_gfx_profile_snapshot(&result->profile);
+}
+
+static void run_benchmark(uint32_t rounds) {
+    bench_result_count = 0;
+    bench_mode = ss_current_mode;
+    run_bench_phase("full", rounds, bench_full_render);
+    run_bench_phase("region", rounds, bench_small_region);
+    run_bench_phase("z-expose", rounds, bench_z_exposure);
+    run_bench_phase("text-update", rounds, bench_text_update);
+    run_bench_phase("xor-move", rounds, bench_xor_outline);
+}
+
+static void print_bench_results(void) {
+    for (uint32_t i = 0; i < bench_result_count; i++) {
+        SSBenchResult* result = &bench_results[i];
+        print_bench_profile(result->phase, result->rounds, result->vsyncs,
+                            bench_mode, &result->profile);
+    }
+}
+
+#endif /* SS_PROFILE_GFX */
+
 /* ================================================================
  * Main
  * ================================================================ */
@@ -391,6 +612,10 @@ static void* data_thread(void* arg) {
 int main(int argc, char** argv) {
     /* Parse command line arguments for graphics mode */
     int requested_mode = SS_CRTMOD_16;  /* Default: mode 16 */
+#if SS_PROFILE_GFX
+    uint32_t bench_rounds;
+    int run_bench = find_bench_option(argc, argv, &bench_rounds);
+#endif
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-8") == 0) {
             requested_mode = SS_CRTMOD_8;
@@ -465,6 +690,13 @@ int main(int argc, char** argv) {
     ss_win_set_title(win_ids[0], "Timer");
     ss_win_set_title(win_ids[1], "Keyboard");
     ss_win_set_title(win_ids[2], "Mouse");
+
+#if SS_PROFILE_GFX
+    if (run_bench) {
+        run_benchmark(bench_rounds);
+        goto cleanup;
+    }
+#endif
 
     uint16_t t_data = ss_task_create(&(SSTaskInfo){.entry = data_thread,
                                                      .pri = 8,
@@ -631,6 +863,7 @@ int main(int argc, char** argv) {
         ss_task_yield();
     }
 
+cleanup:
     if (ss_trapbuf_flag != 0) {
         char buf[128];
         _iocs_b_print("\r\n=== EXCEPTION CAUGHT (TRAP #14) ===\r\n");
@@ -657,6 +890,24 @@ int main(int argc, char** argv) {
     _iocs_skey_mod(-1, 0, 0);
     _iocs_crtmod(old_mode);
     _iocs_b_curon();
+
+#if SS_PROFILE_GFX
+    /* CRTMOD restoration clears the graphics page.  Emit retained benchmark
+     * records only after returning to the text console so the user can read
+     * and capture them from the emulator terminal. */
+    if (run_bench) {
+        bench_log_file = fopen("bench.txt", "w");
+        if (bench_log_file == NULL) {
+            _iocs_b_print("SSPERF file=open-failed name=bench.txt\r\n");
+        }
+        print_bench_results();
+        if (bench_log_file != NULL) {
+            fclose(bench_log_file);
+            bench_log_file = NULL;
+            _iocs_b_print("SSPERF file=bench.txt\r\n");
+        }
+    }
+#endif
 
     /* Normal exit. Print the terminated message while in supervisor mode, then
      * return to user mode via B_SUPER(old_usp) and _exit. _iocs_b_super sets

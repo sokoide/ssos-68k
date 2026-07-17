@@ -1,16 +1,21 @@
 #include "win.h"
 #include "../gfx/gfx.h"
+#include "../gfx/profile.h"
 #include "../kernel/kernel.h"
 #include <string.h>
 
 static SSWindow windows[SS_MAX_WINDOWS];
 static uint8_t zmap[SS_ZMAP_W * SS_ZMAP_H];
+/* The z-map depends only on visibility, geometry, and z-order.  Content
+ * updates and repeated partial paints must not pay to rebuild it. */
+static uint8_t zmap_valid;
 static uint16_t win_count;
 uint16_t ss_win_active_z = 0;  /* highest visible z, set by render_all */
 
 void ss_win_init(void) {
     memset(windows, 0, sizeof(windows));
     memset(zmap, 0xFF, sizeof(zmap));
+    zmap_valid = 0;
     win_count = 0;
 }
 
@@ -43,6 +48,9 @@ uint16_t ss_win_create(int x, int y, int w, int h, uint16_t z) {
     memset(win->content, 0, sizeof(win->content));
     memset(win->content_prev, 0, sizeof(win->content_prev));
     win_count++;
+    zmap_valid = 0;
+    SS_PROFILE_DIRTY_MARK();
+    if (w > 0 && h > 0) SS_PROFILE_DIRTY_AREA((uint32_t)w * (uint32_t)h);
 
     ss_enable_interrupts();
     return win->id;
@@ -53,17 +61,22 @@ void ss_win_destroy(uint16_t id) {
     ss_disable_interrupts();
     memset(&windows[id - 1], 0, sizeof(SSWindow));
     win_count--;
+    zmap_valid = 0;
     ss_enable_interrupts();
 }
 
 void ss_win_show(uint16_t id) {
     if (id == 0 || id > SS_MAX_WINDOWS) return;
     windows[id - 1].flags |= SS_WIN_VISIBLE | SS_WIN_DIRTY;
+    zmap_valid = 0;
+    SS_PROFILE_DIRTY_MARK();
+    SS_PROFILE_DIRTY_AREA((uint32_t)windows[id - 1].w * (uint32_t)windows[id - 1].h);
 }
 
 void ss_win_hide(uint16_t id) {
     if (id == 0 || id > SS_MAX_WINDOWS) return;
     windows[id - 1].flags &= ~SS_WIN_VISIBLE;
+    zmap_valid = 0;
 }
 
 void ss_win_damage(uint16_t id, int x, int y, int w, int h) {
@@ -74,6 +87,8 @@ void ss_win_damage(uint16_t id, int x, int y, int w, int h) {
     win->dirty_y = y;
     win->dirty_w = w;
     win->dirty_h = h;
+    SS_PROFILE_DIRTY_MARK();
+    if (w > 0 && h > 0) SS_PROFILE_DIRTY_AREA((uint32_t)w * (uint32_t)h);
 }
 
 void ss_win_move(uint16_t id, int x, int y) {
@@ -86,9 +101,13 @@ void ss_win_move(uint16_t id, int x, int y) {
     win->dirty_y = 0;
     win->dirty_w = win->w;
     win->dirty_h = win->h;
+    zmap_valid = 0;
+    SS_PROFILE_DIRTY_MARK();
+    SS_PROFILE_DIRTY_AREA((uint32_t)win->w * (uint32_t)win->h);
 }
 
 static void rebuild_zmap(void) {
+    SS_PROFILE_ZMAP_REBUILD();
     /* 0 = uncovered.  Must NOT be 0xFF: the max-z update below only writes
      * when win->z > current, and 0xFF(255) would suppress every z<=255. */
     memset(zmap, 0, sizeof(zmap));
@@ -119,6 +138,11 @@ static void rebuild_zmap(void) {
             }
         }
     }
+    zmap_valid = 1;
+}
+
+static void ensure_zmap(void) {
+    if (!zmap_valid) rebuild_zmap();
 }
 
 static void draw_frame(SSWindow* win, int is_fg) {
@@ -156,11 +180,12 @@ static void paint_windows_zorder(int highest_z,
     for (int i = 0; i < SS_MAX_WINDOWS; i++) {
         SSWindow* win = &windows[i];
         if (win->id == 0 || !(win->flags & SS_WIN_VISIBLE)) continue;
+        SS_PROFILE_WINDOW_CONSIDERED();
         if (use_region) {
             /* skip windows that don't overlap the dirty region */
             if (win->x >= rx + rw || win->x + (int)win->w <= rx ||
                 win->y >= ry + rh || win->y + (int)win->h <= ry)
-                continue;
+                { SS_PROFILE_WINDOW_SKIP_NO_OVERLAP(); continue; }
         }
         /* insertion sort: keep order[] ascending by z */
         int j = n;
@@ -193,13 +218,17 @@ static void paint_windows_zorder(int highest_z,
                 }
             }
         }
-        if (fully_occluded) continue;
+        if (fully_occluded) {
+            SS_PROFILE_WINDOW_SKIP_OCCLUDED();
+            continue;
+        }
 
         if (win->render) {
             win->render(win);
         } else {
             draw_frame(win, (int)win->z == highest_z);
         }
+        SS_PROFILE_WINDOW_RENDERED();
         win->flags &= ~SS_WIN_DIRTY;
     }
 }
@@ -216,11 +245,13 @@ static int compute_highest_z(void) {
 }
 
 void ss_win_render_all(void) {
-    rebuild_zmap();
+    SS_PROFILE_RENDER_ALL();
+    ensure_zmap();
 
     /* Background stipple (no pre-clear — covers old window positions naturally) */
     ss_gfx_fill_stipple(0, 0, ss_current_mode->display_w,
                         ss_current_mode->display_h, 7, 15);
+    SS_PROFILE_FULL_BG_FILL();
 
     int highest_z = compute_highest_z();
     ss_win_active_z = (uint16_t)highest_z;
@@ -235,8 +266,22 @@ void ss_win_render_all(void) {
  * screen repaint.
  */
 void ss_win_render_region(int rx, int ry, int rw, int rh) {
-    rebuild_zmap();
+    SS_PROFILE_RENDER_REGION();
+    ensure_zmap();
     ss_gfx_fill_stipple(rx, ry, rw, rh, 7, 15);
+    if (rw > 0 && rh > 0) {
+        SS_PROFILE_DIRTY_MARK();
+        SS_PROFILE_DIRTY_AREA((uint32_t)rw * (uint32_t)rh);
+#if SS_PROFILE_GFX
+        int cx = rx, cy = ry, cw = rw, ch = rh;
+        if (cx < 0) { cw += cx; cx = 0; }
+        if (cy < 0) { ch += cy; cy = 0; }
+        if (cx + cw > ss_current_mode->display_w) cw = ss_current_mode->display_w - cx;
+        if (cy + ch > ss_current_mode->display_h) ch = ss_current_mode->display_h - cy;
+        if (cw > 0 && ch > 0)
+            SS_PROFILE_DIRTY_CLIPPED_AREA((uint32_t)cw * (uint32_t)ch);
+#endif
+    }
 
     int highest_z = compute_highest_z();
     ss_win_active_z = (uint16_t)highest_z;
@@ -323,6 +368,7 @@ void ss_win_set_render(uint16_t id, void (*render)(SSWindow*)) {
 void ss_win_set_z(uint16_t id, uint16_t z) {
     if (id == 0 || id > SS_MAX_WINDOWS) return;
     windows[id - 1].z = z;
+    zmap_valid = 0;
 }
 
 void ss_win_mark_dirty(uint16_t id) {
@@ -333,4 +379,6 @@ void ss_win_mark_dirty(uint16_t id) {
     win->dirty_y = 0;
     win->dirty_w = win->w;
     win->dirty_h = win->h;
+    SS_PROFILE_DIRTY_MARK();
+    SS_PROFILE_DIRTY_AREA((uint32_t)win->w * (uint32_t)win->h);
 }

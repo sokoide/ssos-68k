@@ -1,4 +1,5 @@
 #include "gfx.h"
+#include "profile.h"
 #include <stdint.h>
 #include <string.h>
 
@@ -215,14 +216,24 @@ void ss_gfx_clear(uint16_t color) {
     uint32_t c2 = ((uint32_t)color << 16) | color;
     uint32_t n = (uint32_t)(ss_current_mode->page_size / 4);
     ss_fill_long((volatile uint32_t*)ss_draw_page, c2, n);
+    SS_PROFILE_PRIMITIVE_CALL();
+    SS_PROFILE_GVRAM_WRITE(ss_current_mode->page_size / 2);
 }
 
 void ss_gfx_rect(int x, int y, int w, int h, uint16_t color) {
+    int submitted_w = w;
+    int submitted_h = h;
+    SS_PROFILE_PRIMITIVE_CALL();
+    SS_PROFILE_RECT_CALL();
+    if (submitted_w > 0 && submitted_h > 0)
+        SS_PROFILE_SUBMITTED_AREA((uint32_t)submitted_w * (uint32_t)submitted_h);
     if (x < 0) { w += x; x = 0; }
     if (y < 0) { h += y; y = 0; }
     if (x + w > ss_current_mode->display_w) w = ss_current_mode->display_w - x;
     if (y + h > ss_current_mode->display_h) h = ss_current_mode->display_h - y;
     if (w <= 0 || h <= 0) return;
+    SS_PROFILE_CLIPPED_AREA((uint32_t)w * (uint32_t)h);
+    SS_PROFILE_GVRAM_WRITE((uint32_t)w * (uint32_t)h);
 
     uint32_t c2 = ((uint32_t)color << 16) | color;
     uint32_t stride = ss_current_mode->bytes_per_line / 2;  /* words per line */
@@ -231,10 +242,11 @@ void ss_gfx_rect(int x, int y, int w, int h, uint16_t color) {
     volatile uint16_t* vram_start = ss_draw_page;
     volatile uint16_t* vram_end = ss_draw_page + ss_current_mode->page_size / 2;
 
-    if (w > SS_DMA_FILL_THRESHOLD && h > 4) {
+    if (w > SS_DMA_FILL_THRESHOLD && w <= 512 && h > 4) {
         ss_dma_fill_setup(color, w);
         dma_fill_init();
         int ok = 1;
+        int dma_rows = 0;
         for (int row = y; row < y + h && ok; row++) {
             volatile uint16_t* b = ss_draw_page + row * stride + x;
             /* Check if pointer is within valid VRAM range */
@@ -242,10 +254,25 @@ void ss_gfx_rect(int x, int y, int w, int h, uint16_t color) {
                 ok = 0;
                 break;
             }
-            if (ss_dma_fill_row(b, w) != 0) ok = 0;
+            SS_PROFILE_DMA_ATTEMPT();
+            int dma_result = ss_dma_fill_row(b, w);
+            if (dma_result == 0) {
+                SS_PROFILE_DMA_OK();
+                dma_rows++;
+            } else {
+                if (dma_result == -2) SS_PROFILE_DMA_TIMEOUT();
+                else SS_PROFILE_DMA_ERROR();
+                ok = 0;
+            }
         }
         dma_ch2->ccr = 0x00;
         if (ok) return;
+        /* Completed DMA rows are already correct.  Starting CPU fallback at
+         * the failed row avoids redundant GVRAM writes after a partial DMA
+         * sequence while still rewriting a row whose transfer failed. */
+        y += dma_rows;
+        h -= dma_rows;
+        SS_PROFILE_DMA_FALLBACK_ROWS(h);
     }
 
     for (int row = y; row < y + h; row++) {
@@ -270,15 +297,24 @@ void ss_gfx_rect(int x, int y, int w, int h, uint16_t color) {
 }
 
 void ss_gfx_hline(int x, int y, int w, uint16_t color) {
+    SS_PROFILE_HLINE_CALL();
     ss_gfx_rect(x, y, w, 1, color);
 }
 
 void ss_gfx_fill_stipple(int x, int y, int w, int h, uint16_t c1, uint16_t c2) {
+    int submitted_w = w;
+    int submitted_h = h;
+    SS_PROFILE_PRIMITIVE_CALL();
+    SS_PROFILE_STIPPLE_CALL();
+    if (submitted_w > 0 && submitted_h > 0)
+        SS_PROFILE_SUBMITTED_AREA((uint32_t)submitted_w * (uint32_t)submitted_h);
     if (x < 0) { w += x; x = 0; }
     if (y < 0) { h += y; y = 0; }
     if (x + w > ss_current_mode->display_w) w = ss_current_mode->display_w - x;
     if (y + h > ss_current_mode->display_h) h = ss_current_mode->display_h - y;
     if (w <= 0 || h <= 0) return;
+    SS_PROFILE_CLIPPED_AREA((uint32_t)w * (uint32_t)h);
+    SS_PROFILE_GVRAM_WRITE((uint32_t)w * (uint32_t)h);
 
     int x1 = x + w - 1;
     int y1 = y + h - 1;
@@ -304,6 +340,9 @@ void ss_gfx_fill_stipple(int x, int y, int w, int h, uint16_t c1, uint16_t c2) {
 }
 
 void ss_gfx_char(int x, int y, char ch, uint16_t fg, uint16_t bg) {
+    uint32_t writes = 0;
+    SS_PROFILE_PRIMITIVE_CALL();
+    SS_PROFILE_GLYPH_SLOW();
     uint8_t c = (uint8_t)ch;
     if (c < 0x20 || c > 0x7E) c = ' ';
     const uint8_t* g = ss_font_data[c - 0x20];
@@ -315,13 +354,17 @@ void ss_gfx_char(int x, int y, char ch, uint16_t fg, uint16_t bg) {
         uint8_t bits = g[r];
         for (int b = 0; b < SS_FONT_W; b++) {
             int xx = x + b;
-            if (xx >= 0 && xx < ss_current_mode->display_w)
+            if (xx >= 0 && xx < ss_current_mode->display_w) {
                 row[xx] = (bits & (0x80 >> b)) ? fg : bg;
+                writes++;
+            }
         }
     }
+    SS_PROFILE_GVRAM_WRITE(writes);
 }
 
 void ss_gfx_draw_text(int x, int y, const char* str, uint16_t fg, uint16_t bg) {
+    SS_PROFILE_TEXT_CALL();
     while (*str) {
         ss_gfx_char(x, y, *str++, fg, bg);
         x += SS_FONT_ADV;
@@ -333,6 +376,8 @@ void ss_gfx_char_fast(int x, int y, char ch, uint16_t fg, uint16_t bg) {
      * per-pixel bounds checks and unroll the 5 font columns. The row
      * pointer is advanced by the word stride each scanline. */
     uint8_t c = (uint8_t)ch;
+    SS_PROFILE_PRIMITIVE_CALL();
+    SS_PROFILE_GLYPH_FAST();
     if (c < 0x20 || c > 0x7E) c = ' ';
     const uint8_t* g = ss_font_data[c - 0x20];
     uint32_t stride = ss_current_mode->bytes_per_line / 2;  /* words per line */
@@ -346,9 +391,11 @@ void ss_gfx_char_fast(int x, int y, char ch, uint16_t fg, uint16_t bg) {
         row[4] = (bits & 0x08) ? fg : bg;
         row += stride;
     }
+    SS_PROFILE_GVRAM_WRITE(SS_FONT_W * SS_FONT_H);
 }
 
 void ss_gfx_draw_text_fast(int x, int y, const char* str, uint16_t fg, uint16_t bg) {
+    SS_PROFILE_TEXT_CALL();
     while (*str) {
         ss_gfx_char_fast(x, y, *str++, fg, bg);
         x += SS_FONT_ADV;
@@ -363,24 +410,32 @@ void ss_gfx_xor_rect(int x, int y, int w, int h) {
     uint32_t stride = ss_current_mode->bytes_per_line / 2;
     int W = ss_current_mode->display_w, H = ss_current_mode->display_h;
     volatile uint16_t* v = ss_draw_page;
+    uint32_t accesses = 0;
+    SS_PROFILE_PRIMITIVE_CALL();
+    SS_PROFILE_XOR_RECT_CALL();
     for (int dx = 0; dx < w; dx++) {
         int xx = x + dx;
         if (xx < 0 || xx >= W) continue;
-        if (y >= 0 && y < H) v[y * stride + xx] ^= 0xFFFF;
+        if (y >= 0 && y < H) { v[y * stride + xx] ^= 0xFFFF; accesses++; }
         int y2 = y + h - 1;
-        if (y2 >= 0 && y2 < H) v[y2 * stride + xx] ^= 0xFFFF;
+        if (y2 >= 0 && y2 < H) { v[y2 * stride + xx] ^= 0xFFFF; accesses++; }
     }
     for (int dy = 0; dy < h; dy++) {
         int yy = y + dy;
         if (yy < 0 || yy >= H) continue;
-        if (x >= 0 && x < W) v[yy * stride + x] ^= 0xFFFF;
+        if (x >= 0 && x < W) { v[yy * stride + x] ^= 0xFFFF; accesses++; }
         int x2 = x + w - 1;
-        if (x2 >= 0 && x2 < W) v[yy * stride + x2] ^= 0xFFFF;
+        if (x2 >= 0 && x2 < W) { v[yy * stride + x2] ^= 0xFFFF; accesses++; }
     }
+    SS_PROFILE_GVRAM_READ(accesses);
+    SS_PROFILE_GVRAM_WRITE(accesses);
 }
 
 void ss_gfx_char_clip(int x, int y, char ch, uint16_t fg, uint16_t bg,
                       const int* clip_wins, int nclip, int zpos) {
+    uint32_t writes = 0;
+    SS_PROFILE_PRIMITIVE_CALL();
+    SS_PROFILE_GLYPH_CLIP();
     uint8_t c = (uint8_t)ch;
     if (c < 0x20 || c > 0x7E) c = ' ';
     const uint8_t* g = ss_font_data[c - 0x20];
@@ -402,14 +457,18 @@ void ss_gfx_char_clip(int x, int y, char ch, uint16_t fg, uint16_t bg,
                     break;
                 }
             }
-            if (!covered)
+            if (!covered) {
                 row[xx] = (bits & (0x80 >> b)) ? fg : bg;
+                writes++;
+            }
         }
     }
+    SS_PROFILE_GVRAM_WRITE(writes);
 }
 
 void ss_gfx_draw_text_clip(int x, int y, const char* str, uint16_t fg, uint16_t bg,
                            const int* clip_wins, int nclip, int zpos) {
+    SS_PROFILE_TEXT_CALL();
     while (*str) {
         ss_gfx_char_clip(x, y, *str++, fg, bg, clip_wins, nclip, zpos);
         x += SS_FONT_ADV;
