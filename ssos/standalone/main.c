@@ -40,6 +40,12 @@ uint8_t* ss_task_stack_base = local_stack_mem;
 
 extern uint32_t ss_context_switch_count;
 
+static void set_palette(void) {
+    ss_palette_program_default();
+}
+
+#if SS_PROFILE_GFX
+
 /* Palette Indices - Runtime mode-dependent */
 static int c_white, c_black, c_gray_l, c_gray_m, c_gray_d;
 
@@ -57,10 +63,9 @@ static void init_palette_indices(void) {
 #define C_GRAY_M c_gray_m
 #define C_GRAY_D c_gray_d
 
-static void set_palette(void) {
-    ss_palette_program_default();
-}
+#endif /* SS_PROFILE_GFX */
 
+#if SS_PROFILE_GFX
 /* Window layout */
 #define TITLE_H 12
 #define CONTENT_Y 14
@@ -98,6 +103,8 @@ static uint16_t drag_prev_active;
 static int need_full = 1;
 static int highest_active_z = -1;
 
+#endif /* SS_PROFILE_GFX */
+
 static uint32_t saved_copy_vec;
 static uint32_t saved_nmi_vec;
 extern void ss_nop_handler(void);
@@ -113,6 +120,8 @@ extern volatile uint8_t ss_wakeups_needed;
 extern void ss_process_wakeups(void);
 
 static SSTask main_tcb;
+
+#if SS_PROFILE_GFX
 
 /* Drag outline position tracker (self-erasing XOR rect via ss_gfx_xor_rect).
  * No save buffer: the outline is erased by re-XORing the same rect. */
@@ -398,6 +407,8 @@ static void redraw_title_region(const SSWindow* w) {
  * per-frame ol_save (GVRAM read) / ol_restore / marching-ants redraw.
  * See drag_begin / drag_move / drag_end in the main loop. */
 
+#endif /* SS_PROFILE_GFX */
+
 /* ---- V-sync with watchdog ---- */
 
 static void wait_vsync(void) {
@@ -456,67 +467,7 @@ static int scene_should_stop(void* ctx) {
     return (ss_scene_last_key() & 0xFF) == 0x1B;
 }
 
-/* ================================================================
- * Data Thread — Timer/Keyboard window text + IOCS
- * ================================================================ */
-
-static void* data_thread(void* arg) {
-    (void)arg;
-
-    for (;;) {
-        if (exit_flag)
-            for (;;) ss_task_sleep(0x7FFFFFFF);
-
-        if (_iocs_b_keysns() > 0) {
-            int key = _iocs_b_keyinp();
-            if ((key & 0xFF) == 0x1B) {
-                exit_flag = 1;
-            }
-            last_key = key;
-        }
-
-        if (last_key >= 0) {
-            int k = last_key & 0xFF;
-            char ch = (k >= 0x20 && k < 0x7F) ? (char)k : '.';
-            char buf[30];
-            /* "Code:XXH 'c'" built without sprintf */
-            memcpy(buf, "Code:", 5);
-            ss_utoa_hex((uint32_t)k, buf + 5, 2);
-            buf[7] = 'H'; buf[8] = ' '; buf[9] = '\''; buf[10] = ch; buf[11] = '\''; buf[12] = '\0';
-            ss_win_set_content_line(win_ids[1], 0, buf);
-            /* "Shift:XXH" */
-            memcpy(buf, "Shift:", 6);
-            ss_utoa_hex((uint32_t)((last_key >> 8) & 0xFF), buf + 6, 2);
-            buf[8] = 'H'; buf[9] = '\0';
-            ss_win_set_content_line(win_ids[1], 1, buf);
-        } else {
-            ss_win_set_content_line(win_ids[1], 0, "Press any key...");
-            ss_win_set_content_line(win_ids[1], 1, "");
-        }
-
-        char buf[30];
-        /* "Vsync: <n>" */
-        memcpy(buf, "Vsync: ", 7);
-        ss_utoa_dec(frame, buf + 7);
-        ss_win_set_content_line(win_ids[0], 0, buf);
-        /* "VDisp:<n> Tick:<n>" */
-        memcpy(buf, "VDisp:", 6);
-        int nn = ss_utoa_dec(ss_vdisp_fire_count, buf + 6);
-        memcpy(buf + 6 + nn, " Tick:", 6);
-        ss_utoa_dec(ss_timerd_fire_count, buf + 6 + nn + 6);
-        ss_win_set_content_line(win_ids[0], 1, buf);
-        /* "Tick:<n>" */
-        memcpy(buf, "Tick:", 5);
-        ss_utoa_dec(ss_tick_counter, buf + 5);
-        ss_win_set_content_line(win_ids[0], 2, buf);
-
-        ss_task_sleep(40);
-    }
-    return NULL;
-}
-
 #if SS_PROFILE_GFX
-
 #define SS_BENCH_DEFAULT_ROUNDS 100U
 #define SS_BENCH_MAX_ROUNDS     100000U
 #define SS_BENCH_REGION_X       160
@@ -825,11 +776,9 @@ int main(int argc, char** argv) {
         }
     }
     ss_gfx_set_mode(requested_mode);
+#if SS_PROFILE_GFX
     init_palette_indices();
-
-    /* Initialize mouse position to screen center */
-    mx = ss_current_mode->display_w / 2;
-    my = ss_current_mode->display_h / 2;
+#endif
 
     /*
      * Enter Supervisor mode via IOCS B_SUPER(0). Returns the previous USP
