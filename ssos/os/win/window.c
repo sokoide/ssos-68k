@@ -1,5 +1,6 @@
 #include "win.h"
 #include "../gfx/gfx.h"
+#include "../gfx/palette.h"
 #include "../gfx/profile.h"
 #include "../kernel/kernel.h"
 #include <string.h>
@@ -145,34 +146,35 @@ static void ensure_zmap(void) {
     if (!zmap_valid) rebuild_zmap();
 }
 
-static void draw_frame_rect(SSGfxRect rect, const SSGfxRect* clip, uint16_t color) {
+static void draw_frame_rect(SSGfxRect rect, const SSGfxRect* clip, SSPalette color) {
+    uint16_t index = ss_palette_index(color);
     if (clip == NULL) {
-        ss_gfx_rect(rect.x, rect.y, rect.w, rect.h, color);
+        ss_gfx_rect(rect.x, rect.y, rect.w, rect.h, index);
     } else {
-        ss_gfx_rect_region(rect, clip, color);
+        ss_gfx_rect_region(rect, clip, index);
     }
 }
 
 static void draw_frame(SSWindow* win, int is_fg, const SSGfxRect* clip) {
     int th = 12; /* title bar height */
-    uint16_t t_bg = is_fg ? 8 : 7;  /* fg: dark gray(8), bg: white(7) */
+    SSPalette t_bg = is_fg ? SS_PALETTE_LIGHT_GRAY : SS_PALETTE_WHITE;
 
     /* Title bar */
     draw_frame_rect((SSGfxRect){win->x + 1, win->y + 1, win->w - 2, th - 2},
                     clip, t_bg);
     /* Content area */
     draw_frame_rect((SSGfxRect){win->x + 1, win->y + th, win->w - 2,
-                               win->h - th - 1}, clip, 7);
+                    win->h - th - 1}, clip, SS_PALETTE_WHITE);
     /* Outer border */
-    draw_frame_rect((SSGfxRect){win->x, win->y, win->w, 1}, clip, 0);
+    draw_frame_rect((SSGfxRect){win->x, win->y, win->w, 1}, clip, SS_PALETTE_BLACK);
     draw_frame_rect((SSGfxRect){win->x, win->y + win->h - 1, win->w, 1},
-                    clip, 0);
-    draw_frame_rect((SSGfxRect){win->x, win->y, 1, win->h}, clip, 0);
+                    clip, SS_PALETTE_BLACK);
+    draw_frame_rect((SSGfxRect){win->x, win->y, 1, win->h}, clip, SS_PALETTE_BLACK);
     draw_frame_rect((SSGfxRect){win->x + win->w - 1, win->y, 1, win->h},
-                    clip, 0);
+                    clip, SS_PALETTE_BLACK);
     /* Title separator */
     draw_frame_rect((SSGfxRect){win->x + 1, win->y + th - 1, win->w - 2, 1},
-                    clip, 0);
+                    clip, SS_PALETTE_BLACK);
 }
 
 /*
@@ -247,7 +249,9 @@ void ss_win_render_all(void) {
 
     /* Background stipple (no pre-clear — covers old window positions naturally) */
     ss_gfx_fill_stipple(0, 0, ss_current_mode->display_w,
-                        ss_current_mode->display_h, 7, 15);
+                        ss_current_mode->display_h,
+                        ss_palette_index(SS_PALETTE_WHITE),
+                        ss_palette_index(SS_PALETTE_MEDIUM_GRAY));
     SS_PROFILE_FULL_BG_FILL();
 
     int highest_z = compute_highest_z();
@@ -265,7 +269,9 @@ void ss_win_render_all(void) {
 void ss_win_render_region(int rx, int ry, int rw, int rh) {
     SS_PROFILE_RENDER_REGION();
     ensure_zmap();
-    ss_gfx_fill_stipple(rx, ry, rw, rh, 7, 15);
+    ss_gfx_fill_stipple(rx, ry, rw, rh,
+                        ss_palette_index(SS_PALETTE_WHITE),
+                        ss_palette_index(SS_PALETTE_MEDIUM_GRAY));
     if (rw > 0 && rh > 0) {
         SS_PROFILE_DIRTY_MARK();
         SS_PROFILE_DIRTY_AREA((uint32_t)rw * (uint32_t)rh);

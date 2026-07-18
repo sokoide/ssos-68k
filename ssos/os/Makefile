@@ -19,12 +19,14 @@ KDIR=kernel/$(SCHED)
 TARGET=SSOS.X
 SRCS= \
 	kernel/premain.c \
+	kernel/main_task.c \
 	$(KDIR)/scheduler.c \
 	kernel/work_queue.c \
 	util/numfmt.c \
 	mem/buddy.c \
 	mem/slab.c \
 	gfx/profile.c \
+	gfx/palette.c \
 	gfx/vram.c \
 	win/window.c \
 	ipc/message.c \

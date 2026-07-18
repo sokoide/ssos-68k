@@ -6,11 +6,14 @@
 #include "../win/win.h"
 #include "../ipc/ipc.h"
 #include "../util/numfmt.h"
+#include "scene.h"
 #include <stdint.h>
 #include <string.h>
 #include <x68k/iocs.h>
 
+#ifndef LOCAL_MODE
 uint8_t* ss_task_stack_base;
+#endif
 
 /* Drag state. The drag outline is a self-erasing XOR rectangle
  * (ss_gfx_xor_rect): no save buffer, no GVRAM read, and it is redrawn
@@ -56,9 +59,10 @@ typedef struct {
 } WinContent;
 static WinContent win_content[APP_MAX_WINS];
 
-static void wait_vsync(void) {
+static int wait_vsync(void) {
     uint32_t last = ss_vsync_counter;
     while (ss_vsync_counter == last);
+    return 0;
 }
 
 static int cur_mx = 0, cur_my = 0, cur_btn = 0;
@@ -89,10 +93,43 @@ static void pad_line(char* s, int n) {
     s[n] = '\0';
 }
 
+/* Build the visible windows in z order so incremental text updates can skip
+ * pixels covered by a higher window.  Direct text writes would otherwise
+ * punch through the single-page compositor while windows overlap. */
+static int build_text_clip_windows(uint16_t target, int clip_wins[3 * 4],
+                                   int* target_pos) {
+    uint16_t order[3];
+    int n = 0;
+    for (int id = 1; id <= 3; id++) {
+        SSWindow* w = ss_win_get_ptr((uint16_t)id);
+        if (w == NULL || !(w->flags & SS_WIN_VISIBLE)) continue;
+        int j = n;
+        while (j > 0 && ss_win_get_z(order[j - 1]) > w->z) {
+            order[j] = order[j - 1];
+            j--;
+        }
+        order[j] = (uint16_t)id;
+        n++;
+    }
+    *target_pos = -1;
+    for (int i = 0; i < n; i++) {
+        SSWindow* w = ss_win_get_ptr(order[i]);
+        clip_wins[i * 4] = w->x;
+        clip_wins[i * 4 + 1] = w->y;
+        clip_wins[i * 4 + 2] = w->w;
+        clip_wins[i * 4 + 3] = w->h;
+        if (order[i] == target) *target_pos = i;
+    }
+    return n;
+}
+
 static void draw_content_dirty(uint16_t id) {
     if (id == 0 || id > APP_MAX_WINS) return;
     int x = ss_win_get_x(id), y = ss_win_get_y(id);
     WinContent* c = &win_content[id - 1];
+    int clip_wins[3 * 4];
+    int target_pos;
+    int nclip = build_text_clip_windows(id, clip_wins, &target_pos);
     for (int i = 0; i < 3; i++) {
         if (memcmp(c->line[i], c->prev[i], 30) != 0) {
             /* Redraw only the changed suffix: lines are pad_line'd to
@@ -102,9 +139,26 @@ static void draw_content_dirty(uint16_t id) {
              * Turns "Vsync: 100" -> "Vsync: 101" into a 1-char repaint. */
             int j = 0;
             while (j < LINE_LEN && c->line[i][j] == c->prev[i][j]) j++;
-            ss_gfx_draw_text_fast(x + 4 + j * SS_FONT_ADV,
-                                  y + CONTENT_Y + i * LINE_H,
-                                  c->line[i] + j, PAL_BLACK, PAL_WHITE);
+            int tx = x + 4 + j * SS_FONT_ADV;
+            int ty = y + CONTENT_Y + i * LINE_H;
+            int tw = (LINE_LEN - j - 1) * SS_FONT_ADV + SS_FONT_W;
+            int covered = 0;
+            for (int k = target_pos + 1; k < nclip; k++) {
+                int* upper = &clip_wins[k * 4];
+                if (tx < upper[0] + upper[2] && tx + tw > upper[0] &&
+                    ty < upper[1] + upper[3] && ty + SS_FONT_H > upper[1]) {
+                    covered = 1;
+                    break;
+                }
+            }
+            if (target_pos >= 0 && covered) {
+                ss_gfx_draw_text_clip(tx, ty, c->line[i] + j,
+                                      PAL_BLACK, PAL_WHITE,
+                                      clip_wins, nclip, target_pos);
+            } else {
+                ss_gfx_draw_text_fast(tx, ty, c->line[i] + j,
+                                      PAL_BLACK, PAL_WHITE);
+            }
             memcpy(c->prev[i], c->line[i], 30);
         }
     }
@@ -173,6 +227,7 @@ static void render_win(SSWindow* self, const SSGfxRect* clip) {
     }
 }
 
+#ifndef LOCAL_MODE
 void ss_init(void) {
     ss_mem_init((void*)&__ssosram_start, (uintptr_t)&__ssosram_size);
     ss_task_stack_base = (uint8_t*)ss_alloc(SS_MAX_TASKS * SS_TASK_STACK);
@@ -182,6 +237,7 @@ void ss_init(void) {
     ss_gfx_init();
     ss_win_init();
 }
+#endif
 
 static void update_content(uint16_t wt, uint16_t wk, uint16_t wm,
                            int mx, int my, int left, int right) {
@@ -322,7 +378,7 @@ static int handle_drag(int mx, int my, int left) {
     return drag_id > 0;
 }
 
-void ss_run(void) {
+void ss_scene_run(const SSSceneHooks *hooks, SSSceneStats *stats) {
     uint16_t w_timer = ss_win_create(30, 15, WIN_W, WIN_H, 1);
     uint16_t w_key   = ss_win_create(180, 60, WIN_W, WIN_H, 2);
     uint16_t w_mouse = ss_win_create(80, 120, WIN_W, WIN_H, 3);
@@ -335,8 +391,13 @@ void ss_run(void) {
 
     ss_win_render_all();
 
+    uint32_t start_vsync = ss_vsync_counter;
     while (1) {
-        wait_vsync();
+        int stopped = hooks != NULL && hooks->wait_vsync != NULL
+                          ? hooks->wait_vsync(hooks->ctx) : wait_vsync();
+        if (stopped || (hooks != NULL && hooks->should_stop != NULL &&
+                        hooks->should_stop(hooks->ctx)))
+            break;
         frame++;
         update_mouse();
         update_keyboard();
@@ -362,9 +423,23 @@ void ss_run(void) {
         ss_gfx_xor_rect(mx, my, 6, 6);
         cur_prev_x = mx; cur_prev_y = my;
 
+#ifndef LOCAL_MODE
         ss_work_drain(&ss_main_work_queue);
+#endif
         ss_process_wakeups();
         ss_task_yield();
         (void)right;
     }
+    if (stats != NULL) {
+        stats->frames = frame;
+        stats->vsyncs = ss_vsync_counter - start_vsync;
+    }
+}
+
+void ss_run(void) {
+    ss_scene_run(NULL, NULL);
+}
+
+int ss_scene_last_key(void) {
+    return last_key;
 }

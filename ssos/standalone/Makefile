@@ -25,10 +25,13 @@ endif
 KDIR=../os/kernel/$(SCHED)
 
 SRCS=	main.c \
+		../os/app/scene.c \
+		../os/kernel/main_task.c \
 		$(KDIR)/scheduler.c \
 		../os/mem/buddy.c \
 		../os/mem/slab.c \
 		../os/gfx/profile.c \
+		../os/gfx/palette.c \
 		../os/gfx/vram.c \
 		../os/win/window.c \
 		../os/util/numfmt.c
@@ -73,7 +76,10 @@ $(OBJDIR):
 
 # VPATH lets the generic %.o: %.c / %.s rules find sources across the
 # variant kernel dir and the shared subsystem dirs.
-VPATH=$(KDIR):../os/mem:../os/gfx:../os/win:../os/util
+VPATH=$(KDIR):../os/app:../os/kernel:../os/mem:../os/gfx:../os/win:../os/util
+
+$(OBJDIR)/scene.o: ../os/app/scene.c | $(OBJDIR)
+	$(CC) -Wa,-adhlns="$@.lst" -c $< -o $@ $(CCFLAGS)
 
 $(OBJDIR)/%.o: %.c | $(OBJDIR)
 	$(CC) -Wa,-adhlns="$@.lst" -c $< -o $@ $(CCFLAGS)

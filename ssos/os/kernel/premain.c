@@ -1,5 +1,7 @@
 #include "kernel.h"
 #include "../gfx/gfx.h"
+#include "../gfx/palette.h"
+#include "main_task.h"
 #include <stdint.h>
 #include <x68k/iocs.h>
 
@@ -18,6 +20,8 @@ void clear_bss(void) {
                (((b) & 0x1F) << 1) | 1)
 
 static void set_palette(void) {
+    ss_palette_program_default();
+#if 0
     static const uint16_t cmap[16] = {
         PAL_RGB(0, 0, 0),       /*  0: Black */
         PAL_RGB(0, 0, 31),      /*  1: Blue */
@@ -39,6 +43,7 @@ static void set_palette(void) {
     for (int i = 0; i < 16; i++) {
         _iocs_gpalet(i, cmap[i]);
     }
+#endif
 }
 
 void premain(void) {
@@ -60,7 +65,8 @@ void premain(void) {
         *crtc_r20 = r20;
     }
 
-    /* Set 16-color palette */
+    /* Set the 16-color logical palette and program its hardware entries. */
+    ss_gfx_set_mode(SS_CRTMOD_16);
     set_palette();
 
     /* Turn off text cursor */
@@ -157,8 +163,14 @@ void premain(void) {
     *(volatile uint8_t*)0xE88003 = 0x06;   /* AER */
     /* IMRA/IMRB are left at the $FF/$7F set by ss_set_interrupts(). */
 
-    /* Set graphics mode to default (mode 16) */
-    ss_gfx_set_mode(SS_CRTMOD_16);
     ss_init();
+    /* entry.s enabled MFP interrupts before premain.  Keep registration
+     * atomic even though the low-level helper cannot restore the old SR. */
+    ss_disable_interrupts();
+    static SSTask main_tcb;
+    if (ss_main_task_register(&main_tcb, 8) != SS_OK) {
+        for (;;) ;
+    }
+    ss_enable_interrupts();
     ss_run();
 }

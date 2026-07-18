@@ -39,6 +39,11 @@ extern SSTask* ss_scheduled_task;
 extern uint8_t* ss_task_stack_base;
 
 void    ss_sched_init(void);
+/*
+ * Queue primitives do not manage interrupt state.  Bootstrap callers may
+ * use them before interrupts are enabled; live scheduler callers must use
+ * the existing critical-section convention.
+ */
 void    ss_sched_enqueue(SSTask* tcb);
 void    ss_sched_dequeue(SSTask* tcb);
 SSTask* ss_sched_pick(void);

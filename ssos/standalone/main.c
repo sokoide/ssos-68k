@@ -14,8 +14,11 @@
 #include "../os/kernel/scheduler.h"
 #include "../os/mem/memory.h"
 #include "../os/gfx/gfx.h"
+#include "../os/gfx/palette.h"
 #include "../os/gfx/profile.h"
 #include "../os/win/win.h"
+#include "../os/kernel/main_task.h"
+#include "../os/app/scene.h"
 
 #include <stdint.h>
 #include <stdio.h>
@@ -41,21 +44,11 @@ extern uint32_t ss_context_switch_count;
 static int c_white, c_black, c_gray_l, c_gray_m, c_gray_d;
 
 static void init_palette_indices(void) {
-    if (ss_current_mode->color_count == 16) {
-        /* 16-color mode palette indices */
-        c_white = 7;       /* White */
-        c_black = 0;       /* Black */
-        c_gray_l = 8;      /* Light Gray */
-        c_gray_m = 15;     /* Dark Gray (background) */
-        c_gray_d = 0;      /* Black */
-    } else {
-        /* 256-color mode palette indices */
-        c_white = 0;
-        c_black = 215;
-        c_gray_l = 247;
-        c_gray_m = 250;
-        c_gray_d = 252;
-    }
+    c_white = ss_palette_index(SS_PALETTE_WHITE);
+    c_black = ss_palette_index(SS_PALETTE_BLACK);
+    c_gray_l = ss_palette_index(SS_PALETTE_LIGHT_GRAY);
+    c_gray_m = ss_palette_index(SS_PALETTE_MEDIUM_GRAY);
+    c_gray_d = ss_palette_index(SS_PALETTE_DARK_GRAY);
 }
 
 #define C_WHITE c_white
@@ -64,58 +57,8 @@ static void init_palette_indices(void) {
 #define C_GRAY_M c_gray_m
 #define C_GRAY_D c_gray_d
 
-#define PAL_RGB(r, g, b)                                                       \
-    (uint16_t)((((g) & 0x1F) << 11) | (((r) & 0x1F) << 6) |                    \
-               (((b) & 0x1F) << 1) | 1)
-
 static void set_palette(void) {
-    if (ss_current_mode->color_count == 256) {
-        /* 256-color palette (6x6x6 cube + 40 system colors) */
-        int i, r, g, b;
-        int idx = 0;
-        static const uint8_t cube_levels[] = {31, 25, 18, 12, 6, 0};
-        static const uint8_t system_levels[] = {29, 27, 23, 21, 17,
-                                                 15, 10, 8,  4,  2};
-
-        for (r = 0; r < 6; r++)
-            for (g = 0; g < 6; g++)
-                for (b = 0; b < 6; b++)
-                    _iocs_gpalet(idx++, PAL_RGB(cube_levels[r], cube_levels[g],
-                                                cube_levels[b]));
-
-        for (i = 0; i < 10; i++)
-            _iocs_gpalet(idx++, PAL_RGB(system_levels[i], 0, 0));
-        for (i = 0; i < 10; i++)
-            _iocs_gpalet(idx++, PAL_RGB(0, system_levels[i], 0));
-        for (i = 0; i < 10; i++)
-            _iocs_gpalet(idx++, PAL_RGB(0, 0, system_levels[i]));
-        for (i = 0; i < 10; i++)
-            _iocs_gpalet(idx++, PAL_RGB(system_levels[i], system_levels[i],
-                                        system_levels[i]));
-    } else if (ss_current_mode->color_count == 16) {
-        /* 16-color palette (basic colors) */
-        static const uint16_t palette_16[16] = {
-            PAL_RGB(0, 0, 0),       /* 0: Black */
-            PAL_RGB(0, 0, 31),      /* 1: Blue */
-            PAL_RGB(0, 31, 0),      /* 2: Green */
-            PAL_RGB(0, 31, 31),     /* 3: Cyan */
-            PAL_RGB(31, 0, 0),      /* 4: Red */
-            PAL_RGB(31, 0, 31),     /* 5: Magenta */
-            PAL_RGB(31, 31, 0),     /* 6: Yellow */
-            PAL_RGB(31, 31, 31),    /* 7: White */
-            PAL_RGB(15, 15, 15),    /* 8: Dark Gray */
-            PAL_RGB(15, 15, 31),    /* 9: Light Blue */
-            PAL_RGB(15, 31, 15),    /* 10: Light Green */
-            PAL_RGB(15, 31, 31),    /* 11: Light Cyan */
-            PAL_RGB(31, 15, 15),    /* 12: Light Red */
-            PAL_RGB(31, 15, 31),    /* 13: Light Magenta */
-            PAL_RGB(31, 31, 15),    /* 14: Light Yellow */
-            PAL_RGB(0, 0, 0),       /* 15: Black (duplicate) */
-        };
-        for (int i = 0; i < 16; i++) {
-            _iocs_gpalet(i, palette_16[i]);
-        }
-    }
+    ss_palette_program_default();
 }
 
 /* Window layout */
@@ -500,6 +443,17 @@ static void wait_vsync(void) {
             last = ss_vsync_counter;
         }
     }
+}
+
+static int scene_wait_vsync(void* ctx) {
+    (void)ctx;
+    wait_vsync();
+    return 0;
+}
+
+static int scene_should_stop(void* ctx) {
+    (void)ctx;
+    return (ss_scene_last_key() & 0xFF) == 0x1B;
 }
 
 /* ================================================================
@@ -893,11 +847,7 @@ int main(int argc, char** argv) {
     ss_mem_init(local_memory, sizeof(local_memory));
     ss_sched_init();
 
-    main_tcb.state = SS_TS_READY;
-    main_tcb.pri = 8;
-    main_tcb.stack_base = (void*)1;
-    ss_curr_task = &main_tcb;
-    ss_sched_enqueue(&main_tcb);
+    if (ss_main_task_register(&main_tcb, 8) != SS_OK) _exit(1);
 
     int old_mode = _iocs_crtmod(-1);
     _iocs_crtmod(ss_current_mode->crtmod);
@@ -931,163 +881,30 @@ int main(int argc, char** argv) {
     *(volatile uint32_t*)0xB0 = (uint32_t)ss_nop_handler;
     *(volatile uint32_t*)0x7C = (uint32_t)ss_nop_handler;
 
-    win_ids[0] = ss_win_create(30, 15, WIN_W, WIN_H, 1);
-    win_ids[1] = ss_win_create(180, 60, WIN_W, WIN_H, 2);
-    win_ids[2] = ss_win_create(80, 120, WIN_W, WIN_H, 3);
-    ss_win_set_title(win_ids[0], "Timer");
-    ss_win_set_title(win_ids[1], "Keyboard");
-    ss_win_set_title(win_ids[2], "Mouse");
-
 #if SS_PROFILE_GFX
     if (run_bench) {
+        win_ids[0] = ss_win_create(30, 15, WIN_W, WIN_H, 1);
+        win_ids[1] = ss_win_create(180, 60, WIN_W, WIN_H, 2);
+        win_ids[2] = ss_win_create(80, 120, WIN_W, WIN_H, 3);
+        ss_win_set_title(win_ids[0], "Timer");
+        ss_win_set_title(win_ids[1], "Keyboard");
+        ss_win_set_title(win_ids[2], "Mouse");
         run_benchmark(bench_rounds);
         goto cleanup;
     }
 #endif
 
-    uint16_t t_data = ss_task_create(&(SSTaskInfo){.entry = data_thread,
-                                                     .pri = 8,
-                                                     .ctx_level = 0,
-                                                     .stack_size = 0,
-                                                      .stack = NULL});
-    ss_task_start(t_data);
-
 #if SS_PROFILE_GFX
-    /* Exclude startup drawing and task setup from the normal runtime sample. */
-    uint32_t runtime_start_vsync = ss_vsync_counter;
     SSGfxProfile runtime_profile;
     ss_gfx_profile_reset();
 #endif
-
-    for (;;) {
-        /* Process timer-based wakeups before anything else */
-        ss_process_wakeups();
-
-        wait_vsync();
-        frame++;
-
-        if (exit_flag) break;
-
-        /* Recalculate highest_active_z every frame to handle z-order wraparound */
-        highest_active_z = -1;
-        for (int i = 0; i < 3; i++) {
-            int z = ss_win_get_z(win_ids[i]);
-            if (z > highest_active_z) highest_active_z = z;
-        }
-
-        int cur_mx, cur_my, left;
-        {
-            int dt = _iocs_ms_getdt();
-            int pos = _iocs_ms_curgt();
-            cur_mx = (int16_t)((pos >> 16) & 0xFFFF);
-            cur_my = (int16_t)(pos & 0xFFFF);
-            left = (dt & 0x0200) != 0;
-            mb_left = left;
-            mb_right = (dt & 0x0001) != 0;
-        }
-
-        char mbuf[30];
-        /* "X:%3d Y:%3d" built without sprintf */
-        mbuf[0] = 'X'; mbuf[1] = ':';
-        int mn = ss_itoa_dec_pad(cur_mx, mbuf + 2, 3);
-        int moff = 2 + mn;
-        mbuf[moff] = ' '; mbuf[moff + 1] = 'Y'; mbuf[moff + 2] = ':';
-        int mn2 = ss_itoa_dec_pad(cur_my, mbuf + moff + 3, 3);
-        mbuf[moff + 3 + mn2] = '\0';
-        ss_win_set_content_line(win_ids[2], 0, mbuf);
-        /* "L=DN/UP R=DN/UP" */
-        mbuf[0] = 'L'; mbuf[1] = '=';
-        mbuf[2] = left ? 'D' : 'U'; mbuf[3] = left ? 'N' : 'P';
-        mbuf[4] = ' '; mbuf[5] = 'R'; mbuf[6] = '=';
-        mbuf[7] = mb_right ? 'D' : 'U'; mbuf[8] = mb_right ? 'N' : 'P';
-        mbuf[9] = '\0';
-        ss_win_set_content_line(win_ids[2], 1, mbuf);
-
-        if (left && drag < 0) {
-            int hid = ss_win_hit_test(cur_mx, cur_my);
-            if (hid >= 0 && cur_my >= ss_win_get_y(hid) + 1 &&
-                cur_my <= ss_win_get_y(hid) + TITLE_H) {
-                drag = id_to_idx(hid);
-                dox = cur_mx - ss_win_get_x(hid);
-                doy = cur_my - ss_win_get_y(hid);
-                drag_prev_active = 0;
-                int was_active = ss_win_get_z(hid) == highest_active_z;
-                int best_z = -1;
-                for (int i = 0; i < 3; i++) {
-                    uint16_t other = win_ids[i];
-                    if (other == hid) continue;
-                    SSWindow* ow = ss_win_get_ptr(other);
-                    if ((ow->flags & SS_WIN_VISIBLE) && ow->z > best_z) {
-                        best_z = ow->z;
-                        drag_prev_active = other;
-                    }
-                }
-                ss_win_set_z(hid, next_z);
-                if (++next_z > 255) next_z = 4;
-                ss_win_hide(hid);
-                int old_x = ss_win_get_x(hid), old_y = ss_win_get_y(hid);
-                int old_w = ss_win_get_w(hid), old_h = ss_win_get_h(hid);
-                redraw_region((SSGfxRect){old_x, old_y, old_w, old_h});
-                if (was_active && drag_prev_active != 0) {
-                    SSWindow* prev = ss_win_get_ptr(drag_prev_active);
-                    redraw_title_region(prev);
-                }
-                /* Self-erasing XOR outline at the grab position. */
-                ss_gfx_xor_rect(old_x, old_y, old_w, old_h);
-                ol_x = old_x;
-                ol_y = old_y;
-            }
-        }
-        if (!left && drag >= 0) {
-            uint16_t did = win_ids[drag];
-            int ww = ss_win_get_w(did), wh = ss_win_get_h(did);
-            /* Erase the XOR outline at its last position. */
-            ss_gfx_xor_rect(ol_x, ol_y, ww, wh);
-            ss_win_show(did);
-            ss_win_move(did, ol_x, ol_y);
-            redraw_region((SSGfxRect){ol_x, ol_y, ww, wh});
-            if (drag_prev_active != 0) {
-                SSWindow* prev = ss_win_get_ptr(drag_prev_active);
-                redraw_title_region(prev);
-            }
-            drag = -1;
-            drag_prev_active = 0;
-        }
-        if (drag >= 0) {
-            uint16_t did = win_ids[drag];
-            int nx = cur_mx - dox;
-            int ny = cur_my - doy;
-            /* Clamp window position to keep it on screen */
-            if (nx < 0) nx = 0;
-            if (ny < 0) ny = 0;
-            if (nx + ss_win_get_w(did) > ss_current_mode->display_w)
-                nx = ss_current_mode->display_w - ss_win_get_w(did);
-            if (ny + ss_win_get_h(did) > ss_current_mode->display_h)
-                ny = ss_current_mode->display_h - ss_win_get_h(did);
-            ss_win_move(did, nx, ny);
-        }
-
-        if (need_full) {
-            redraw_desktop();
-        } else if (drag >= 0) {
-            /* Self-erasing XOR outline: erase the old rect, draw the new
-             * one — and only when the window actually moved this frame. */
-            SSWindow* dw = ss_win_get_ptr(win_ids[drag]);
-            if (ol_x != dw->x || ol_y != dw->y) {
-                ss_gfx_xor_rect(ol_x, ol_y, dw->w, dw->h);
-                ol_x = dw->x; ol_y = dw->y;
-                ss_gfx_xor_rect(dw->x, dw->y, dw->w, dw->h);
-            }
-        } else {
-            for (int i = 0; i < 3; i++) {
-                SSWindow* w = ss_win_get_ptr(win_ids[i]);
-                draw_content_dirty(w);
-            }
-        }
-
-        /* Cooperative: yield to let data_thread run */
-        ss_task_yield();
-    }
+    SSSceneStats runtime_stats;
+    SSSceneHooks scene_hooks = {
+        .wait_vsync = scene_wait_vsync,
+        .should_stop = scene_should_stop,
+        .ctx = NULL,
+    };
+    ss_scene_run(&scene_hooks, &runtime_stats);
 
 cleanup:
     if (ss_trapbuf_flag != 0) {
@@ -1138,8 +955,8 @@ cleanup:
         if (bench_log_file == NULL) {
             _iocs_b_print("SSPERF file=open-failed name=runtime.txt\r\n");
         }
-        print_bench_profile("runtime", frame,
-                            ss_vsync_counter - runtime_start_vsync,
+        print_bench_profile("runtime", runtime_stats.frames,
+                            runtime_stats.vsyncs,
                             ss_current_mode, &runtime_profile);
         if (bench_log_file != NULL) {
             fclose(bench_log_file);

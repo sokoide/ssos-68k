@@ -19,6 +19,7 @@
 #include "kernel.h"
 #include "scheduler.h"
 #include "gfx.h"
+#include "palette.h"
 
 #include <stdint.h>
 
@@ -86,6 +87,13 @@ static const SSGfxMode test_mode = {
     .page0 = NULL, .page1 = NULL,
 };
 const SSGfxMode* ss_current_mode = &test_mode;
+
+/* Palette programming is hardware-only.  Window tests require only the
+ * logical 16-color indices used by the shared compositor. */
+uint16_t ss_palette_index(SSPalette color) {
+    static const uint16_t indices[] = {0, 7, 8, 15, 15};
+    return indices[color];
+}
 
 /* ---- 7. Reset --------------------------------------------------------- */
 void reset_test_state(void) {
