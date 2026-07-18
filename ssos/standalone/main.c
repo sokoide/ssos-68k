@@ -1,12 +1,12 @@
 /*
- * SSOS Standalone — multithreaded Windowed Demo
+ * SSOS Standalone — shared Windowed Demo host
  * CRT: 512x512 256-color (crtmod 8) or 1024x1024 16-color (crtmod 16)
  * Font: Spleen 5x8
  * Exit: ESC key
  *
  * Architecture:
- *   Thread 1 (main, pri=8):   Rendering loop + mouse IOCS (V-sync rate)
- *   Thread 2 (data, pri=8):   Timer/Keyboard window data + IOCS calls
+ *   UI task (main, pri=8): shared os/app/scene.c loop + host V-sync hook
+ *   Benchmark: standalone-only when SS_PROFILE_GFX=1
  *   Context switch: cooperative = explicit yield (SCHED=cooperative)
  *                   preemptive  = Timer D ISR     (SCHED=preemptive)
  */
@@ -47,21 +47,19 @@ static void set_palette(void) {
 #if SS_PROFILE_GFX
 
 /* Palette Indices - Runtime mode-dependent */
-static int c_white, c_black, c_gray_l, c_gray_m, c_gray_d;
+static int c_white, c_black, c_gray_l, c_gray_m;
 
 static void init_palette_indices(void) {
     c_white = ss_palette_index(SS_PALETTE_WHITE);
     c_black = ss_palette_index(SS_PALETTE_BLACK);
     c_gray_l = ss_palette_index(SS_PALETTE_LIGHT_GRAY);
     c_gray_m = ss_palette_index(SS_PALETTE_MEDIUM_GRAY);
-    c_gray_d = ss_palette_index(SS_PALETTE_DARK_GRAY);
 }
 
 #define C_WHITE c_white
 #define C_BLACK c_black
 #define C_GRAY_L c_gray_l
 #define C_GRAY_M c_gray_m
-#define C_GRAY_D c_gray_d
 
 #endif /* SS_PROFILE_GFX */
 
@@ -70,37 +68,11 @@ static void init_palette_indices(void) {
 #define TITLE_H 12
 #define CONTENT_Y 14
 #define LINE_H 10
-#define LINE_LEN 28   /* content lines are space-padded to this width so
-                       * draw_content_dirty can redraw only the changed
-                       * suffix without leaving stale trailing chars */
+#define LINE_LEN 28
 #define WIN_W 240
 #define WIN_H (CONTENT_Y + 3 * LINE_H + 4)
 
-/* Space-pad `s` to exactly LINE_LEN chars (NUL at [LINE_LEN]). Mirrors the
- * app/ version; required for the differential content redraw below. */
-static void pad_line(char* s, int n) {
-    int l = (int)strlen(s);
-    for (int i = l; i < n; i++) s[i] = ' ';
-    s[n] = '\0';
-}
-
-static uint16_t next_z = 4;
 static uint16_t win_ids[3];
-static volatile uint32_t frame = 0;
-
-static int id_to_idx(uint16_t id) {
-    for (int i = 0; i < 3; i++)
-        if (win_ids[i] == id) return i;
-    return -1;
-}
-static volatile int last_key = -1;
-static volatile int mx, my;  /* Initialized in main() based on current mode */
-static volatile uint8_t mb_left, mb_right;
-static volatile int exit_flag = 0;
-static int drag = -1, dox, doy;
-/* Highest other visible window while the dragged one is hidden. */
-static uint16_t drag_prev_active;
-static int need_full = 1;
 static int highest_active_z = -1;
 
 #endif /* SS_PROFILE_GFX */
@@ -122,10 +94,6 @@ extern void ss_process_wakeups(void);
 static SSTask main_tcb;
 
 #if SS_PROFILE_GFX
-
-/* Drag outline position tracker (self-erasing XOR rect via ss_gfx_xor_rect).
- * No save buffer: the outline is erased by re-XORing the same rect. */
-static int ol_x, ol_y;
 
 /* ---- Window frame drawing ---- */
 
@@ -297,7 +265,6 @@ static void redraw_desktop(void) {
         memset(w->content_prev, 0xFF, sizeof(w->content_prev));
         draw_content_dirty(w);
     }
-    need_full = 0;
 }
 
 /* Paint only one region. Content is snapshotted per line so a preempting

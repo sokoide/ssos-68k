@@ -127,7 +127,7 @@ ss_context_switch:
 
 # ----------------------------------------------------------------------------
 # .resume_task - adopt the scheduled task's stack and resume.
-#   new task     (context == stack_base) -> jmp entry
+#   new task     (context == stack_base && entry != NULL) -> jmp entry
 #   resume_type 1 (yielded)             -> pop regs/SR/PC, jmp
 #   resume_type 0 (interrupted)         -> pop regs, rte   <-- this test's target
 # ----------------------------------------------------------------------------
@@ -138,7 +138,10 @@ ss_context_switch:
         move.l  (a1), a0
         move.l  12(a1), d0
         cmp.l   a0, d0
-        beq.w   .start_task
+        bne.s   .resume_existing
+        tst.l   20(a1)
+        bne.w   .start_task
+.resume_existing:
 
         cmpi.b  #0, 31(a1)
         beq.s   .resume_interrupted

@@ -14,7 +14,6 @@ uint16_t ss_palette_index(SSPalette color) {
             [SS_PALETTE_WHITE] = 0,
             [SS_PALETTE_LIGHT_GRAY] = 247,
             [SS_PALETTE_MEDIUM_GRAY] = 250,
-            [SS_PALETTE_DARK_GRAY] = 252,
         };
         return color_256[color];
     }
@@ -24,7 +23,6 @@ uint16_t ss_palette_index(SSPalette color) {
         [SS_PALETTE_WHITE] = 7,
         [SS_PALETTE_LIGHT_GRAY] = 8,
         [SS_PALETTE_MEDIUM_GRAY] = 15,
-        [SS_PALETTE_DARK_GRAY] = 15,
     };
     return color_16[color];
 }

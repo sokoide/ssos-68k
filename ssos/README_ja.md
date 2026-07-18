@@ -1,6 +1,12 @@
 # SSOS Cooperative アーキテクチャ概説
 
-SSOS は X68000 実機およびエミュレータ上で動作するベアメタル OS プロトタイプです。スレッドモデルのみをビルド時オプションで切り替えられ、`make SCHED=cooperative` では明示的な `ss_task_yield()` 呼び出しによるコーペラティブマルチタスク、`make SCHED=preemptive` では Timer D ISR によるプリエンプティブマルチタスクとして動作します。両モデルで `os/app`・`standalone`・`boot`・共有サブシステム（gfx/mem/ipc/win）は同一ソースを使用し、異なるのは `os/kernel/{cooperative,preemptive}/` の `scheduler.c`・`interrupts.s`・`premain.c` のみです。
+SSOS は X68000 実機およびエミュレータ上で動作するベアメタル OS プロトタイプです。スレッドモデルのみをビルド時オプションで切り替えられ、`make SCHED=cooperative` では明示的な `ss_task_yield()` 呼び出しによるコーペラティブマルチタスク、`make SCHED=preemptive` では Timer D ISR によるプリエンプティブマルチタスクとして動作します。通常 UI の描画・入力・シーン定義は `os/app/scene.c` に統合され、`.x` と `.xdf` の両方で共有されます。通常 UI の UI task は単一です。`standalone` 固有なのはホスト初期化・終了処理と、`SS_PROFILE_GFX=1` のベンチマークです。
+
+## 現行 UI 統合（2026年7月）
+
+- 通常 UI は `os/app/scene.c` の同一シーンを `.x` / `.xdf` で共有する。
+- UI task は単一で、入力・本文更新・描画・ドラッグ処理を実行する。
+- `standalone` はホスト固有の初期化・終了処理を受け持ち、ベンチマーク時だけ standalone 専用の計測処理を追加する。
 
 ## グラフィックモード設定
 
@@ -67,7 +73,9 @@ MacOS 7 の視覚的特徴を以下のアルゴリズムで再現しています
 - **レンダリング**: 各ビットを走査し、パレットインデックスを GVRAM へ直接書き込み。
 - **レイアウト**: 5 ピクセル幅の文字に 1 ピクセルの隙間を加え、6 ピクセル送りで描画。
 
-## 描画パイプライン
+## 描画パイプライン（旧実装の記録：2026年7月の UI 統合以前）
+
+以下の `need_full`、`ol_save` / `ol_restore`、marching ants に関する説明は、旧 standalone 描画実装の記録であり、現行通常 UI の実装説明ではありません。
 
 ### レンダリングモード
 
@@ -203,7 +211,9 @@ Timer D 割り込み (200Hz) はティック加算と `ss_do_wakeups()` (`ss_tas
 3. `ss_yield_count` をインクリメント
 4. 新タスクの保存されたレジスタを復元して復帰
 
-### スレッド構成
+### スレッド構成（旧実装の記録：2026年7月の UI 統合以前）
+
+現行の通常 UI は単一の UI task で動作する。以下の `Thread 2 (data)` は旧 standalone 構成の記録として残す。
 
 - **Thread 1 (main, pri=8)**: レンダリング + マウス IOCS を V-sync 毎 (57Hz) に実行。各ループ末尾で `ss_task_yield()`
 - **Thread 2 (data, pri=8)**: タイマー/キーボード IOCS のみ。`ss_task_sleep(40)` で 200ms 間隔。起床後 `ss_task_yield()`

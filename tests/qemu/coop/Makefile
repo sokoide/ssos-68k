@@ -16,18 +16,20 @@ TIMEOUT_SECS ?= 2
 
 SSOS   = ../../../ssos/os
 
-# t01_single_yield and t03_register_save are added in a later step.
-TESTS = t01_single_yield t02_round_robin t03_register_save
+# t04_main_task_register exercises the production main-task bootstrap.
+TESTS = t01_single_yield t02_round_robin t03_register_save t04_main_task_register
 
 # Shared objects
 stub.o: ../common/stub.c
 	$(CC) $(CFLAGS) -c $< -o $@
 sched.o: $(SSOS)/kernel/cooperative/scheduler.c
 	$(CC) $(CFLAGS) -c $< -o $@
+main_task.o: $(SSOS)/kernel/main_task.c
+	$(CC) $(CFLAGS) -c $< -o $@
 ctx_switch.o: ctx_switch.s
 	$(CC) $(ASFLAGS) -c $< -o $@
 
-COMMON_OBJS = stub.o sched.o ctx_switch.o
+COMMON_OBJS = stub.o sched.o main_task.o ctx_switch.o
 
 .PHONY: all run clean
 all: $(addsuffix .elf,$(TESTS))

@@ -91,7 +91,7 @@ const SSGfxMode* ss_current_mode = &test_mode;
 /* Palette programming is hardware-only.  Window tests require only the
  * logical 16-color indices used by the shared compositor. */
 uint16_t ss_palette_index(SSPalette color) {
-    static const uint16_t indices[] = {0, 7, 8, 15, 15};
+    static const uint16_t indices[] = {0, 7, 8, 15};
     return indices[color];
 }
 

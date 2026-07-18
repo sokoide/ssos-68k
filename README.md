@@ -1,6 +1,6 @@
 # SSOS for X68000
 
-**SSOS** は X68000（MC68000 プロセッサ）向けの小型オペレーティングシステムである。協調的マルチタスクとプリエンプティブマルチタスクの 2 つのモデルを、ビルド時オプション `SCHED=cooperative|preemptive` で切り替えられる単一の統合ソースツリー（`ssos/`）として実装している。グラフィックス管理、マウス対応ウィンドウシステム、メモリ管理を備える。Human68K 上で動作するスタンドアロン版（`.x`）と、XDF ディスクイメージから直接 IPL 起動するベアメタル版（`.xdf`）の 2 形態でビルド可能。両モデルで `os/app`・`standalone`・`boot`・共有サブシステム（gfx/mem/ipc/win）は同一ソースを使用し、異なるのは `os/kernel/{cooperative,preemptive}/` の `scheduler.c`・`interrupts.s`・`premain.c` のみ。
+**SSOS** は X68000（MC68000 プロセッサ）向けの小型オペレーティングシステムである。協調的マルチタスクとプリエンプティブマルチタスクの 2 つのモデルを、ビルド時オプション `SCHED=cooperative|preemptive` で切り替えられる単一の統合ソースツリー（`ssos/`）として実装している。グラフィックス管理、マウス対応ウィンドウシステム、メモリ管理を備える。Human68K 上で動作するスタンドアロン版（`.x`）と、XDF ディスクイメージから直接 IPL 起動するベアメタル版（`.xdf`）の 2 形態でビルド可能。通常UIは `os/app/scene.c` を `.x` / `.xdf` で共有し、各形式の初期化・終了入口はホスト側に分かれる。スケジューラ実装は `os/kernel/{cooperative,preemptive}/` の `scheduler.c`・`interrupts.s`・`premain.c` で切り替える。
 
 ## 目次
 
@@ -320,7 +320,7 @@ ssos-68k/
 │   │   ├── ipc/                         # メッセージング（タスク間キュー）共有
 │   │   ├── win/                         # 汎用ウィンドウシステム (SS_MAX_WINDOWS=32) 共有
 │   │   ├── util/                        # numfmt（sprintf 排除用の軽量数値→文字列）
-│   │   └── app/main.c                   # デモアプリ（3 ウィンドウ + ドラッグ）共有
+│   │   └── app/                         # 通常UI（scene.c）と .xdf 側の入口（main.c）
 │   ├── include/                         # iocscall.mac（IOCS マクロ定義）
 │   └── standalone/main.c                # スタンドアロン (.x) ビルド（os/win・app 系を共有）
 ├── tests/                               # 単体テスト（m68k-xelf-gcc + native runner）
@@ -349,7 +349,8 @@ ssos-68k/
 | **gfx/vram.c**          | 5x8 フォントデータ、CRTMOD 8/16 切替、DMAC Ch.2 fill                                                |
 | **win/window.c**        | ウィンドウ API。z-order、hit-test、`render_all` / `render_region`、8x8 block occlusion map          |
 | **ipc/message.c**       | タスク間メッセージ。固定長キュー、ブロッキング受信                                                  |
-| **app/main.c**          | デモ。3 ウィンドウ（Timer/Keyboard/Mouse）+ ドラッグ + marching-ants 枠線                           |
+| **app/scene.c**         | `.x` / `.xdf` 共有の通常UI。3 ウィンドウ + 入力・ドラッグ・描画                         |
+| **app/main.c**          | `.xdf` 側の初期化と `ss_run()` 入口。通常UI本体は `scene.c` にある                         |
 
 ### タスク管理 API
 
@@ -384,7 +385,7 @@ uint16_t ss_task_sleep(uint32_t ticks);     /* ss_tick_counter + ticks まで WA
 
 ```mermaid
 graph TD
-    app["app/main.c<br/>（デモアプリ）"]
+    app["app/scene.c<br/>（.x/.xdf共有の通常UI）"]
     win["win/window.c"]
     gfx["gfx/vram.c"]
     ipc["ipc/message.c"]
@@ -410,7 +411,7 @@ graph TD
 
 ## 2 つのマルチタスクモデル
 
-両 version は同じ API（`ss_task_create` / `ss_task_start` / `ss_task_yield` / `ss_task_sleep`）を提供し、`app/main.c`・`standalone/main.c`・`boot/`・共有ライブラリ（`gfx/mem/ipc/win`）も共通。内部実装が異なるのは `os/kernel/{cooperative,preemptive}/` の `scheduler.c`・`interrupts.s`・`premain.c` のみ。
+両 version は同じ API（`ss_task_create` / `ss_task_start` / `ss_task_yield` / `ss_task_sleep`）を提供し、通常UIの `app/scene.c` と共有ライブラリ（`gfx/mem/ipc/win`）を共有する。`.x` の `standalone/main.c` と `.xdf` の `os/app/main.c` はホスト固有の初期化・入口であり、共通のUI本体ではない。内部実装が異なるのは `os/kernel/{cooperative,preemptive}/` の `scheduler.c`・`interrupts.s`・`premain.c` である。
 
 | 観点                     | 協調的 (`SCHED=cooperative`)                                                  | プリエンプティブ (`SCHED=preemptive`)                        |
 | :---                     | :---                                                                          | :---                                                         |
@@ -481,7 +482,7 @@ s30 以前は `.x` は独自の `Win` 構造体 / `zmap[3]` / `bring_to_front` /
 | タイトル/コンテンツ | `ss_win_set_title` / `ss_win_set_content_line` / `ss_win_get_ptr` |
 | 描画コールバック | `ss_win_set_render(win, render_fn)` でウィンドウ単位のカスタム描画を登録 |
 
-**`.x` のみが残す独自実装**（`os/win/window.c` とは別レイヤ）:
+**`.x` ホスト側に残る固有処理**（通常UIの独自実装ではない）:
 
 - 256 色パレット（`-8` フラグ）
 - `wait_vsync` 5 秒 watchdog + MFP 再初期化
@@ -490,7 +491,7 @@ s30 以前は `.x` は独自の `Win` 構造体 / `zmap[3]` / `bring_to_front` /
 - outline save/restore（`ol_save` / `ol_restore`）
 - 独自の `draw_frame`（タイトルストライプ付き）
 
-これらは `os/win/window.c` 内に置くと `.x` の 256 色パレットで色ずれするため、`.x` 側に残している。OS モード側は `os/win/window.c` の `draw_frame`（16 色ハードコード）を使う。
+これらは通常UIの共有 `os/app/scene.c` とは別の、`.x` のパレット・ベンチ・Human68K環境向け処理として残している。通常のウィンドウ生成、入力、ドラッグ、コンテンツ更新、描画は `.x` / `.xdf` とも `scene.c` が使う。
 
 ### ウィンドウ Z-Order 設計（両ビルド共通）
 
@@ -517,6 +518,8 @@ s30 以前は `.x` は独自の `Win` 構造体 / `zmap[3]` / `bring_to_front` /
 
 ```makefile
 SRCS=	main.c \
+		../os/app/scene.c \
+		../os/kernel/main_task.c \
 		../os/kernel/scheduler.c \
 		../os/mem/buddy.c \
 		../os/mem/slab.c \
@@ -525,7 +528,7 @@ SRCS=	main.c \
 ASRCS=	../os/kernel/interrupts.s
 ```
 
-`os/app/main.c` のみ含まれない。`os/win/window.c` / `os/win/win.h` の変更は両ビルドに影響する。
+`os/app/main.c` は `.x` には含まれず、`.xdf` 側の初期化・`ss_run()` 入口である。`.x` は `standalone/main.c` から共有 `os/app/scene.c` を呼ぶ。`os/app/scene.c`、`os/win/window.c`、`os/win/win.h` の変更は両ビルドに影響する。
 
 ## MFP 割り込み設定
 
@@ -767,7 +770,7 @@ OS モードのウィンドウタイトルレンダリングは、スタンド�
 
 SCC 受信 → 割込(0x148) → IPL-ROM ハンドラ($3F003039) → 座標更新 → `_MS_CURGT`/`_MS_GETDT` 返値更新、の全チェーンが機能。s25 の `boot.s`/`premain.c` で `_MS_INIT`/`_MS_CURON` を呼んだことで SCC 受信が有効化されていた。
 
-#### 修正（`ssos/os/app/main.c`、`os/win/window.c`）
+#### 修正（s26当時: `ssos/os/app/main.c`、`os/win/window.c`）
 
 1. **マウス座標**: `_MS_GETDT`Δ累積 → `_MS_CURGT`絶対座標（standalone 互換、同一ソース）
 2. **ソフトウェアカーソル**: GVRAM に XOR 枠線描画（テキストレイヤー非依存）。XOR は自分自身で相殺するため保存バッファ不要
@@ -782,20 +785,20 @@ s26 当時の standalone ビルドは `obj/interrupts.o main.o scheduler.o buddy
 ### s27: 3 ウィンドウのコンテンツ + アクティブ用ハッシュストライプ（解決済み）
 
 - **目標**: OS モードでスタンドアロンと同じ 3 ウィンドウデモ（`Timer` / `Keyboard` / `Mouse`）と、同じグレー+ハッシュストライプのアクティブタイトルを表示する
-- **変更箇所** (`os/app/main.c`, `os/win/window.c`, `os/win/win.h`):
+- **変更箇所（s27当時）** (`os/app/main.c`, `os/win/window.c`, `os/win/win.h`):
   - ウィンドウごとに `WinContent`（タイトル + 3 行 + 前回値）、`render_win` コールバック
   - アクティブ検出: `ss_win_active_z`（表示中の最大 z、`ss_win_render_all` / `ss_win_render_region` で設定）
   - 差分コンテンツ更新: `memcmp` で行ごとに前回値と比較 — 全画面再描画なし
   - Marching-ants ドラッグ枠線: `draw_march_outline`（frame & 7）、下地を `ol_save` / `ol_restore`
   - 領域限定レンダリング: `ss_win_render_region` — ドロップ時は影響領域のみ再描画、全画面ではない
-- **スタンドアロン影響なし**: `standalone/main.c` は `os/app/main.c` や `os/win/window.c` をリンクしない
+- **スタンドアロン影響なし（s27当時）**: 当時の `standalone/main.c` は `os/app/main.c` や `os/win/window.c` をリンクしなかった。これは s30 で変更された
 
 ### s28: ドラッグによる非アクティブウィンドウのタイトル固着（解決済み）
 
 - **症状**: あるウィンドウを前面にドラッグした後、別のドラッグで別のウィンドウが新たな最前面になっても、*ドラッグされなかった*他のウィンドウが古いアクティブタイトル（グレー+ハッシュストライプ）のままになる
 - **根本原因**: `ss_win_render_region` はドロップされた矩形と重なるウィンドウのみ再描画する。`set_z` が `ss_win_active_z` を上げるとき、アクティブを*失った*ウィンドウは再描画領域の外にあるため、古い `is_fg=true` のピクセルが残る
 - **修正**: ドラッグ開始時に、新しい `ss_win_get_z` ゲッター（`win.h` / `window.c`）で従前のアクティブウィンドウの `(x, y, w, h)` を取得。ドラッグ終了時に `ss_win_render_region(new_pos)` の後、`ss_win_render_region(prev_active_pos)` を呼び出してアクティブを失ったウィンドウを再描画
-- **ファイル**: `os/app/main.c`、`os/win/win.h`、`os/win/window.c`。スタンドアロン影響なし
+- **ファイル（s28当時）**: `os/app/main.c`、`os/win/win.h`、`os/win/window.c`。当時はスタンドアロン影響なしだった
 
 ### s29: 初回ドラッグの z 衝突（解決済み）
 
@@ -817,8 +820,8 @@ s26 当時の standalone ビルドは `obj/interrupts.o main.o scheduler.o buddy
   - preemptive 版の `ss_win_set_content_line` を `ss_disable_interrupts()` / `ss_enable_interrupts()` で割り込み保護（メインスレッドの `memcmp` + 描画中の競合を回避）
 - **ビルド**: 4 ターゲット (cooperative OS, preemptive OS, cooperative `.x`, preemptive `.x`) 全て exit 0
 - **メモリ**: `.bss` 63.6KB → 68.3KB、RAM 80KB に 11.7KB 余裕
-- **`.x` のみが残す独自実装**: 256 色パレット、`wait_vsync` 5 秒 watchdog、bitmap save/restore、marching-ants outline、独自の `draw_frame`（タイトルストライプ付き）。これらは `os/win/window.c` 内に置くと `.x` の 256 色モードで色ずれするため、`.x` 側に残している
-- **残課題**: `os/app/main.c` の `WinContent` 配列が `SSWindow.title`/`content` と重複。統合すれば重複コード削減可能（別タスク）
+- **`.x` ホスト側に残る固有処理**: 256 色パレット、`wait_vsync` 5 秒 watchdog、ベンチの bitmap save/restore、marching-ants outline など。通常UIの実装自体は後続の統合で `os/app/scene.c` に共有化された
+- **当時の残課題（解消済み）**: `os/app/main.c` の `WinContent` 配列と `SSWindow.title`/`content` の重複は、後続の `scene.c` 統合で整理された。現在のUI taskは単一であり、旧 `data_thread` は存在しない
 
 ### 現在の制限事項
 
@@ -830,7 +833,6 @@ s26 当時の standalone ビルドは `obj/interrupts.o main.o scheduler.o buddy
 | **OS 版で非アクティブタイトルが「白」に見えない**（s27 残）                      | コードとパレットはスタンドアロンと同一だが視覚的に差がある。要エミュレータ/実機検証。仮説: (1) IOCS 0x94 経由のパレット設定が baremetal で反映されない、(2) CRTMOD 16 のパレットレジスタ挙動の差 |
 | **メモリ確保失敗時のフォールバックなし**                                         | `ss_alloc()` が NULL を返した時、`ss_init()` 内で落ちる。`__ssosram_size` を増やして対応                                                                                                         |
 | **Z-order の 255 到達後折り返し**                                                | 長いセッションで `next_z=255 → 4` に戻り、初回ドラッグと類似の z 衝突が起きる可能性（起動時 z=1..3 とは衝突しないが、過去にドラッグしたウィンドウの z と衝突する可能性）。要リファクタリング案: z=255 ではなく hid の最低 z を探し再採番                                              |
-| **`os/app/main.c` の `WinContent` が SSWindow と重複**（s30 残）                | s30 で `SSWindow` に `title`/`content` フィールドが追加されたが、`os/app/main.c` は依然として独自の `WinContent win_content[APP_MAX_WINS]` 配列を保持。両者を統合すれば重複コード削減可能。別タスク。 |
 
 ### IOCS マウスルーチン番号（参考）
 
@@ -985,7 +987,7 @@ make verify                      # make test + test-qemu + ビルド + verify-ch
 
 判定の軸:
 - **coop か pre か**: `cooperative/` 以下の変更は `ssos_cop.*` のみ、`preemptive/` 以下は `ssos_pre.*` のみ、共通ソースは両方
-- **.x か .xdf か**: `standalone/main.c` は `.x` 専用、`boot/`・`entry.s`・`premain.c`・`app/main.c` は `.xdf` 専用、それ以外は両方
+- **.x か .xdf か**: `standalone/main.c` は `.x` 専用、`boot/`・`entry.s`・`premain.c`・`app/main.c` は `.xdf` 側の初期化・入口、`app/scene.c` と共有サブシステムは両方
 - **`interrupts.s` の関数コンテキスト**: 変更行がどの関数にあるかを `git diff` の hunk から特定し、純粋 ctx switch 関数（`ss_task_yield` / `.resume_task` / `.resume_interrupted` / `.start_task` / `ss_context_switch`）なら **`covered`**（実機不要）、ISR エントリ（`ss_timerd_handler` 等）は `partial`、MFP 初期化・保存復元（`ss_set_interrupts` 等）は `uncovered`（実機必要）。変更関数名を理由に表示。
 
 注意: `covered` でも `SSTask` 構造体レイアウト変更など asm と整合が必要な場合は実機リスク。`scheduler.h`/`kernel.h` は `partial` で注意書きを出す。`ssos/` 配下のパターン外ファイルは安全のため `uncovered` 扱い（実機確認推奨）。

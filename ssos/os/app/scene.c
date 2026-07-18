@@ -39,7 +39,6 @@ static int prev_active_x, prev_active_y, prev_active_w, prev_active_h;
 #define WIN_W     240
 #define WIN_H     (CONTENT_Y + 3 * LINE_H + 4)
 #define LINE_LEN  28
-#define APP_MAX_WINS 4
 
 /* Keep scene rendering in logical colours: the standalone host may select
  * either a 16- or 256-colour CRTC mode before entering this shared code. */
@@ -58,9 +57,12 @@ typedef struct {
     char line[3][30];
     char prev[3][30];
 } WinContent;
-static WinContent win_content[APP_MAX_WINS];
+static WinContent win_content[SS_SCENE_WINDOW_COUNT];
 
 static int wait_vsync(void) {
+    /* Baremetal has no watchdog hook. premain must install V-DISP before
+     * entering this scene; a stopped V-DISP is a hard failure here rather
+     * than an attempt at host-specific MFP recovery. */
     uint32_t last = ss_vsync_counter;
     while (ss_vsync_counter == last);
     return 0;
@@ -97,11 +99,12 @@ static void pad_line(char* s, int n) {
 /* Build the visible windows in z order so incremental text updates can skip
  * pixels covered by a higher window.  Direct text writes would otherwise
  * punch through the single-page compositor while windows overlap. */
-static int build_text_clip_windows(uint16_t target, int clip_wins[3 * 4],
+static int build_text_clip_windows(uint16_t target,
+                                   int clip_wins[SS_SCENE_WINDOW_COUNT * 4],
                                    int* target_pos) {
-    uint16_t order[3];
+    uint16_t order[SS_SCENE_WINDOW_COUNT];
     int n = 0;
-    for (int id = 1; id <= 3; id++) {
+    for (int id = 1; id <= SS_SCENE_WINDOW_COUNT; id++) {
         SSWindow* w = ss_win_get_ptr((uint16_t)id);
         if (w == NULL || !(w->flags & SS_WIN_VISIBLE)) continue;
         int j = n;
@@ -125,10 +128,10 @@ static int build_text_clip_windows(uint16_t target, int clip_wins[3 * 4],
 }
 
 static void draw_content_dirty(uint16_t id) {
-    if (id == 0 || id > APP_MAX_WINS) return;
+    if (id == 0 || id > SS_SCENE_WINDOW_COUNT) return;
     int x = ss_win_get_x(id), y = ss_win_get_y(id);
     WinContent* c = &win_content[id - 1];
-    int clip_wins[3 * 4];
+    int clip_wins[SS_SCENE_WINDOW_COUNT * 4];
     int target_pos;
     int nclip = build_text_clip_windows(id, clip_wins, &target_pos);
     for (int i = 0; i < 3; i++) {
@@ -189,7 +192,7 @@ static void draw_win_text(int x, int y, const char* text, uint16_t fg, uint16_t 
 }
 
 static void render_win(SSWindow* self, const SSGfxRect* clip) {
-    if (self->id == 0 || self->id > APP_MAX_WINS) return;
+    if (self->id == 0 || self->id > SS_SCENE_WINDOW_COUNT) return;
     WinContent* c = &win_content[self->id - 1];
     int x = self->x, y = self->y, w = self->w, h = self->h;
     int is_fg = (self->z == ss_win_active_z);
@@ -315,9 +318,9 @@ static void drag_begin(int mx, int my, int hid) {
      * layout. Renumber after saving the previous active window, before the
      * counter reaches that range again, so every visible window stays unique. */
     if (next_z >= 255) {
-        uint16_t order[APP_MAX_WINS];
+        uint16_t order[SS_SCENE_WINDOW_COUNT];
         int n = 0;
-        for (int id = 1; id <= APP_MAX_WINS; id++) {
+        for (int id = 1; id <= SS_SCENE_WINDOW_COUNT; id++) {
             SSWindow* w = ss_win_get_ptr((uint16_t)id);
             if (w == NULL || !(w->flags & SS_WIN_VISIBLE)) continue;
             int j = n;
@@ -435,6 +438,8 @@ void ss_scene_run(const SSSceneHooks *hooks, SSSceneStats *stats) {
         cur_prev_x = mx; cur_prev_y = my;
 
 #ifndef LOCAL_MODE
+        /* Deferred work is posted by baremetal ISR paths.  The standalone
+         * host intentionally does not link work_queue.c or this queue. */
         ss_work_drain(&ss_main_work_queue);
 #endif
         ss_process_wakeups();

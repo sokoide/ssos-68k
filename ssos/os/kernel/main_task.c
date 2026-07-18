@@ -3,10 +3,13 @@
 #include <string.h>
 
 /*
- * The context switch assembly recognizes context == stack_base as a task
- * that has never run and jumps to its entry point.  The current C entry point
- * already has a live stack, so a non-stack sentinel keeps it on the resume
- * path.  This TCB is intentionally outside tcb_table: it is not allocated by
+ * The context switch assembly recognizes a created task only when
+ * context == stack_base and entry is non-NULL. The C entry point has no
+ * synthetic start frame or entry, so it uses the same sentinel until its
+ * first yield or Timer D switch saves the live stack into context. The
+ * bootstrap ordering still matters: registration is valid only while this
+ * TCB is ss_curr_task; a switch saves ss_curr_task before scheduler selection.
+ * This TCB is intentionally outside tcb_table: it is not allocated by
  * ss_task_create() and must not consume a worker-task slot.
  */
 #define SS_MAIN_TASK_STACK_SENTINEL ((void*)1)

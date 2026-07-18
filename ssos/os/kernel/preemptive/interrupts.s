@@ -330,12 +330,16 @@ ss_context_switch:
 		move.l	ss_scheduled_task, a1
 		move.l	(a1), sp
 
-		| Check if this is a new (never-run) task
-		| New task: context was initialized to stack_base in ss_task_create
+		| Check if this is a new (never-run) task.  A created task has
+		| context == stack_base and a non-NULL entry.  The bootstrap main
+		| task uses the same stack sentinel but deliberately has no entry.
 		move.l	(a1), a0
 		move.l	12(a1), d0
 		cmp.l	a0, d0
-		beq.w	.start_task
+		bne.s	.resume_existing
+		tst.l	20(a1)
+		bne.w	.start_task
+	.resume_existing:
 
 		| Check resume_type at TCB offset 31
 		cmpi.b	#0, 31(a1)

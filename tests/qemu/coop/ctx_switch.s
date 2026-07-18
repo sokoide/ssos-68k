@@ -66,7 +66,7 @@ ss_task_yield:
 # ----------------------------------------------------------------------------
 # .resume_task - switch to ss_scheduled_task's saved stack and resume it.
 # Three cases:
-#   * new task      (context == stack_base) -> jump to entry
+#   * new task      (context == stack_base && entry != NULL) -> jump to entry
 #   * yielded       (resume_type == 1)      -> pop regs/SR/PC, jmp (no rte)
 #   * interrupted   (resume_type == 0)      -> pop regs, rte  [unused here]
 # ----------------------------------------------------------------------------
@@ -74,11 +74,14 @@ ss_task_yield:
         move.l  ss_scheduled_task, a1
         move.l  (a1), sp             | adopt the target task's stack
 
-        | new-task test: context == stack_base?
+        | new-task test: context == stack_base and entry is valid?
         move.l  (a1), a0
         move.l  12(a1), d0
         cmp.l   a0, d0
-        beq.w   .start_task
+        bne.s   .resume_existing
+        tst.l   20(a1)
+        bne.w   .start_task
+.resume_existing:
 
         | resume_type at offset 31
         cmpi.b  #0, 31(a1)

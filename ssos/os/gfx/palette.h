@@ -9,7 +9,6 @@ typedef enum {
     SS_PALETTE_WHITE,
     SS_PALETTE_LIGHT_GRAY,
     SS_PALETTE_MEDIUM_GRAY,
-    SS_PALETTE_DARK_GRAY,
 } SSPalette;
 
 uint16_t ss_palette_index(SSPalette color);

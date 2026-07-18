@@ -14,36 +14,8 @@ void clear_bss(void) {
     }
 }
 
-/* 16-color palette (same as standalone/main.c) */
-#define PAL_RGB(r, g, b) \
-    (uint16_t)((((g) & 0x1F) << 11) | (((r) & 0x1F) << 6) | \
-               (((b) & 0x1F) << 1) | 1)
-
 static void set_palette(void) {
     ss_palette_program_default();
-#if 0
-    static const uint16_t cmap[16] = {
-        PAL_RGB(0, 0, 0),       /*  0: Black */
-        PAL_RGB(0, 0, 31),      /*  1: Blue */
-        PAL_RGB(0, 31, 0),      /*  2: Green */
-        PAL_RGB(0, 31, 31),     /*  3: Cyan */
-        PAL_RGB(31, 0, 0),      /*  4: Red */
-        PAL_RGB(31, 0, 31),     /*  5: Magenta */
-        PAL_RGB(31, 31, 0),     /*  6: Yellow */
-        PAL_RGB(31, 31, 31),    /*  7: White */
-        PAL_RGB(15, 15, 15),    /*  8: Dark Gray */
-        PAL_RGB(15, 15, 31),    /*  9: Light Blue */
-        PAL_RGB(15, 31, 15),    /* 10: Light Green */
-        PAL_RGB(15, 31, 31),    /* 11: Light Cyan */
-        PAL_RGB(31, 15, 15),    /* 12: Light Red */
-        PAL_RGB(31, 15, 31),    /* 13: Light Magenta */
-        PAL_RGB(31, 31, 15),    /* 14: Light Yellow */
-        PAL_RGB(0, 0, 0),       /* 15: Black (duplicate) */
-    };
-    for (int i = 0; i < 16; i++) {
-        _iocs_gpalet(i, cmap[i]);
-    }
-#endif
 }
 
 void premain(void) {
@@ -65,7 +37,7 @@ void premain(void) {
         *crtc_r20 = r20;
     }
 
-    /* Set the 16-color logical palette and program its hardware entries. */
+    /* Set the default palette for the selected graphics mode. */
     ss_gfx_set_mode(SS_CRTMOD_16);
     set_palette();
 

@@ -17,18 +17,20 @@ TIMEOUT_SECS ?= 2
 
 SSOS   = ../../../ssos/os
 
-# t02_register_save and t03_sleep_wakeup are added in a later step.
-TESTS = t01_round_robin t02_register_save t03_sleep_wakeup
+# t04_main_task_register exercises the production main-task bootstrap.
+TESTS = t01_round_robin t02_register_save t03_sleep_wakeup t04_main_task_register
 
 # Shared objects
 stub.o: ../common/stub.c
 	$(CC) $(CFLAGS) -c $< -o $@
 sched.o: $(SSOS)/kernel/preemptive/scheduler.c
 	$(CC) $(CFLAGS) -c $< -o $@
+main_task.o: $(SSOS)/kernel/main_task.c
+	$(CC) $(CFLAGS) -c $< -o $@
 preempt_ctx_switch.o: preempt_ctx_switch.s
 	$(CC) $(ASFLAGS) -c $< -o $@
 
-COMMON_OBJS = stub.o sched.o preempt_ctx_switch.o
+COMMON_OBJS = stub.o sched.o main_task.o preempt_ctx_switch.o
 
 .PHONY: all run clean
 all: $(addsuffix .elf,$(TESTS))
