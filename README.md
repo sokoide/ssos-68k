@@ -6,6 +6,7 @@
 
 - [前提条件](#前提条件)
 - [ビルド](#ビルド)
+- [.x / .xdf UI統合の範囲](#x--xdf-ui統合の範囲)
 - [メモリマップ](#メモリマップ)
 - [ブートフロー](#ブートフロー)
 - [アーキテクチャ概要](#アーキテクチャ概要)
@@ -113,6 +114,25 @@ cp runtime.txt runtime-pre.txt
 ```
 
 `runtime.txt` には終了までの `phase=runtime` 集計が保存される。`rounds` は描画frame数、`vsync` は計測期間のVSync数であり、異なる実行時間でも `gvram write / rounds` や `glyph clip / rounds` を比較できる。`-bench` 実行時は従来どおり `bench.txt` だけを出力する。
+
+## .x / .xdf UI統合の範囲
+
+通常操作のUIは、Human68K版（`.x`）とベアメタル版（`.xdf`）で同じ
+`os/app/scene.c` を実行する。3ウィンドウの生成、入力、ドラッグ、差分本文描画、
+z-order、論理パレット、main task登録は共有である。
+
+| 境界 | 方針 | 理由 |
+| :--- | :--- | :--- |
+| 通常UI (`scene.c`) | 共有 | 描画・入力・ドラッグの挙動を両成果物で一致させる。 |
+| UI task数 | **単一taskに統一** | 旧standaloneの`data_thread`は採用しない。本文更新と描画の同時実行を避け、割込み時の文字列snapshot競合を持ち込まないため。スケジューラ自体の複数task機能は維持する。 |
+| UI fixture | 共有 | 3ウィンドウの座標、z、タイトルは`SSSceneWindowSpec`で共有する。 |
+| ベンチ実行と出力 | **standalone専用** | `-bench`、`bench.txt`、`runtime.txt`、Human68KファイルI/O、VSync watchdogは`.x`ホストの責務である。`.xdf`へDOS依存を持ち込まない。 |
+| ベンチのprimitive描画 | **standalone専用** | 通常UIのcallback描画と混ぜず、既存の性能ベースラインを維持する。ベンチは共有fixtureだけを使い、計測フェーズ自体は共有しない。 |
+| 初期化・終了 | ホスト固有 | `.x`はSupervisor移行とHuman68K状態復元、`.xdf`はIPL/CRTC/MFP/固定メモリ初期化を必要とし、共通化しない。 |
+
+この分離は未完了ではなく意図的な設計である。ベンチ実行部の共有や`data_thread`の
+再導入は、得られる重複削減よりも、性能基準の変更と並行更新競合のリスクが大きいため
+行わない。
 
 ### 性能改善の採用結果と今後の計画
 
