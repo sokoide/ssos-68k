@@ -464,7 +464,7 @@ ss_timerd_handler:
 
 ## スタンドアロン vs OS モード
 
-- **スタンドアロンモード** (`.x`): `LOCAL_MODE` 定義ありで Human68K 実行形式としてコンパイル。**s30 からは** `os/win/window.c` もリンクし、`.xdf` と同じ z-order / hit-test / コンテンツ管理 API を使う。レンダリングループ・marching-ants・watchdog など `.x` 固有の UX 層は維持。開発イテレーションが高速
+- **スタンドアロンモード** (`.x`): `LOCAL_MODE` を定義して Human68K 実行形式としてコンパイルする。`os/win/window.c` と共有通常UI `os/app/scene.c` をリンクするため、`.xdf` と同じ z-order、ヒットテスト、コンテンツ管理、描画・ドラッグ処理を使う。グラフィックスモードとパレットの選択、V-sync watchdog、`SS_PROFILE_GFX=1` 時のベンチはホスト固有だが、通常UIのメインループは共有である。開発時の反復が速い。
 - **OS モード** (`.xdf`): カスタムブートローダを持つ完全起動可能システム。スタンドアロンモードから切り替える際は `make clean` が必要
 
 ### s30 後の統一: ウィンドウ実装の共有
@@ -484,14 +484,13 @@ s30 以前は `.x` は独自の `Win` 構造体 / `zmap[3]` / `bring_to_front` /
 
 **`.x` ホスト側に残る固有処理**（通常UIの独自実装ではない）:
 
-- 256 色パレット（`-8` フラグ）
-- `wait_vsync` 5 秒 watchdog + MFP 再初期化
-- `save_win_bitmap` / `restore_win_bitmap`（ドラッグ中ウィンドウ退避）
-- marching-ants ドラッグ枠線（`draw_march_outline`）
-- outline save/restore（`ol_save` / `ol_restore`）
-- 独自の `draw_frame`（タイトルストライプ付き）
+- グラフィックスモードとパレットの選択（`-8`: 256色、`-16`: 16色）
+- `wait_vsync` の5秒 watchdog と MFP 再初期化
+- `SS_PROFILE_GFX=1` 時のベンチ（`-bench N`）。`draw_frame`、`redraw_*`、`bench_drag_region` などのプリミティブ描画はベンチ専用であり、通常UIでは使わない
+- `bench.txt` / `runtime.txt` の出力と Human68K ファイル I/O
+- TRAP #14 とベクタの設定・復元、`_exit` による DOS への復帰
 
-これらは通常UIの共有 `os/app/scene.c` とは別の、`.x` のパレット・ベンチ・Human68K環境向け処理として残している。通常のウィンドウ生成、入力、ドラッグ、コンテンツ更新、描画は `.x` / `.xdf` とも `scene.c` が使う。
+これらは通常UIとは別の、`.x` ホスト固有の初期化・終了・ベンチ処理として残している。通常のウィンドウ生成、入力、ドラッグ、コンテンツ更新、描画は `.x` / `.xdf` とも共有 `scene.c` が担う。
 
 ### ウィンドウ Z-Order 設計（両ビルド共通）
 
