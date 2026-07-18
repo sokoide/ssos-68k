@@ -3,6 +3,7 @@
 #include "../kernel/work_queue.h"
 #include "../mem/memory.h"
 #include "../gfx/gfx.h"
+#include "../gfx/palette.h"
 #include "../win/win.h"
 #include "../ipc/ipc.h"
 #include "../util/numfmt.h"
@@ -45,12 +46,11 @@ static int prev_active_x, prev_active_y, prev_active_w, prev_active_h;
 #define LINE_LEN  28
 #define APP_MAX_WINS 4
 
-/* 16-color palette indices (set up by premain's palette block). Naming the
- * literals keeps the rendering code readable instead of sprinkling magic
- * numbers through every draw call. */
-#define PAL_BLACK 0   /* window borders, text foreground, marching ants */
-#define PAL_WHITE 7   /* content background, inactive title bar          */
-#define PAL_GRAY  8   /* active (focused) title bar                      */
+/* Keep scene rendering in logical colours: the standalone host may select
+ * either a 16- or 256-colour CRTC mode before entering this shared code. */
+#define PAL_BLACK ss_palette_index(SS_PALETTE_BLACK)
+#define PAL_WHITE ss_palette_index(SS_PALETTE_WHITE)
+#define PAL_GRAY  ss_palette_index(SS_PALETTE_LIGHT_GRAY)
 
 typedef struct {
     char title[20];
@@ -321,9 +321,30 @@ static void drag_begin(int mx, int my, int hid) {
     drag_oy = my - ss_win_get_y(hid);
     drag_w  = ss_win_get_w(hid);
     drag_h  = ss_win_get_h(hid);
+
+    /* z is a uint16_t, but this scene reserves the low range for its initial
+     * layout. Renumber after saving the previous active window, before the
+     * counter reaches that range again, so every visible window stays unique. */
+    if (next_z >= 255) {
+        uint16_t order[APP_MAX_WINS];
+        int n = 0;
+        for (int id = 1; id <= APP_MAX_WINS; id++) {
+            SSWindow* w = ss_win_get_ptr((uint16_t)id);
+            if (w == NULL || !(w->flags & SS_WIN_VISIBLE)) continue;
+            int j = n;
+            while (j > 0 && ss_win_get_z(order[j - 1]) > w->z) {
+                order[j] = order[j - 1];
+                j--;
+            }
+            order[j] = (uint16_t)id;
+            n++;
+        }
+        for (int i = 0; i < n; i++)
+            ss_win_set_z(order[i], (uint16_t)(i + 1));
+        next_z = (uint16_t)(n + 1);
+    }
     ss_win_set_z(hid, next_z);
-    if (next_z >= 255) next_z = 3;
-    else next_z++;
+    next_z++;
 
     int ox = ss_win_get_x(hid), oy = ss_win_get_y(hid);
     ss_win_hide(hid);
