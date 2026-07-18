@@ -883,12 +883,12 @@ int main(int argc, char** argv) {
 
 #if SS_PROFILE_GFX
     if (run_bench) {
-        win_ids[0] = ss_win_create(30, 15, WIN_W, WIN_H, 1);
-        win_ids[1] = ss_win_create(180, 60, WIN_W, WIN_H, 2);
-        win_ids[2] = ss_win_create(80, 120, WIN_W, WIN_H, 3);
-        ss_win_set_title(win_ids[0], "Timer");
-        ss_win_set_title(win_ids[1], "Keyboard");
-        ss_win_set_title(win_ids[2], "Mouse");
+        for (int i = 0; i < SS_SCENE_WINDOW_COUNT; i++) {
+            const SSSceneWindowSpec* spec = &ss_scene_default_windows[i];
+            win_ids[i] = ss_win_create(spec->x, spec->y,
+                                       spec->w, spec->h, spec->z);
+            ss_win_set_title(win_ids[i], spec->title);
+        }
         run_benchmark(bench_rounds);
         goto cleanup;
     }

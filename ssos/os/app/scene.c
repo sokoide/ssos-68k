@@ -47,6 +47,12 @@ static int prev_active_x, prev_active_y, prev_active_w, prev_active_h;
 #define PAL_WHITE ss_palette_index(SS_PALETTE_WHITE)
 #define PAL_GRAY  ss_palette_index(SS_PALETTE_LIGHT_GRAY)
 
+const SSSceneWindowSpec ss_scene_default_windows[SS_SCENE_WINDOW_COUNT] = {
+    {30, 15, WIN_W, WIN_H, 1, "Timer"},
+    {180, 60, WIN_W, WIN_H, 2, "Keyboard"},
+    {80, 120, WIN_W, WIN_H, 3, "Mouse"},
+};
+
 typedef struct {
     char title[20];
     char line[3][30];
@@ -383,15 +389,16 @@ static int handle_drag(int mx, int my, int left) {
 }
 
 void ss_scene_run(const SSSceneHooks *hooks, SSSceneStats *stats) {
-    uint16_t w_timer = ss_win_create(30, 15, WIN_W, WIN_H, 1);
-    uint16_t w_key   = ss_win_create(180, 60, WIN_W, WIN_H, 2);
-    uint16_t w_mouse = ss_win_create(80, 120, WIN_W, WIN_H, 3);
-    ss_win_set_render(w_timer, render_win);
-    ss_win_set_render(w_key, render_win);
-    ss_win_set_render(w_mouse, render_win);
-    strcpy(win_content[w_timer - 1].title, "Timer");
-    strcpy(win_content[w_key   - 1].title, "Keyboard");
-    strcpy(win_content[w_mouse - 1].title, "Mouse");
+    uint16_t ids[SS_SCENE_WINDOW_COUNT];
+    for (int i = 0; i < SS_SCENE_WINDOW_COUNT; i++) {
+        const SSSceneWindowSpec* spec = &ss_scene_default_windows[i];
+        ids[i] = ss_win_create(spec->x, spec->y, spec->w, spec->h, spec->z);
+        strcpy(win_content[ids[i] - 1].title, spec->title);
+        ss_win_set_render(ids[i], render_win);
+    }
+    uint16_t w_timer = ids[0];
+    uint16_t w_key   = ids[1];
+    uint16_t w_mouse = ids[2];
 
     ss_win_render_all();
 

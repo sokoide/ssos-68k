@@ -17,6 +17,19 @@ typedef struct {
     uint32_t vsyncs;
 } SSSceneStats;
 
+#define SS_SCENE_WINDOW_COUNT 3
+
+/* The normal UI and standalone benchmark use the same model layout.  Their
+ * renderers deliberately remain separate: the benchmark measures primitive
+ * compositor paths while the UI uses its content-aware callback. */
+typedef struct {
+    int x, y, w, h;
+    uint16_t z;
+    const char *title;
+} SSSceneWindowSpec;
+
+extern const SSSceneWindowSpec ss_scene_default_windows[SS_SCENE_WINDOW_COUNT];
+
 void ss_scene_run(const SSSceneHooks *hooks, SSSceneStats *stats);
 int ss_scene_last_key(void);
 
