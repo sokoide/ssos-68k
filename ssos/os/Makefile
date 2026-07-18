@@ -30,7 +30,8 @@ SRCS= \
 	gfx/vram.c \
 	win/window.c \
 	ipc/message.c \
-	app/main.c
+	app/main.c \
+	app/scene.c
 ASRCS= \
 	kernel/entry.s \
 	$(KDIR)/interrupts.s
