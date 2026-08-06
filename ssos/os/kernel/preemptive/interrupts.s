@@ -242,7 +242,8 @@ ss_vdisp_handler:
 		|   state      = 28  (uint8_t)
 		|   pri        = 29  (uint8_t)
 		|   ctx_level  = 30  (uint8_t)
-		|   pad        = 31  (uint8_t) = resume_type
+		|   resume_type = 31  (uint8_t)
+		|   sleep_next  = 32  (SSTask*)
 		|
 		| resume_type: 0 = timer-interrupted (rte safe)
 		|              1 = yielded (manual SR/PC restore)

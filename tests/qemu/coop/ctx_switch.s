@@ -10,7 +10,8 @@
 #   +0   context     (saved SP)
 #   +12  stack_base
 #   +20  entry
-#   +31  pad         (used as resume_type: 1 = yielded, 0 = interrupted)
+#   +31  resume_type (1 = yielded, 0 = interrupted)
+#   +32  sleep_next  (not used by the context switch)
 
         .section .text
         .align  2

@@ -86,6 +86,29 @@ TEST(task_create_bad_pri_rejected) {
     ASSERT_EQ(ss_task_create(&info), (uint16_t)SS_ERR_PARAM);
 }
 
+TEST(task_create_bad_custom_stack_rejected) {
+    ss_sched_init();
+    SSTaskInfo info = {
+        .entry = dummy_entry,
+        .pri = 1,
+        .stack_size = 6,
+        .stack = (void*)(uintptr_t)1,
+    };
+    ASSERT_EQ(ss_task_create(&info), (uint16_t)SS_ERR_PARAM);
+}
+
+TEST(task_create_missing_arena_does_not_consume_slot) {
+    ss_sched_init();
+    uint8_t* arena = ss_task_stack_base;
+    ss_task_stack_base = NULL;
+
+    ASSERT_EQ(make_task(1), (uint16_t)SS_ERR_STATE);
+    ASSERT_EQ(tcb_table[0].state, SS_TS_NONE);
+
+    ss_task_stack_base = arena;
+    ASSERT_EQ(make_task(1), 1);
+}
+
 TEST(task_create_returns_ascending_ids) {
     ss_sched_init();
     uint16_t a = make_task(1);
@@ -148,13 +171,15 @@ TEST(context_switch_rotates_same_pri) {
 TEST(task_sleep_waits_and_wakes) {
     ss_sched_init();
     uint16_t a = make_task(1);
+    uint16_t b = make_task(1);
     ss_task_start(a);
+    ss_task_start(b);
     SSTask* t = &tcb_table[a - 1];
 
     /* Sleep 10 ticks: state -> WAIT, removed from ready queue. */
     ASSERT_EQ(ss_task_sleep(10), (uint16_t)SS_OK);
     ASSERT_EQ(t->state, SS_TS_WAIT);
-    ASSERT_EQ(ready_queue.pri_bitmap, 0);
+    ASSERT_EQ(ss_curr_task, &tcb_table[b - 1]);
 
     /* Not yet elapsed: wakeups keeps it asleep. */
     ADVANCE_TICK(5);
@@ -173,6 +198,43 @@ TEST(task_sleep_no_current_fails) {
     ASSERT_EQ(ss_task_sleep(5), (uint16_t)SS_ERR_STATE);
 }
 
+TEST(task_sleep_without_runnable_peer_fails) {
+    ss_sched_init();
+    uint16_t id = make_task(1);
+    ss_task_start(id);
+
+    ASSERT_EQ(ss_task_sleep(5), (uint16_t)SS_ERR_STATE);
+    ASSERT_EQ(tcb_table[id - 1].state, SS_TS_READY);
+    ASSERT_EQ(ss_sched_pick(), &tcb_table[id - 1]);
+}
+
+TEST(task_sleep_rejects_ambiguous_long_delay) {
+    ss_sched_init();
+    ASSERT_EQ(ss_task_sleep(SS_MAX_SLEEP_TICKS + 1u),
+              (uint16_t)SS_ERR_PARAM);
+}
+
+TEST(task_sleep_wakes_across_tick_wrap) {
+    ss_sched_init();
+    uint16_t a = make_task(1);
+    uint16_t b = make_task(1);
+    ss_task_start(a);
+    ss_task_start(b);
+    SSTask* sleeper = &tcb_table[a - 1];
+
+    ss_tick_counter = UINT32_MAX - 3u;
+    ASSERT_EQ(ss_task_sleep(8), (uint16_t)SS_OK);
+    ASSERT_EQ(sleeper->wait_until, 4u);
+
+    ss_tick_counter = 0;
+    ss_do_wakeups();
+    ASSERT_EQ(sleeper->state, SS_TS_WAIT);
+
+    ss_tick_counter = 4;
+    ss_do_wakeups();
+    ASSERT_EQ(sleeper->state, SS_TS_READY);
+}
+
 void run_scheduler_tests(void) {
     RUN_TEST(sched_init_clears_state);
     RUN_TEST(pick_empty_returns_null);
@@ -180,6 +242,8 @@ void run_scheduler_tests(void) {
     RUN_TEST(pick_prefers_lower_pri_number);
     RUN_TEST(task_create_null_entry_rejected);
     RUN_TEST(task_create_bad_pri_rejected);
+    RUN_TEST(task_create_bad_custom_stack_rejected);
+    RUN_TEST(task_create_missing_arena_does_not_consume_slot);
     RUN_TEST(task_create_returns_ascending_ids);
     RUN_TEST(task_create_exhaustion);
     RUN_TEST(task_start_moves_to_ready);
@@ -188,4 +252,7 @@ void run_scheduler_tests(void) {
     RUN_TEST(context_switch_rotates_same_pri);
     RUN_TEST(task_sleep_waits_and_wakes);
     RUN_TEST(task_sleep_no_current_fails);
+    RUN_TEST(task_sleep_without_runnable_peer_fails);
+    RUN_TEST(task_sleep_rejects_ambiguous_long_delay);
+    RUN_TEST(task_sleep_wakes_across_tick_wrap);
 }

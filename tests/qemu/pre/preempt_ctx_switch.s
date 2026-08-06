@@ -17,7 +17,8 @@
 #   * switch threshold is 1 (switch every tick) for a clear 1212 pattern;
 #     the real kernel uses 10 (see interrupts.s:264)
 #
-# SSTask layout: context=0, stack_base=12, entry=20, pad(resume_type)=31.
+# SSTask layout: context=0, stack_base=12, entry=20, resume_type=31,
+# sleep_next=32.
 
         .section .text
         .align  2

@@ -1,5 +1,5 @@
 # Cooperative QEMU scheduler tests.
-# Builds the REAL ssos/os/kernel/cooperative/scheduler.c (unmodified) plus a
+# Builds the real shared scheduler and cooperative wakeup policy plus a
 # QEMU port of the cooperative context switch (ctx_switch.s) and runs each
 # test under qemu-system-m68k -M virt. Tests yield via movem.l/jmp.
 
@@ -22,14 +22,16 @@ TESTS = t01_single_yield t02_round_robin t03_register_save t04_main_task_registe
 # Shared objects
 stub.o: ../common/stub.c
 	$(CC) $(CFLAGS) -c $< -o $@
-sched.o: $(SSOS)/kernel/cooperative/scheduler.c
+sched.o: $(SSOS)/kernel/scheduler.c
+	$(CC) $(CFLAGS) -c $< -o $@
+wakeups.o: $(SSOS)/kernel/cooperative/wakeups.c
 	$(CC) $(CFLAGS) -c $< -o $@
 main_task.o: $(SSOS)/kernel/main_task.c
 	$(CC) $(CFLAGS) -c $< -o $@
 ctx_switch.o: ctx_switch.s
 	$(CC) $(ASFLAGS) -c $< -o $@
 
-COMMON_OBJS = stub.o sched.o main_task.o ctx_switch.o
+COMMON_OBJS = stub.o sched.o wakeups.o main_task.o ctx_switch.o
 
 .PHONY: all run clean
 all: $(addsuffix .elf,$(TESTS))

@@ -20,7 +20,8 @@ TARGET=SSOS.X
 SRCS= \
 	kernel/premain.c \
 	kernel/main_task.c \
-	$(KDIR)/scheduler.c \
+	kernel/scheduler.c \
+	$(KDIR)/wakeups.c \
 	kernel/work_queue.c \
 	util/numfmt.c \
 	mem/buddy.c \

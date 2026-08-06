@@ -3,6 +3,8 @@
 
 #include "kernel.h"
 
+#define SS_MAX_SLEEP_TICKS 0x7FFFFFFFUL
+
 typedef struct SSTask SSTask;
 struct SSTask {
     void*    context;      /* Saved stack pointer */
@@ -15,8 +17,17 @@ struct SSTask {
     uint8_t  state;
     uint8_t  pri;
     uint8_t  ctx_level;    /* SS_CTX_MINIMAL/NORMAL/FULL */
-    uint8_t  pad;
+    uint8_t  resume_type;  /* 0 = interrupted, 1 = yielded */
+    SSTask*  sleep_next;
 };
+
+#if UINTPTR_MAX == UINT32_MAX
+_Static_assert(offsetof(SSTask, context) == 0, "SSTask.context ABI changed");
+_Static_assert(offsetof(SSTask, stack_base) == 12, "SSTask.stack_base ABI changed");
+_Static_assert(offsetof(SSTask, entry) == 20, "SSTask.entry ABI changed");
+_Static_assert(offsetof(SSTask, resume_type) == 31, "SSTask.resume_type ABI changed");
+_Static_assert(offsetof(SSTask, sleep_next) == 32, "SSTask.sleep_next ABI changed");
+#endif
 
 typedef struct {
     void* (*entry)(void*);

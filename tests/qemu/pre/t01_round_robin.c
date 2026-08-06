@@ -1,8 +1,8 @@
 /* t01_round_robin.c - preemptive (Timer D ISR) scheduler test under QEMU.
  *
  * This is the test Phase B and Native tests cannot do: drive the SSOS
- * preemptive scheduler through the REAL ISR path. The unmodified
- * preemptive/scheduler.c runs on a real m68k; preempt_ctx_switch.s is the
+ * preemptive scheduler through the REAL ISR path. The unmodified shared
+ * scheduler.c runs on a real m68k; preempt_ctx_switch.s is the
  * Timer D handler (driven via trap #0) plus the resume_task/rte machinery.
  *
  * main + two workers all fire `trap #0` to trigger preemption. Each trap

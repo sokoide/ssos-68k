@@ -27,7 +27,8 @@ KDIR=../os/kernel/$(SCHED)
 SRCS=	main.c \
 		../os/app/scene.c \
 		../os/kernel/main_task.c \
-		$(KDIR)/scheduler.c \
+		../os/kernel/scheduler.c \
+		$(KDIR)/wakeups.c \
 		../os/mem/buddy.c \
 		../os/mem/slab.c \
 		../os/gfx/profile.c \

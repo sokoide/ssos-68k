@@ -4,8 +4,8 @@
 # logic modules (numfmt/buddy/slab) need no stubs; HW/asm dependencies are
 # stubbed in framework/test_mocks.c (Phase 2 onwards).
 #
-# Scheduler variant: pass SCHED=preemptive to compile against the preemptive
-# scheduler.c. Default is cooperative.
+# Scheduler variant: pass SCHED=preemptive to compile the matching wakeup
+# policy. The scheduler core is shared. Default is cooperative.
 
 SCHED ?= cooperative
 ifeq ($(SCHED),cooperative)
@@ -33,7 +33,9 @@ OS_SRCS = \
 	$(SSOS)/util/numfmt.c \
 	$(SSOS)/mem/buddy.c \
 	$(SSOS)/mem/slab.c \
-	$(SCHED_DIR)/scheduler.c \
+	$(SSOS)/kernel/scheduler.c \
+	$(SCHED_DIR)/wakeups.c \
+	$(SSOS)/kernel/work_queue.c \
 	$(SSOS)/win/window.c \
 	$(SSOS)/ipc/message.c
 
@@ -45,6 +47,7 @@ UNIT_SRCS = \
 	unit/test_numfmt.c \
 	unit/test_mem.c \
 	unit/test_scheduler.c \
+	unit/test_work_queue.c \
 	unit/test_window.c \
 	unit/test_ipc.c
 

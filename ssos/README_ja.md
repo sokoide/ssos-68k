@@ -202,7 +202,7 @@ TRAP #14 は CPU の trap 命令で SR+PC がスタックに push されるた�
 
 ### 設計方針
 
-Timer D 割り込み (200Hz) はティック加算と `ss_do_wakeups()` (`ss_task_sleep` で待機中のタスクを起床) のみを行い、強制コンテキストスイッチは行わない。タスクの切り替えはタスク自身が `ss_task_yield()` を呼び出した時のみ発生する。
+Timer D 割り込み (200Hz) はティック加算と起床要求フラグの設定だけを行い、強制コンテキストスイッチは行わない。メインループがフラグを受けて `ss_do_wakeups()` を実行し、タスクの切り替えはタスク自身が `ss_task_yield()` を呼び出した時のみ発生する。
 
 ### `ss_task_yield` の動作
 
@@ -222,7 +222,7 @@ Timer D 割り込み (200Hz) はティック加算と `ss_do_wakeups()` (`ss_tas
 
 - TCDCR: prescaler /200 (0xF7)。4MHz / 200 = 20kHz
 - TDDR: 100。20kHz / 100 = **200Hz** (5ms/ティック)
-- ハンドラ内容: ティック加算 → `ss_do_wakeups()` → `ss_yield_count` 加算 → RTE (コンテキストスイッチなし)
+- ハンドラ内容: ティック加算 → 起床要求フラグ設定 → RTE (コンテキストスイッチなし)
 - `ss_task_sleep()` の引数は 200Hz tick 単位 (1 tick = 5ms)。例: `ss_task_sleep(40)` = 200ms。
 
 ## セキュリティ・安全機能

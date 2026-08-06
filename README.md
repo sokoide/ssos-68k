@@ -1,6 +1,6 @@
 # SSOS for X68000
 
-**SSOS** は X68000（MC68000 プロセッサ）向けの小型オペレーティングシステムである。協調的マルチタスクとプリエンプティブマルチタスクの 2 つのモデルを、ビルド時オプション `SCHED=cooperative|preemptive` で切り替えられる単一の統合ソースツリー（`ssos/`）として実装している。グラフィックス管理、マウス対応ウィンドウシステム、メモリ管理を備える。Human68K 上で動作するスタンドアロン版（`.x`）と、XDF ディスクイメージから直接 IPL 起動するベアメタル版（`.xdf`）の 2 形態でビルド可能。通常UIは `os/app/scene.c` を `.x` / `.xdf` で共有し、各形式の初期化・終了入口はホスト側に分かれる。スケジューラ実装は `os/kernel/{cooperative,preemptive}/` の `scheduler.c`・`interrupts.s`・`premain.c` で切り替える。
+**SSOS** は X68000（MC68000 プロセッサ）向けの小型オペレーティングシステムである。協調的マルチタスクとプリエンプティブマルチタスクの 2 つのモデルを、ビルド時オプション `SCHED=cooperative|preemptive` で切り替えられる単一の統合ソースツリー（`ssos/`）として実装している。グラフィックス管理、マウス対応ウィンドウシステム、メモリ管理を備える。Human68K 上で動作するスタンドアロン版（`.x`）と、XDF ディスクイメージから直接 IPL 起動するベアメタル版（`.xdf`）の 2 形態でビルド可能。通常UIは `os/app/scene.c` を `.x` / `.xdf` で共有し、各形式の初期化・終了入口はホスト側に分かれる。スケジューラ本体は `os/kernel/scheduler.c` で共有し、方式別の割り込み処理と起床方針だけを `os/kernel/{cooperative,preemptive}/` で切り替える。
 
 ## 目次
 
@@ -305,16 +305,17 @@ ssos-68k/
 │   │   │   ├── entry.s                  #   OS エントリ（SP 設定、ss_set_interrupts 呼び出し）
 │   │   │   ├── kernel.h                 #   共通カーネルヘッダ（ハードウェアアドレス、API）
 │   │   │   ├── scheduler.h              #   共通タスク API・SSTask 構造体
+│   │   │   ├── scheduler.c              #   共通スケジューラ本体
 │   │   │   ├── work_queue.{c,h}         #   遅延処理キュー
 │   │   │   ├── linker.ld                #   OS イメージ用リンカスクリプト
 │   │   │   ├── cooperative/             # ─ 協調的マルチタスク（明示的 yield）─
 │   │   │   │   ├── premain.c            #     C 初期化（IOCS 呼び出し群、再 ss_set_interrupts）
 │   │   │   │   ├── interrupts.s         #     MFP 初期化、ISR、cooperative コンテキストスイッチ
-│   │   │   │   └── scheduler.c          #     タスクスケジューラ（16 優先度ビットマップ）
+│   │   │   │   └── wakeups.c            #     deferred wakeup 方針
 │   │   │   └── preemptive/              # ─ プリエンプティブ（Timer D ISR で切替）─
 │   │   │       ├── premain.c
 │   │   │       ├── interrupts.s         #     1ms タイマ駆動のプリエンプティブ切替
-│   │   │       └── scheduler.c
+│   │   │       └── wakeups.c            #     ISR wakeup 方針
 │   │   ├── mem/                         # メモリ管理（Buddy + Slab）共有
 │   │   ├── gfx/                         # グラフィックス（VRAM 直接アクセス、DMAC fill、高速フォント）共有
 │   │   ├── ipc/                         # メッセージング（タスク間キュー）共有
@@ -333,7 +334,7 @@ ssos-68k/
 └── Makefile                             # ルート Makefile（両 SCHED を一括ビルド）
 ```
 
-> **2 ツリーから統合ツリーへ**: 従来の `ssos-cooperative/` と `ssos-preemptive/` は、`gfx/mem/ipc/win`・`app`・`standalone`・`boot`・共通カーネルヘッダがほぼ同一で、真に異なるのはスレッドモデル本体（`scheduler.c`・`interrupts.s`・`premain.c`）のみでした。そのため単一の `ssos/` ツリーに統合し、差分を `SCHED=cooperative|preemptive` のビルド時選択に集約しています。両モデルで同じアプリ・ブート・ライブラリが使われます。
+> **2 ツリーから統合ツリーへ**: 従来の `ssos-cooperative/` と `ssos-preemptive/` は大半が同一だったため単一ツリーへ統合した。現在はキュー、task lifecycle、sleep管理を `kernel/scheduler.c` で共有し、真に異なるコンテキストスイッチ ISR と起床実行方針だけを `SCHED=cooperative|preemptive` で選択する。
 
 ### 主要コンポーネント
 
@@ -368,7 +369,8 @@ struct SSTask {
     uint8_t  state;         /* SS_TS_NONE/DORMANT/READY/WAIT */
     uint8_t  pri;           /* 0 = 最高優先度 */
     uint8_t  ctx_level;
-    uint8_t  pad;           /* resume_type (yield=1, timer-int=0) */
+    uint8_t  resume_type;   /* yield=1, timer-int=0 */
+    SSTask*  sleep_next;    /* WAIT中タスクだけを結ぶリスト */
 };
 
 uint16_t ss_task_create(SSTaskInfo* info);  /* DORMANT で作成 */
@@ -378,6 +380,7 @@ uint16_t ss_task_sleep(uint32_t ticks);     /* ss_tick_counter + ticks まで WA
 ```
 
 優先度 0 が最高、15 が最低。レディーキューは 16 ビットビットマップで高速検索する（`pri_bitmap` の bit 15 が pri 0、bit 0 が pri 15）。
+sleep中のタスクは専用リストで管理するため、起床処理は全32 TCBではなくWAIT中タスクだけを走査する。tick周回をまたぐ期限比較を保証するため、1回のsleep上限は `SS_MAX_SLEEP_TICKS` である。実行可能な別タスクがない場合は `SS_ERR_STATE` を返す。
 
 ## モジュール依存
 
@@ -411,7 +414,7 @@ graph TD
 
 ## 2 つのマルチタスクモデル
 
-両 version は同じ API（`ss_task_create` / `ss_task_start` / `ss_task_yield` / `ss_task_sleep`）を提供し、通常UIの `app/scene.c` と共有ライブラリ（`gfx/mem/ipc/win`）を共有する。`.x` の `standalone/main.c` と `.xdf` の `os/app/main.c` はホスト固有の初期化・入口であり、共通のUI本体ではない。内部実装が異なるのは `os/kernel/{cooperative,preemptive}/` の `scheduler.c`・`interrupts.s`・`premain.c` である。
+両 version は同じ `kernel/scheduler.c` と API（`ss_task_create` / `ss_task_start` / `ss_task_yield` / `ss_task_sleep`）を使う。通常UIの `app/scene.c` と共有ライブラリ（`gfx/mem/ipc/win`）も共通である。`.x` の `standalone/main.c` と `.xdf` の `os/app/main.c` はホスト固有の初期化・入口であり、共通のUI本体ではない。方式差は `os/kernel/{cooperative,preemptive}/interrupts.s` と `wakeups.c` に限定する。
 
 | 観点                     | 協調的 (`SCHED=cooperative`)                                                  | プリエンプティブ (`SCHED=preemptive`)                        |
 | :---                     | :---                                                                          | :---                                                         |
@@ -421,7 +424,7 @@ graph TD
 | `ss_task_yield()` の有無 | 必須（タスクの責任）                                                          | 任意（即座に切り替わるので呼ぶ必要なし）                     |
 | 起床処理                 | メインループが `ss_wakeups_needed` フラグを見て `ss_process_wakeups()` を呼ぶ | ISR 内で直接 `ss_do_wakeups()` を呼ぶ（`ss_switch_tick=10`） |
 | スタック                 | 全タスクで同じ SP から始める（main の stack を共有）                          | 各タスクに独立したスタック（`ss_task_stack_base` 配下）      |
-| 実装位置                 | `os/kernel/cooperative/{scheduler.c,interrupts.s,premain.c}`                  | `os/kernel/preemptive/{scheduler.c,interrupts.s,premain.c}`  |
+| 実装位置                 | `os/kernel/cooperative/{interrupts.s,wakeups.c}`                              | `os/kernel/preemptive/{interrupts.s,wakeups.c}`              |
 | 検証                     | 実機 / エミュレータで動作確認済み                                             | 実機 / エミュレータで動作確認済み                            |
 
 ### 協調的 yield の実装（`interrupts.s: ss_task_yield`）
@@ -929,6 +932,7 @@ SSOS の ctx switch が基盤とする m68k プリミティブを段階的に学
 | `tests/unit/test_numfmt.c`    | 数値フォーマット（`ss_utoa_dec` / `ss_itoa_dec` / `ss_utoa_hex`）    |
 | `tests/unit/test_mem.c`       | Buddy アロケータ + Slab キャッシュ                                   |
 | `tests/unit/test_scheduler.c` | 優先度レディーキュー、タスク lifecycle、スリープ/起床、ctx switch 回転 |
+| `tests/unit/test_work_queue.c`| 遅延処理キューのFIFO、満杯時の不変条件                             |
 | `tests/unit/test_window.c`    | ウィンドウ CRUD、z-order、dirty 領域、hit-test、render_all           |
 | `tests/unit/test_ipc.c`       | メッセージキュー（send/recv、FIFO、wraparound、満杯）                |
 | `tests/asm/t01_hello.s` 等    | m68k プリミティブ教材（hello → サブルーチン → `movem.l` → フレーム → trap/rte、QEMU）      |
@@ -951,7 +955,7 @@ C ロジックのみを対象とし、以下は意図的に**テストしない*
 
 | カバー | ソース例 | 意味 |
 | :--- | :--- | :--- |
-| **covered** | `numfmt.c`, `buddy.c`, `slab.c`, `cooperative|preemptive/scheduler.c` | `make test` / `make test-qemu` で完全カバー。**実機確認不要** |
+| **covered** | `numfmt.c`, `buddy.c`, `slab.c`, `scheduler.c`, `cooperative|preemptive/wakeups.c` | `make test` / `make test-qemu` で完全カバー。**実機確認不要** |
 | **partial** | `window.c`（gfx は stub）, `interrupts.s`（ctx switch は qemu カバー、MFP 経路は未）, `scheduler.h`/`kernel.h`（構造体レイアウト） | 部分カバー。変更内容に応じて実機確認 |
 | **uncovered** | `gfx/vram.c`, `premain.c`, `entry.s`, `boot/*`, `standalone/main.c`, `app/main.c`, `ipc/*` | テスト未カバー。**実機確認必須** |
 

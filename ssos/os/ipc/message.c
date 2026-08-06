@@ -69,9 +69,11 @@ int16_t ss_recv_nb(SSMessage* msg) {
     uint16_t id = (uint16_t)((curr - tcb_table) + 1);
     SSMsgQueue* q = &msg_queues[id - 1];
 
-    if (q->count == 0) return SS_ERR_LIMIT;
-
     ss_disable_interrupts();
+    if (q->count == 0) {
+        ss_enable_interrupts();
+        return SS_ERR_LIMIT;
+    }
     memcpy(msg, &q->msgs[q->head], sizeof(SSMessage));
     q->head = (q->head + 1) % SS_MSG_MAX;
     q->count--;

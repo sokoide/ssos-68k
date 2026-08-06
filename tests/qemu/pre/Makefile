@@ -1,5 +1,5 @@
 # Preemptive QEMU scheduler tests.
-# Builds the REAL ssos/os/kernel/preemptive/scheduler.c (unmodified) plus a
+# Builds the real shared scheduler and preemptive wakeup policy plus a
 # QEMU port of the Timer D ISR path (preempt_ctx_switch.s) and runs each test
 # under qemu-system-m68k -M virt. Tests fire `trap #0` to drive preemption via
 # the `.resume_interrupted`/`rte` path.
@@ -23,14 +23,16 @@ TESTS = t01_round_robin t02_register_save t03_sleep_wakeup t04_main_task_registe
 # Shared objects
 stub.o: ../common/stub.c
 	$(CC) $(CFLAGS) -c $< -o $@
-sched.o: $(SSOS)/kernel/preemptive/scheduler.c
+sched.o: $(SSOS)/kernel/scheduler.c
+	$(CC) $(CFLAGS) -c $< -o $@
+wakeups.o: $(SSOS)/kernel/preemptive/wakeups.c
 	$(CC) $(CFLAGS) -c $< -o $@
 main_task.o: $(SSOS)/kernel/main_task.c
 	$(CC) $(CFLAGS) -c $< -o $@
 preempt_ctx_switch.o: preempt_ctx_switch.s
 	$(CC) $(ASFLAGS) -c $< -o $@
 
-COMMON_OBJS = stub.o sched.o main_task.o preempt_ctx_switch.o
+COMMON_OBJS = stub.o sched.o wakeups.o main_task.o preempt_ctx_switch.o
 
 .PHONY: all run clean
 all: $(addsuffix .elf,$(TESTS))

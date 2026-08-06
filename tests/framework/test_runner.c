@@ -10,6 +10,7 @@
 void run_numfmt_tests(void);
 void run_mem_tests(void);
 void run_scheduler_tests(void);
+void run_work_queue_tests(void);
 void run_window_tests(void);
 void run_ipc_tests(void);
 
@@ -38,6 +39,7 @@ int main(void) {
     run_numfmt_tests();
     run_mem_tests();
     run_scheduler_tests();
+    run_work_queue_tests();
     run_window_tests();
     run_ipc_tests();
 

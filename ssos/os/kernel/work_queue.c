@@ -9,9 +9,11 @@ void ss_work_init(SSWorkQueue* q) {
 }
 
 int16_t ss_work_enqueue(SSWorkQueue* q, void (*handler)(void*), void* arg) {
-    if (q->count >= SS_WORK_QUEUE_SIZE) return SS_ERR_LIMIT;
-
     ss_disable_interrupts();
+    if (q->count >= SS_WORK_QUEUE_SIZE) {
+        ss_enable_interrupts();
+        return SS_ERR_LIMIT;
+    }
 
     SSWorkItem* item = &q->items[q->tail];
     item->handler = handler;

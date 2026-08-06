@@ -136,9 +136,11 @@ classify() {
             printf 'covered\tcop pre\tx xdf\t\n' ;;
         ssos/os/mem/buddy.c|ssos/os/mem/slab.c|ssos/os/mem/memory.h)
             printf 'covered\tcop pre\tx xdf\t\n' ;;
-        ssos/os/kernel/cooperative/scheduler.c)
+        ssos/os/kernel/scheduler.c)
+            printf 'covered\tcop pre\tx xdf\t\n' ;;
+        ssos/os/kernel/cooperative/wakeups.c)
             printf 'covered\tcop\tx xdf\t\n' ;;
-        ssos/os/kernel/preemptive/scheduler.c)
+        ssos/os/kernel/preemptive/wakeups.c)
             printf 'covered\tpre\tx xdf\t\n' ;;
         ssos/os/win/window.c|ssos/os/win/win.h)
             printf 'partial\tcop pre\tx xdf\tロジックは Native カバー。描画部分は gfx stub で未検証\n' ;;
@@ -147,8 +149,10 @@ classify() {
             case "$f" in *cooperative*) sched="cop";; *) sched="pre";; esac
             ir=$(classify_interrupts "$f")
             printf '%s\t%s\tx xdf\t%s\n' "${ir%%$'\t'*}" "$sched" "${ir#*$'\t'}" ;;
-        ssos/os/kernel/scheduler.h|ssos/os/kernel/kernel.h|ssos/os/kernel/work_queue.c|ssos/os/kernel/work_queue.h)
+        ssos/os/kernel/scheduler.h|ssos/os/kernel/kernel.h)
             printf 'partial\tcop pre\tx xdf\t構造体レイアウト変更等は asm と整合要。変更内容によって実機必要\n' ;;
+        ssos/os/kernel/work_queue.c|ssos/os/kernel/work_queue.h)
+            printf 'covered\tcop pre\txdf\t\n' ;;
         ssos/os/gfx/vram.c|ssos/os/gfx/gfx.h)
             printf 'uncovered\tcop pre\tx xdf\tVRAM/DMA 直接操作でテスト未カバー\n' ;;
         ssos/os/kernel/premain.c|ssos/os/kernel/cooperative/premain.c|ssos/os/kernel/preemptive/premain.c)

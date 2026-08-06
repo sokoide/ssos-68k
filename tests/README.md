@@ -37,6 +37,7 @@ unit/
   test_numfmt.c    pure logic — number formatting
   test_mem.c       pure logic — buddy allocator + slab cache
   test_scheduler.c stubbed HW — priority queue, task lifecycle, sleep/wakeup
+  test_work_queue.c stubbed HW — deferred-work FIFO and full-queue handling
   test_window.c    stubbed HW — window CRUD, z-order, dirty regions, hit-test
   test_ipc.c       stubbed HW — message queue: send/recv, FIFO, wraparound, full
 asm/              self-contained m68k samples for QEMU virt (Goldfish TTY)
@@ -54,8 +55,8 @@ Makefile / Makefile.qemu  top-level routing
 These are the tests the Native suite **cannot** do. The Native `ss_task_yield`
 stub drives only the queue rotation — it never swaps register state, so the
 real context switch (stack switch + `movem.l`) is untested there. `qemu/` fixes
-that, for both threading models. Each test compiles the **unmodified**
-`cooperative/scheduler.c` or `preemptive/scheduler.c` with `m68k-elf-gcc` and
+that, for both threading models. Each test compiles the shared, **unmodified**
+`kernel/scheduler.c` and the selected `wakeups.c` with `m68k-elf-gcc`, then
 links against a QEMU port of the context switch.
 
 - **`coop/`** — cooperative path (`movem.l` save on yield, restore on resume
@@ -94,9 +95,8 @@ stubbed in `framework/test_mocks.c`:
 | `ss_gfx_rect` / `ss_gfx_fill_stipple` (VRAM/DMA) | call counters (assert paint happened) |
 | `ss_current_mode`                      | dummy mode (128x128)                       |
 
-The scheduler is built twice via `SCHED=` — `cooperative` and `preemptive`
-share one `test_scheduler.c` because their queue/task/wakeup logic is
-identical.
+The scheduler is built twice via `SCHED=`. Both builds use the same scheduler
+core and tests; only the small wakeup-dispatch policy differs.
 
 ## Scope and limitations (read before trusting a green run)
 

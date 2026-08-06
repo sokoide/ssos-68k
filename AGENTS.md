@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-SSOS lives in a single unified tree under `ssos/`. The threading model is the only thing that differs between builds and is selected at build time with `SCHED=cooperative` (explicit `ss_task_yield()`) or `SCHED=preemptive` (Timer D ISR-driven context switch). The shared subsystems — `os/gfx`, `os/mem`, `os/ipc`, `os/win`, and the common kernel headers (`os/kernel/kernel.h`, `scheduler.h`, `work_queue.*`, `entry.s`, `linker.ld`) — are compiled unchanged for both models. Only the threading core differs: `os/kernel/cooperative/{scheduler.c,interrupts.s}` vs `os/kernel/preemptive/{scheduler.c,interrupts.s}`. `os/kernel/premain.c` is shared between both models. `os/app/main.c`, `standalone/main.c`, and `boot/` are shared. Boot loader assets sit under `boot/`, the Human68K standalone launcher is in `standalone/`. Unit tests and the native framework are in `tests/`, repo-level references in `docs/`, utilities in `tools/`. Build artifacts such as `.xdf`, `.elf`, and `.x` files are produced into `~/tmp`; keep that directory out of version control.
+SSOS lives in a single unified tree under `ssos/`. The threading model is selected at build time with `SCHED=cooperative` (explicit `ss_task_yield()`) or `SCHED=preemptive` (Timer D ISR-driven context switch). The scheduler core is shared in `os/kernel/scheduler.c`; variant directories contain only `interrupts.s` and the small `wakeups.c` policy. The shared subsystems — `os/gfx`, `os/mem`, `os/ipc`, `os/win`, and the remaining common kernel sources — are compiled unchanged for both models. `os/kernel/premain.c`, `os/app/main.c`, `standalone/main.c`, and `boot/` are shared. Boot loader assets sit under `boot/`, the Human68K standalone launcher is in `standalone/`. Unit tests and the native framework are in `tests/`, repo-level references in `docs/`, utilities in `tools/`. Build artifacts such as `.xdf`, `.elf`, and `.x` files are produced into `~/tmp`; keep that directory out of version control.
 
 ## Build, Test, and Development Commands
 
@@ -16,7 +16,7 @@ Code is predominantly C with targeted 68000 assembly. Follow 4-space indentation
 
 Three test families run from the repo root:
 
-- `make test` — Native C tests (host `cc`), 60 suites × cooperative + preemptive = 120. Covers pure logic (`numfmt`, `buddy`, `slab`), the scheduler queue/lifecycle/sleep, and window logic (graphics stubbed). Fast, CI-friendly, exit code reflects pass/fail.
+- `make test` — Native C tests (host `cc`) for both scheduler policies. Covers pure logic (`numfmt`, `buddy`, `slab`), the scheduler queue/lifecycle/sleep, work queue, IPC, and window logic (graphics stubbed). Fast, CI-friendly, exit code reflects pass/fail.
 - `make test-qemu` — Drives the **real** `scheduler.c` (both variants) + a QEMU port of the context switch on `qemu-system-m68k -M virt`. Cooperative uses `movem.l`/`jmp`; preemptive fires `trap #0` to run the Timer D ISR path including `.resume_interrupted`/`rte`. This is the only place the rte path is exercised.
 - `make test-asm` — self-contained m68k primitive samples (`movem.l` save/restore) under QEMU.
 
