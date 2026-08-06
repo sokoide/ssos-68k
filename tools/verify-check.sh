@@ -143,7 +143,7 @@ classify() {
         ssos/os/kernel/preemptive/wakeups.c)
             printf 'covered\tpre\tx xdf\t\n' ;;
         ssos/os/win/window.c|ssos/os/win/win.h)
-            printf 'partial\tcop pre\tx xdf\tロジックは Native カバー。描画部分は gfx stub で未検証\n' ;;
+            printf 'covered\tcop pre\tx xdf\t\n' ;;
         ssos/os/kernel/cooperative/interrupts.s|ssos/os/kernel/preemptive/interrupts.s)
             local ir sched
             case "$f" in *cooperative*) sched="cop";; *) sched="pre";; esac
@@ -154,7 +154,7 @@ classify() {
         ssos/os/kernel/work_queue.c|ssos/os/kernel/work_queue.h)
             printf 'covered\tcop pre\txdf\t\n' ;;
         ssos/os/gfx/vram.c|ssos/os/gfx/gfx.h)
-            printf 'uncovered\tcop pre\tx xdf\tVRAM/DMA 直接操作でテスト未カバー\n' ;;
+            printf 'partial\tcop pre\tx xdf\t描画画素は Native RAM framebuffer でカバー。実VRAM/CRTC/DMAC MMIOは未検証\n' ;;
         ssos/os/kernel/premain.c|ssos/os/kernel/cooperative/premain.c|ssos/os/kernel/preemptive/premain.c)
             printf 'uncovered\tcop pre\txdf\tIOCS/HW 初期化。.x(standalone)は独自経路\n' ;;
         ssos/os/kernel/entry.s|ssos/os/kernel/linker.ld)

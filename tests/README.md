@@ -29,16 +29,17 @@ make test-qemu
 ## Layout
 
 ```
-framework/        TEST/RUN_TEST/ASSERT_* macros + HW stubs
+framework/        TEST/RUN_TEST/ASSERT_* macros + remaining HW/asm stubs
   ssos_test.h     test framework (reusable across suites)
   test_runner.c   main(): runs every suite, prints the summary, sets exit code
-  test_mocks.c    HW/asm stubs so kernel/window C sources run on the host
+  test_mocks.c    scheduler HW/asm and palette stubs for host execution
 unit/
   test_numfmt.c    pure logic — number formatting
   test_mem.c       pure logic — buddy allocator + slab cache
   test_scheduler.c stubbed HW — priority queue, task lifecycle, sleep/wakeup
   test_work_queue.c stubbed HW — deferred-work FIFO and full-queue handling
-  test_window.c    stubbed HW — window CRUD, z-order, dirty regions, hit-test
+  test_window.c    RAM framebuffer — window CRUD, z-order, dirty regions, pixels
+  test_gfx.c       RAM framebuffer — clipping, stipple, glyphs, XOR, page flip
   test_ipc.c       stubbed HW — message queue: send/recv, FIFO, wraparound, full
 asm/              self-contained m68k samples for QEMU virt (Goldfish TTY)
   t01_hello.s, t02_subroutines.s, t03_ctx_save_restore.s (progressive)
@@ -73,18 +74,24 @@ links against a QEMU port of the context switch.
   - `t02_register_save` — distinct d2-d7 patterns survive each `rte`
   - `t03_sleep_wakeup` — `ss_task_sleep(N)` blocks, ticks advance in the ISR,
     task resumes after N ticks
+  - `t05_timerd_cadence` — production-equivalent 10-Timer-D-tick switch
+    cadence: 9 ticks retain the current task; tick 10 switches via the
+    interrupted/`rte` path.  It also verifies a sleep deadline between switch
+    ticks is reaped at the next switch tick (deadline 15, wake at tick 20).
 
 Scope: `trap` is a **synchronous** exception (the task fires it), so this is
-not a true asynchronous hardware preemption — but it validates the ISR-driven
-context-switch mechanics, which is the part Native cannot reach. The real
-kernel's MFP EOI and Timer-D period setup are out of scope (no MFP on QEMU
-virt).
+not a true asynchronous hardware preemption: no instruction can be interrupted
+unless the test explicitly fires a trap.  It validates the ISR-driven
+context-switch mechanics and the 10-tick cadence, but not real-time MFP Timer-D
+delivery, MFP EOI, or Timer-D period setup (QEMU virt has no MFP).
 
 ## How native tests work
 
-The kernel (`scheduler.c`) and window (`window.c`) sources are compiled
-**unchanged** with the host compiler. Their X68000 HW/asm dependencies are
-stubbed in `framework/test_mocks.c`:
+The kernel (`scheduler.c`), window compositor (`window.c`), and graphics
+primitives (`vram.c`) are compiled with the host compiler.  `vram.c` uses the
+`SS_HOST_TEST` compile-time seam to replace physical GVRAM and CRTC registers
+with RAM while retaining the production raster algorithms.  The remaining
+X68000 HW/asm dependencies are stubbed in `framework/test_mocks.c`:
 
 | Real dependency                        | Stub in test_mocks.c                       |
 |----------------------------------------|--------------------------------------------|
@@ -92,8 +99,9 @@ stubbed in `framework/test_mocks.c`:
 | `ss_task_yield` (asm ctx switch)       | calls `ss_do_context_switch()` only — queue rotation, no register swap |
 | `ss_tick_counter` (bumped by ISR)      | host-controlled variable (`ADVANCE_TICK`)  |
 | `ss_task_stack_base` (from app)        | static 512 KB arena                        |
-| `ss_gfx_rect` / `ss_gfx_fill_stipple` (VRAM/DMA) | call counters (assert paint happened) |
-| `ss_current_mode`                      | dummy mode (128x128)                       |
+| GVRAM / CRTC addresses                 | same-layout RAM pages/register array       |
+| DMAC fill                              | disabled; CPU raster fallback is exercised |
+| palette IOCS programming               | logical palette-index stub                 |
 
 The scheduler is built twice via `SCHED=`. Both builds use the same scheduler
 core and tests; only the small wakeup-dispatch policy differs.
@@ -102,8 +110,9 @@ core and tests; only the small wakeup-dispatch policy differs.
 
 These tests cover **C logic only**. They deliberately do **not** exercise:
 
-- **Graphics / VRAM / DMA / IOCS / MFP** — direct HW access. `ss_gfx_*` are
-  stubs; rendering tests only assert that paint calls happened, not pixels.
+- **Physical VRAM / CRTC / DMA / IOCS / MFP** — graphics algorithms and final
+  pixels are covered using RAM, but actual MMIO, bus timing, DMA transfer, and
+  IOCS behavior still require an X68000 emulator or hardware.
 - **The real context switch** (`interrupts.s`). The `ss_task_yield` stub drives
   the queue rotation but does **not** swap register state, so concurrency is
   not tested. Sleep/wakeup are verified as state transitions, not as actual

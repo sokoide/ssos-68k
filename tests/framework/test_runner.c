@@ -13,6 +13,7 @@ void run_scheduler_tests(void);
 void run_work_queue_tests(void);
 void run_window_tests(void);
 void run_ipc_tests(void);
+void run_gfx_tests(void);
 
 /* Global statistics, referenced by the ASSERT_* macros in ssos_test.h */
 int total_tests = 0;
@@ -42,6 +43,7 @@ int main(void) {
     run_work_queue_tests();
     run_window_tests();
     run_ipc_tests();
+    run_gfx_tests();
 
     test_framework_report();
     return test_framework_exit_code();

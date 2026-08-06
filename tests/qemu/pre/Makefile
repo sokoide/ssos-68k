@@ -18,7 +18,9 @@ TIMEOUT_SECS ?= 2
 SSOS   = ../../../ssos/os
 
 # t04_main_task_register exercises the production main-task bootstrap.
-TESTS = t01_round_robin t02_register_save t03_sleep_wakeup t04_main_task_register
+# t05_timerd_cadence rebuilds the ISR port with the production 10-tick cadence.
+TESTS = t01_round_robin t02_register_save t03_sleep_wakeup t04_main_task_register \
+	t05_timerd_cadence
 
 # Shared objects
 stub.o: ../common/stub.c
@@ -31,6 +33,8 @@ main_task.o: $(SSOS)/kernel/main_task.c
 	$(CC) $(CFLAGS) -c $< -o $@
 preempt_ctx_switch.o: preempt_ctx_switch.s
 	$(CC) $(ASFLAGS) -c $< -o $@
+preempt_ctx_switch_10.o: preempt_ctx_switch.s
+	$(CC) $(ASFLAGS) -Wa,--defsym,SS_TIMERD_SWITCH_TICKS=10 -c $< -o $@
 
 COMMON_OBJS = stub.o sched.o wakeups.o main_task.o preempt_ctx_switch.o
 
@@ -39,6 +43,9 @@ all: $(addsuffix .elf,$(TESTS))
 
 %.elf: %.o $(COMMON_OBJS) ../common/linker.ld
 	$(CC) $(CFLAGS) $< $(COMMON_OBJS) $(LDFLAGS) -o $@
+
+t05_timerd_cadence.elf: t05_timerd_cadence.o stub.o sched.o wakeups.o main_task.o preempt_ctx_switch_10.o ../common/linker.ld
+	$(CC) $(CFLAGS) $< stub.o sched.o wakeups.o main_task.o preempt_ctx_switch_10.o $(LDFLAGS) -o $@
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@

@@ -19,7 +19,7 @@ else
 endif
 
 CC      = cc
-CFLAGS  = -O2 -g -Wall -Wextra -Werror -std=c11 $(BUILD_DEF) \
+CFLAGS  = -O2 -g -Wall -Wextra -Werror -std=c11 $(BUILD_DEF) -DSS_HOST_TEST -DSS_PROFILE_GFX=1 \
           -Iframework -I../ssos/os/util -I../ssos/os/mem \
           -I../ssos/os/kernel -I../ssos/os/win -I../ssos/os/gfx \
           -I../ssos/os/ipc
@@ -27,8 +27,8 @@ CFLAGS  = -O2 -g -Wall -Wextra -Werror -std=c11 $(BUILD_DEF) \
 SSOS    = ../ssos/os
 TARGET  = test_runner_native_$(SCHED)
 
-# Pure-logic + stubbed-HW sources. vram.c/premain.c/main.c and the asm objects
-# (entry.s, interrupts.s) are excluded: they touch X68000 HW.
+# Pure-logic + host-seamed graphics + stubbed-HW sources. premain.c/main.c
+# and the asm objects (entry.s, interrupts.s) remain excluded.
 OS_SRCS = \
 	$(SSOS)/util/numfmt.c \
 	$(SSOS)/mem/buddy.c \
@@ -36,6 +36,8 @@ OS_SRCS = \
 	$(SSOS)/kernel/scheduler.c \
 	$(SCHED_DIR)/wakeups.c \
 	$(SSOS)/kernel/work_queue.c \
+	$(SSOS)/gfx/vram.c \
+	$(SSOS)/gfx/profile.c \
 	$(SSOS)/win/window.c \
 	$(SSOS)/ipc/message.c
 
@@ -49,6 +51,7 @@ UNIT_SRCS = \
 	unit/test_scheduler.c \
 	unit/test_work_queue.c \
 	unit/test_window.c \
+	unit/test_gfx.c \
 	unit/test_ipc.c
 
 ALL_SRCS = $(FRAMEWORK_SRCS) $(UNIT_SRCS) $(OS_SRCS)

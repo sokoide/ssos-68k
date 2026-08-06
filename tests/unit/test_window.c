@@ -2,17 +2,12 @@
  *
  * Learning objective: the window system's logic (slot allocation, z-order,
  * dirty regions, hit testing) is independent of the actual pixel output.
- * Drawing is stubbed (ss_gfx_rect / ss_gfx_fill_stipple just count calls in
- * test_mocks.c), so we assert on window state and on how many paint calls the
- * renderer issued — including the occlusion and visibility skips. */
+ * The native suite links the real drawing primitives against a RAM-backed
+ * GVRAM seam, so rendering assertions can inspect final pixels. */
 
 #include "ssos_test.h"
 #include "win.h"
-
-/* gfx stub call counters (defined in test_mocks.c) */
-extern int gfx_rect_calls;
-extern int gfx_rect_region_calls;
-extern int gfx_fill_stipple_calls;
+#include "gfx.h"
 
 static int render_callback_calls;
 static int render_callback_saw_null;
@@ -176,39 +171,41 @@ TEST(hit_test_skips_hidden) {
 /* ---- rendering (stub call counts) ---- */
 
 TEST(render_all_paints_visible_window) {
+    ss_gfx_set_mode(SS_CRTMOD_16);
+    ss_gfx_init();
     ss_win_init();
-    gfx_rect_calls = 0;
-    gfx_fill_stipple_calls = 0;
     uint16_t id = ss_win_create(0, 0, 40, 40, 1);   /* no render cb -> draw_frame */
     (void)id;
     ss_win_render_all();
-    /* Background stipple + at least one frame rect (draw_frame issues many). */
-    ASSERT_TRUE(gfx_fill_stipple_calls > 0);
-    ASSERT_TRUE(gfx_rect_calls > 0);
+    /* The frame's top-left border is black; background stipple is not. */
+    ASSERT_EQ(ss_draw_page[0], 0);
     /* active_z reflects the highest visible window. */
     ASSERT_EQ(ss_win_active_z, 1);
 }
 
 TEST(render_all_skips_hidden) {
+    ss_gfx_set_mode(SS_CRTMOD_16);
+    ss_gfx_init();
     ss_win_init();
+    ss_win_render_all();
+    uint16_t background = ss_draw_page[0];
     uint16_t a = ss_win_create(0, 0, 40, 40, 1);
     ss_win_hide(a);
-    gfx_rect_calls = 0;
     ss_win_render_all();
-    /* Hidden window paints no frame rects. */
-    ASSERT_EQ(gfx_rect_calls, 0);
+    ASSERT_EQ(ss_draw_page[0], background);
 }
 
 TEST(render_region_clips_standard_frame_only) {
+    ss_gfx_set_mode(SS_CRTMOD_16);
+    ss_gfx_init();
     ss_win_init();
     uint16_t id = ss_win_create(10, 10, 40, 40, 1);
     (void)id;
-    gfx_rect_calls = 0;
-    gfx_rect_region_calls = 0;
-
     ss_win_render_region(15, 20, 5, 6);
-    ASSERT_EQ(gfx_rect_calls, 0);
-    ASSERT_EQ(gfx_rect_region_calls, 7);
+    /* The dirty region itself is filled, while an outside pixel is untouched. */
+    uint32_t stride = (uint32_t)ss_current_mode->bytes_per_line / 2;
+    ASSERT_NEQ(ss_draw_page[20 * stride + 15], 0);
+    ASSERT_EQ(ss_draw_page[19 * stride + 15], 0);
 }
 
 TEST(render_region_keeps_exposed_part_of_same_zmap_block) {

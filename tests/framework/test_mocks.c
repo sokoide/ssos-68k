@@ -11,8 +11,7 @@
  *   - ss_tick_counter et al.    (real: bumped by Timer D ISR) -> host-controlled vars
  *   - ss_task_stack_base        (real: app-provided)        -> static arena
  *   - ss_wakeups_needed (coop.) (real: set by ISR)          -> host-controlled var
- *   - ss_gfx_rect/fill_stipple  (real: VRAM/DMA writes)     -> call counters
- *   - ss_current_mode           (real: set by gfx init)     -> dummy mode
+ *   - graphics MMIO             (real: VRAM/CRTC/DMAC)      -> RAM seam in vram.c
  */
 
 #include "ssos_test.h"
@@ -55,39 +54,6 @@ uint8_t* ss_task_stack_base = test_stack_mem;
 volatile uint8_t ss_wakeups_needed = 0;
 #endif
 
-/* ---- 6. Graphics stubs (real: VRAM/DMA in vram.c) --------------------- */
-/* Count calls so render_all tests can assert the window system actually
- * painted (and skipped occluded / hidden windows). */
-int gfx_rect_calls         = 0;
-int gfx_rect_region_calls  = 0;
-int gfx_fill_stipple_calls = 0;
-
-void ss_gfx_rect(int x, int y, int w, int h, uint16_t color) {
-    (void)x; (void)y; (void)w; (void)h; (void)color;
-    gfx_rect_calls++;
-}
-
-void ss_gfx_rect_region(SSGfxRect rect, const SSGfxRect* clip, uint16_t color) {
-    (void)rect; (void)clip; (void)color;
-    gfx_rect_region_calls++;
-}
-
-void ss_gfx_fill_stipple(int x, int y, int w, int h, uint16_t c1, uint16_t c2) {
-    (void)x; (void)y; (void)w; (void)h; (void)c1; (void)c2;
-    gfx_fill_stipple_calls++;
-}
-
-/* Dummy mode: only display_w/display_h are read by window.c (render_all
- * background stipple). Keep it modest so stipple call count stays small. */
-static const SSGfxMode test_mode = {
-    .crtmod = 16, .screen_w = 512, .screen_h = 512,
-    .display_w = 128, .display_h = 128,
-    .color_count = 16, .page_count = 1,
-    .bytes_per_line = 128, .page_size = 128 * 128,
-    .page0 = NULL, .page1 = NULL,
-};
-const SSGfxMode* ss_current_mode = &test_mode;
-
 /* Palette programming is hardware-only.  Window tests require only the
  * logical 16-color indices used by the shared compositor. */
 uint16_t ss_palette_index(SSPalette color) {
@@ -104,9 +70,6 @@ void reset_test_state(void) {
 #ifdef SS_BUILD_COOPERATIVE
     ss_wakeups_needed = 0;
 #endif
-    gfx_rect_calls = 0;
-    gfx_rect_region_calls = 0;
-    gfx_fill_stipple_calls = 0;
     /* scheduler/window static state is reset by ss_sched_init()/ss_win_init()
      * at the start of each test that touches them. */
 }

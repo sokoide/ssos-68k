@@ -14,14 +14,19 @@
 # Differences from the real handler:
 #   * entered via trap #0 (vector 0x80), not MFP Timer D (vector 0x110)
 #   * MFP EOI writes (0xe88011 bit4 clear) removed - no MFP on QEMU virt
-#   * switch threshold is 1 (switch every tick) for a clear 1212 pattern;
-#     the real kernel uses 10 (see interrupts.s:264)
+#   * switch threshold defaults to 1 (switch every tick) for a clear 1212
+#     pattern.  The cadence test builds this source with
+#     --defsym SS_TIMERD_SWITCH_TICKS=10, matching production.
 #
 # SSTask layout: context=0, stack_base=12, entry=20, resume_type=31,
 # sleep_next=32.
 
         .section .text
         .align  2
+
+        .ifndef SS_TIMERD_SWITCH_TICKS
+        .set    SS_TIMERD_SWITCH_TICKS, 1
+        .endif
 
         .globl  _start
         .globl  ss_timerd_handler, ss_context_switch
@@ -86,7 +91,7 @@ ss_timerd_handler:
 
         lea     ss_switch_tick, a0
         addq.b  #1, (a0)
-        cmpi.b  #1, (a0)                | test: switch every tick (real kernel: 10)
+        cmpi.b  #SS_TIMERD_SWITCH_TICKS, (a0)
         bne.s   .no_switch
 
         | switch tick: drop minimal save, do a full save

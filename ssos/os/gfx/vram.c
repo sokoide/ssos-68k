@@ -3,6 +3,20 @@
 #include <stdint.h>
 #include <string.h>
 
+/* Native pixel tests use RAM pages of the same layout as GVRAM.  Keeping the
+ * replacement behind SS_HOST_TEST leaves target addresses and volatile MMIO
+ * semantics unchanged in production builds. */
+#ifdef SS_HOST_TEST
+static volatile uint16_t test_page0[1024 * 512];
+static volatile uint16_t test_page1[1024 * 512];
+volatile uint16_t ss_gfx_test_crtc[32];
+#define SS_GFX_PAGE0 test_page0
+#define SS_GFX_PAGE1 test_page1
+#else
+#define SS_GFX_PAGE0 ((volatile uint16_t*)0xC00000)
+#define SS_GFX_PAGE1 ((volatile uint16_t*)0xC80000)
+#endif
+
 /* Graphics Mode Table */
 static const SSGfxMode mode_table[] = {
     [SS_CRTMOD_8] = {
@@ -13,8 +27,8 @@ static const SSGfxMode mode_table[] = {
         .page_count = 2,
         .bytes_per_line = 1024,
         .page_size = 1024 * 512,
-        .page0 = (volatile uint16_t*)0xC00000,
-        .page1 = (volatile uint16_t*)0xC80000,
+        .page0 = SS_GFX_PAGE0,
+        .page1 = SS_GFX_PAGE1,
     },
     [SS_CRTMOD_16] = {
         .crtmod = 16,
@@ -24,7 +38,7 @@ static const SSGfxMode mode_table[] = {
         .page_count = 1,
         .bytes_per_line = 2048,
         .page_size = 2048 * 512,
-        .page0 = (volatile uint16_t*)0xC00000,
+        .page0 = SS_GFX_PAGE0,
         .page1 = NULL,
     },
 };
@@ -34,7 +48,7 @@ const SSGfxMode* ss_current_mode = &mode_table[SS_CRTMOD_16];
 
 /* Mode Selection Function */
 void ss_gfx_set_mode(int mode) {
-    if (mode >= SS_CRTMOD_8 && mode <= SS_CRTMOD_16) {
+    if (mode == SS_CRTMOD_8 || mode == SS_CRTMOD_16) {
         ss_current_mode = &mode_table[mode];
     }
 }
@@ -44,7 +58,12 @@ volatile uint16_t* ss_display_page;
 uint8_t ss_draw_idx;
 uint8_t ss_display_idx;
 
+#ifdef SS_HOST_TEST
+static volatile SSDmaReg test_dma_ch2;
+static volatile SSDmaReg* dma_ch2 = &test_dma_ch2;
+#else
 static volatile SSDmaReg* dma_ch2 = (volatile SSDmaReg*)SS_DMA_CH2_BASE;
+#endif
 static uint16_t dma_fill_buf[512];
 static SSXfrInf xfr_table __attribute__((aligned(2)));
 
@@ -55,7 +74,13 @@ static SSXfrInf xfr_table __attribute__((aligned(2)));
 /* A timeout indicates that waiting for this DMA path is not productive for
  * the rest of the process.  Keep the decision outside the per-phase profile,
  * which is reset between benchmark phases. */
+#ifdef SS_HOST_TEST
+/* Native tests validate CPU rasterization against RAM.  DMAC register and bus
+ * timing remain an X68000 integration concern, so do not enter that path. */
+static uint8_t dma_disabled_after_timeout = 1;
+#else
 static uint8_t dma_disabled_after_timeout;
+#endif
 
 const uint8_t ss_font_data[][SS_FONT_H] = {
     {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, /* 0x20 ' ' */
@@ -527,7 +552,7 @@ void ss_gfx_xor_rect(int x, int y, int w, int h) {
     uint32_t accesses = 0;
     SS_PROFILE_PRIMITIVE_CALL();
     SS_PROFILE_XOR_RECT_CALL();
-    if (w > 0) {
+    if (w > 0 && h > 0) {
         int x0 = x < 0 ? 0 : x;
         int x1 = x + w;
         if (x1 > W) x1 = W;
@@ -536,17 +561,22 @@ void ss_gfx_xor_rect(int x, int y, int w, int h) {
                 accesses += ss_gfx_xor_hline(v + y * stride, x0, x1);
             }
             int y2 = y + h - 1;
-            if (y2 >= 0 && y2 < H) {
+            if (y2 != y && y2 >= 0 && y2 < H) {
                 accesses += ss_gfx_xor_hline(v + y2 * stride, x0, x1);
             }
         }
     }
-    for (int dy = 0; dy < h; dy++) {
+    /* Horizontal edges already include the corners.  Touch only interior
+     * scanlines here so every perimeter pixel is XORed exactly once. */
+    for (int dy = 1; dy < h - 1; dy++) {
         int yy = y + dy;
         if (yy < 0 || yy >= H) continue;
         if (x >= 0 && x < W) { v[yy * stride + x] ^= 0xFFFF; accesses++; }
         int x2 = x + w - 1;
-        if (x2 >= 0 && x2 < W) { v[yy * stride + x2] ^= 0xFFFF; accesses++; }
+        if (x2 != x && x2 >= 0 && x2 < W) {
+            v[yy * stride + x2] ^= 0xFFFF;
+            accesses++;
+        }
     }
     SS_PROFILE_GVRAM_READ(accesses);
     SS_PROFILE_GVRAM_WRITE(accesses);

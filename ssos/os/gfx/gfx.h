@@ -43,8 +43,14 @@ void ss_gfx_set_mode(int mode);
 #define SS_FONT_H   8
 #define SS_FONT_ADV 6
 
-/* CRTC base (word-accessible) */
+/* CRTC base (word-accessible). Native pixel tests replace this MMIO mapping
+ * with RAM; target builds always retain the physical X68000 address. */
+#ifdef SS_HOST_TEST
+extern volatile uint16_t ss_gfx_test_crtc[];
+#define SS_CRTC_BASE   ss_gfx_test_crtc
+#else
 #define SS_CRTC_BASE   ((volatile uint16_t*)0xE80000)
+#endif
 #define SS_CRTC_SCROLL_Y 13
 
 /* DMAC CH2 */
