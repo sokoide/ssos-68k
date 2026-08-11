@@ -5,9 +5,9 @@
  * The native suite links the real drawing primitives against a RAM-backed
  * GVRAM seam, so rendering assertions can inspect final pixels. */
 
+#include "gfx.h"
 #include "ssos_test.h"
 #include "win.h"
-#include "gfx.h"
 
 static int render_callback_calls;
 static int render_callback_saw_null;
@@ -65,12 +65,22 @@ TEST(win_destroy_then_reuse_id) {
     ss_win_init();
     uint16_t id = ss_win_create(0, 0, 40, 40, 0);
     ss_win_destroy(id);
-    /* Slot freed: the id field is cleared (get_ptr still returns the slot,
-     * it doesn't check aliveness). */
-    ASSERT_EQ(ss_win_get_ptr(id)->id, 0);
+    /* A destroyed window is no longer a valid API target. */
+    ASSERT_NULL(ss_win_get_ptr(id));
+    ss_win_destroy(id); /* repeated destroy is a safe no-op */
     /* Next create reuses the freed slot (lowest free id). */
     uint16_t id2 = ss_win_create(0, 0, 40, 40, 0);
     ASSERT_EQ(id2, id);
+}
+
+TEST(win_create_rejects_unrepresentable_geometry) {
+    ss_win_init();
+    ASSERT_EQ(ss_win_create(-1, 0, 8, 8, 0), 0);
+    ASSERT_EQ(ss_win_create(0, -1, 8, 8, 0), 0);
+    ASSERT_EQ(ss_win_create(0, 0, 0, 8, 0), 0);
+    ASSERT_EQ(ss_win_create(0, 0, 8, -1, 0), 0);
+    ASSERT_EQ(ss_win_create(65536, 0, 8, 8, 0), 0);
+    ASSERT_EQ(ss_win_create(0, 0, 65536, 8, 0), 0);
 }
 
 /* ---- visibility / geometry ---- */
@@ -92,7 +102,18 @@ TEST(win_move_updates_position_and_dirty) {
     ASSERT_EQ(ss_win_get_y(id), 200);
     SSWindow* w = ss_win_get_ptr(id);
     ASSERT_NEQ(w->flags & SS_WIN_DIRTY, 0);
-    ASSERT_EQ(w->dirty_w, 40);   /* full-window dirty after move */
+    ASSERT_EQ(w->dirty_w, 40); /* full-window dirty after move */
+}
+
+TEST(win_move_rejects_unrepresentable_position) {
+    ss_win_init();
+    uint16_t id = ss_win_create(10, 20, 40, 40, 0);
+    ss_win_move(id, -1, 30);
+    ASSERT_EQ(ss_win_get_x(id), 10);
+    ASSERT_EQ(ss_win_get_y(id), 20);
+    ss_win_move(id, 65536, 30);
+    ASSERT_EQ(ss_win_get_x(id), 10);
+    ASSERT_EQ(ss_win_get_y(id), 20);
 }
 
 TEST(win_damage_sets_region) {
@@ -104,6 +125,15 @@ TEST(win_damage_sets_region) {
     ASSERT_EQ(w->dirty_y, 6);
     ASSERT_EQ(w->dirty_w, 20);
     ASSERT_EQ(w->dirty_h, 30);
+}
+
+TEST(win_damage_rejects_unrepresentable_region) {
+    ss_win_init();
+    uint16_t id = ss_win_create(0, 0, 100, 100, 0);
+    SSWindow* w = ss_win_get_ptr(id);
+    ss_win_damage(id, 0, 0, 65536, 1);
+    ASSERT_EQ(w->dirty_w, 100);
+    ASSERT_EQ(w->dirty_h, 100);
 }
 
 TEST(win_set_z_updates) {
@@ -146,12 +176,21 @@ TEST(win_set_content_line_ignores_out_of_range) {
     ASSERT_EQ(ss_win_get_ptr(id)->content[0][0], '\0');
 }
 
+TEST(win_text_setters_ignore_null) {
+    ss_win_init();
+    uint16_t id = ss_win_create(0, 0, 40, 40, 0);
+    ss_win_set_title(id, NULL);
+    ss_win_set_content_line(id, 0, NULL);
+    ASSERT_EQ(ss_win_get_ptr(id)->title[0], '\0');
+    ASSERT_EQ(ss_win_get_ptr(id)->content[0][0], '\0');
+}
+
 /* ---- hit testing ---- */
 
 TEST(hit_test_picks_topmost_at_point) {
     ss_win_init();
     uint16_t a = ss_win_create(0, 0, 100, 100, 1);
-    uint16_t b = ss_win_create(0, 0, 100, 100, 5);   /* same rect, higher z */
+    uint16_t b = ss_win_create(0, 0, 100, 100, 5); /* same rect, higher z */
     /* Point inside both -> higher z wins. */
     ASSERT_EQ(ss_win_hit_test(50, 50), (int)b);
     /* Point outside all -> -1. */
@@ -168,13 +207,21 @@ TEST(hit_test_skips_hidden) {
     ASSERT_EQ(ss_win_hit_test(50, 50), (int)a);
 }
 
+TEST(hit_test_same_z_matches_paint_order) {
+    ss_win_init();
+    ss_win_create(0, 0, 100, 100, 3);
+    uint16_t later = ss_win_create(0, 0, 100, 100, 3);
+    ASSERT_EQ(ss_win_hit_test(50, 50), (int)later);
+}
+
 /* ---- rendering (stub call counts) ---- */
 
 TEST(render_all_paints_visible_window) {
     ss_gfx_set_mode(SS_CRTMOD_16);
     ss_gfx_init();
     ss_win_init();
-    uint16_t id = ss_win_create(0, 0, 40, 40, 1);   /* no render cb -> draw_frame */
+    uint16_t id =
+        ss_win_create(0, 0, 40, 40, 1); /* no render cb -> draw_frame */
     (void)id;
     ss_win_render_all();
     /* The frame's top-left border is black; background stipple is not. */
@@ -202,20 +249,21 @@ TEST(render_region_clips_standard_frame_only) {
     uint16_t id = ss_win_create(10, 10, 40, 40, 1);
     (void)id;
     ss_win_render_region(15, 20, 5, 6);
-    /* The dirty region itself is filled, while an outside pixel is untouched. */
+    /* The dirty region itself is filled, while an outside pixel is untouched.
+     */
     uint32_t stride = (uint32_t)ss_current_mode->bytes_per_line / 2;
     ASSERT_NEQ(ss_draw_page[20 * stride + 15], 0);
     ASSERT_EQ(ss_draw_page[19 * stride + 15], 0);
 }
 
-TEST(render_region_keeps_exposed_part_of_same_zmap_block) {
+TEST(render_region_redraws_lower_window_when_partly_exposed) {
     ss_win_init();
     render_callback_calls = 0;
     render_callback_saw_null = 0;
 
-    /* The higher window covers only the left half of the lower window, but
-     * both fit in the same 8x8 z-map block.  The region is the exposed right
-     * half, so the lower callback must still be rendered. */
+    /* The higher window covers only the left half of the lower window.  The
+     * region is the exposed right half, so the lower callback must be
+     * rendered before the higher window restores its overlap. */
     uint16_t lower = ss_win_create(0, 0, 4, 8, 1);
     uint16_t higher = ss_win_create(0, 0, 3, 8, 2);
     ss_win_set_render(lower, record_render_clip);
@@ -254,6 +302,10 @@ TEST(getters_return_zero_for_invalid_id) {
     ASSERT_EQ(ss_win_get_x(SS_MAX_WINDOWS + 1), 0);
     ASSERT_NULL(ss_win_get_ptr(0));
     ASSERT_NULL(ss_win_get_ptr(SS_MAX_WINDOWS + 1));
+    uint16_t id = ss_win_create(1, 2, 3, 4, 0);
+    ss_win_destroy(id);
+    ASSERT_EQ(ss_win_get_x(id), 0);
+    ASSERT_NULL(ss_win_get_ptr(id));
 }
 
 void run_window_tests(void) {
@@ -262,19 +314,24 @@ void run_window_tests(void) {
     RUN_TEST(win_create_sets_visible_and_dirty);
     RUN_TEST(win_create_exhaustion);
     RUN_TEST(win_destroy_then_reuse_id);
+    RUN_TEST(win_create_rejects_unrepresentable_geometry);
     RUN_TEST(win_hide_clears_visible);
     RUN_TEST(win_move_updates_position_and_dirty);
+    RUN_TEST(win_move_rejects_unrepresentable_position);
     RUN_TEST(win_damage_sets_region);
+    RUN_TEST(win_damage_rejects_unrepresentable_region);
     RUN_TEST(win_set_z_updates);
     RUN_TEST(win_set_title_truncates_to_19);
     RUN_TEST(win_set_content_line_pads_to_width);
     RUN_TEST(win_set_content_line_ignores_out_of_range);
+    RUN_TEST(win_text_setters_ignore_null);
     RUN_TEST(hit_test_picks_topmost_at_point);
     RUN_TEST(hit_test_skips_hidden);
+    RUN_TEST(hit_test_same_z_matches_paint_order);
     RUN_TEST(render_all_paints_visible_window);
     RUN_TEST(render_all_skips_hidden);
     RUN_TEST(render_region_clips_standard_frame_only);
-    RUN_TEST(render_region_keeps_exposed_part_of_same_zmap_block);
+    RUN_TEST(render_region_redraws_lower_window_when_partly_exposed);
     RUN_TEST(render_callback_receives_explicit_region_clip);
     RUN_TEST(getters_return_zero_for_invalid_id);
 }

@@ -8,10 +8,6 @@
 #define SS_WIN_VISIBLE  0x01
 #define SS_WIN_DIRTY    0x02
 
-#define SS_BLOCK_SIZE   8
-#define SS_ZMAP_W       (768 / SS_BLOCK_SIZE)   /* 96 */
-#define SS_ZMAP_H       (512 / SS_BLOCK_SIZE)   /* 64 */
-
 typedef struct SSWindow SSWindow;
 struct SSWindow {
     uint16_t x, y, w, h;
@@ -26,6 +22,7 @@ struct SSWindow {
 };
 
 void     ss_win_init(void);
+/* Returns 0 when geometry is not representable or no slot is available. */
 uint16_t ss_win_create(int x, int y, int w, int h, uint16_t z);
 void     ss_win_destroy(uint16_t id);
 void     ss_win_show(uint16_t id);
@@ -40,6 +37,7 @@ int      ss_win_get_y(uint16_t id);
 int      ss_win_get_w(uint16_t id);
 int      ss_win_get_h(uint16_t id);
 int      ss_win_get_z(uint16_t id);
+/* Returns NULL for an invalid or destroyed window ID. */
 SSWindow* ss_win_get_ptr(uint16_t id);
 void     ss_win_set_title(uint16_t id, const char* title);
 void     ss_win_set_content_line(uint16_t id, int line, const char* text);

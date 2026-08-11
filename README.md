@@ -101,7 +101,7 @@ cp bench.txt bench-pre.txt
 
 `-8` は256色モード、`-bench 100` は各フェーズを100回実行する指定である。`bench.txt` は実行時のカレントディレクトリに作成され、毎回上書きされるため、2つの実行結果を比較する場合は上記のように別名で退避する。
 
-実行順は `full`、`region`、`z-expose`、`text-update`、`drag-region`、`xor-move` である。`drag-region` は固定した2位置の間で、実アプリと同じ hide → 旧領域再合成 → XOR → move/show → 新領域再合成を繰り返す。ログの `vsync`、`dma timeout`、`gvram write`、`zmap` を同じフェーズ間で比較する。`vsync` は少ないほど速い。`SSPERF file=bench.txt` が表示されれば、ファイルのオープンとクローズまで完了している。
+実行順は `full`、`region`、`z-expose`、`text-update`、`drag-region`、`xor-move` である。`drag-region` は固定した2位置の間で、実アプリと同じ hide → 旧領域再合成 → XOR → move/show → 新領域再合成を繰り返す。ログの `vsync`、`dma timeout`、`gvram write`、`windows rendered` を同じフェーズ間で比較する。`vsync` は少ないほど速い。`SSPERF file=bench.txt` が表示されれば、ファイルのオープンとクローズまで完了している。
 
 通常操作の実測では、`-bench` を付けずに起動し、Windowのドラッグや重なりを試してから ESC で終了する。
 
@@ -152,7 +152,6 @@ z-order、論理パレット、main task登録は共有である。
 - DMAチェインテーブルの偶数アラインメント
 - RAMからGVRAMへのDMA転送方向修正（`OCR=0x19`）
 - DMAエラーの`CSR/CER`診断ログ
-- z-mapの再構築キャッシュ
 - region描画の背景・枠・タイトル・本文クリップ
 - ドラッグ中の前面切替をタイトルバーだけ再合成し、覆われるタイトル背景stippleを省略
 - damage region外の本文テキストをスキップ
@@ -164,7 +163,7 @@ z-order、論理パレット、main task登録は共有である。
 
 - 16色モード: `full=1393`で256色の`full=1020`より36.6%遅い
 - stippleのDMA化: 256色`full=1875`となり、CPUの`ss_fill_long`より遅かった
-- 8×8 z-mapだけを根拠にした遮蔽skip拡大: 部分遮蔽を完全遮蔽と誤判定する危険がある
+- 粗い遮蔽情報だけを根拠にした描画skip拡大: 部分遮蔽を完全遮蔽と誤判定する危険がある
 - 16色モードでのドラッグ最適化: `drag-region=358`で256色より速くならず、full描画も遅い
 
 完了した測定基盤:
@@ -348,7 +347,7 @@ ssos-68k/
 | **mem/buddy.c**         | Buddy system（16B〜64KB、可変長）                                                                   |
 | **mem/slab.c**          | Slab cache（64KB 固定、4 種: task/window/msg/rect）                                                 |
 | **gfx/vram.c**          | 5x8 フォントデータ、CRTMOD 8/16 切替、DMAC Ch.2 fill                                                |
-| **win/window.c**        | ウィンドウ API。z-order、hit-test、`render_all` / `render_region`、8x8 block occlusion map          |
+| **win/window.c**        | ウィンドウ API。z-order、hit-test、`render_all` / `render_region`、z順の再合成          |
 | **ipc/message.c**       | タスク間メッセージ。固定長キュー、ブロッキング受信                                                  |
 | **app/scene.c**         | `.x` / `.xdf` 共有の通常UI。3 ウィンドウ + 入力・ドラッグ・描画                         |
 | **app/main.c**          | `.xdf` 側の初期化と `ss_run()` 入口。通常UI本体は `scene.c` にある                         |
@@ -503,16 +502,16 @@ s30 以前は `.x` は独自の `Win` 構造体 / `zmap[3]` / `bring_to_front` /
 | アクティブ判定ルール | `self->z == ss_win_active_z`（最大 z）|
 | ドラッグ操作 | `ss_win_set_z(hid, next_z++)`（単調増加）|
 | ヒットテスト | `ss_win_hit_test`（z-order 順、最前面を返す）|
-| レンダリング z 走査 | `ss_win_render_all` / `ss_win_render_region` で z=0..255 をイテレート |
-| オクルージョン | `rebuild_zmap` で 8×8 ブロック (= 96×64 ブロック) の max-z を計算 |
+| レンダリング z 走査 | 可視ウィンドウを集め、z昇順に挿入ソートして再合成 |
+| オクルージョン | 領域再描画では重なる可視ウィンドウをすべてz昇順に再描画し、上位ウィンドウで自然に上書きする |
 | 初期 z 衝突回避 | `next_z=4` 開始、255 到達後 4 折り返し（[s29](#s29-初回ドラッグの-z-衝突解決済み)）|
 
 設計の要点:
 
 1. **ウィンドウごとに `z` を保存**: 各 `SSWindow` が自己記述的になる。外部の順序簿なしでウィンドウの作成/破棄/再作成が可能
-2. **z=0..255 の汎用ループ**: 任意のウィンドウ数で動く
-3. **ブロックレベル max-z**: 各ウィンドウが z 値を持つことで成立
-4. **単調増加 z でドラッグ前面化**: 順序配列のスキャン不要
+2. **小さな集合をその場で整列**: 最大32個をz昇順に整列し、不要なz値全走査を避ける
+3. **領域単位の再合成**: 背景から順に上書きするため、部分遮蔽も正確に扱える
+4. **単調増加 z でドラッグ前面化**: 前面化の順序を明確に保つ
 
 ### `.x` ビルドでリンクされるオブジェクト
 
@@ -778,7 +777,7 @@ SCC 受信 → 割込(0x148) → IPL-ROM ハンドラ($3F003039) → 座標更�
 2. **ソフトウェアカーソル**: GVRAM に XOR 枠線描画（テキストレイヤー非依存）。XOR は自分自身で相殺するため保存バッファ不要
 3. **ドラッグ枠線方式**: ドラッグ中は XOR 枠線のみ（ウィンドウ本体不動）、ドロップ時のみ `ss_win_render_all()`。ちらつかない（standalone 準拠）
 4. **z 一意化**: `next_z=4` 開始、255→3 折り返し（[s29](#s29-初回ドラッグの-z-衝突解決済み) を参照）
-5. **`rebuild_zmap` 修正**: max z 化 + `memset(zmap,0)`（旧 `0xFF` 初期値だと max 更新 `win->z>255` が常に false → 全ウィンドウ occluded → 非表示）
+5. **粗い遮蔽skipを撤回**: 部分遮蔽を完全遮蔽と誤判定しないよう、現在は領域をz順に再合成する
 
 #### standalone 無影響の根拠（s26 当時）
 

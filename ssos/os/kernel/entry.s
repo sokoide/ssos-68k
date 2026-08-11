@@ -11,9 +11,6 @@ entry:
 	move.l	a0, sp
 	clr.l	-(sp)
 
-	| Set up interrupt handlers
-	bsr	ss_set_interrupts
-
 	| Jump to C initialization
 	jmp	premain
 

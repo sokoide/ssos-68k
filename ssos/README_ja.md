@@ -144,7 +144,7 @@ for each window in z-order (bottom → top):
 
 ```text
 for each pixel (xx, yy) in character glyph:
-    for each window above zmap[zpos]:
+    for each window above the current window in z-order:
         if (xx, yy) is inside that window's bounding box:
             skip this pixel  // 上位ウィンドウの描画内容を保持
 ```

@@ -1,6 +1,6 @@
-#include "kernel.h"
 #include "../gfx/gfx.h"
 #include "../gfx/palette.h"
+#include "kernel.h"
 #include "main_task.h"
 #include <stdint.h>
 #include <x68k/iocs.h>
@@ -14,9 +14,7 @@ void clear_bss(void) {
     }
 }
 
-static void set_palette(void) {
-    ss_palette_program_default();
-}
+static void set_palette(void) { ss_palette_program_default(); }
 
 void premain(void) {
     clear_bss();
@@ -27,7 +25,7 @@ void premain(void) {
     /* Enable graphics plane (G_CLR_ON) */
     _iocs_g_clr_on();
 
-    /* 
+    /*
      * ROM CRTMOD(16) handler misses SIZ bit. Set CRTC R20 bit10=1.
      */
     {
@@ -59,8 +57,8 @@ void premain(void) {
     /* Clear CRTC scroll registers */
     {
         volatile uint16_t* crtc = (volatile uint16_t*)0xE80000;
-        crtc[12] = 0;  /* Scroll X */
-        crtc[13] = 0;  /* Scroll Y */
+        crtc[12] = 0; /* Scroll X */
+        crtc[13] = 0; /* Scroll Y */
     }
 
     /* Initialize and show mouse cursor (may fail in IPL mode) */
@@ -73,7 +71,7 @@ void premain(void) {
      */
 
     /* Final cursor/display cleanup before OS takes over */
-    _iocs_b_curoff();   /* B_CUROFF again */
+    _iocs_b_curoff(); /* B_CUROFF again */
     /* Full Text VRAM clear (512KB) */
     {
         volatile uint32_t* tv = (volatile uint32_t*)0xE00000;
@@ -82,23 +80,16 @@ void premain(void) {
     /* Disable text layer in video controller to hide cursor completely */
     {
         volatile uint16_t* vc = (volatile uint16_t*)0xE82600;
-        *vc = 0x003E;  /* All layers ON except text (bit0=0) */
+        *vc = 0x003E; /* All layers ON except text (bit0=0) */
     }
 
     /*
-     * Re-initialize MFP interrupts AFTER all IOCS calls above.
+     * Initialize MFP interrupts only after all IOCS calls above.
      *
-     * entry.s calls ss_set_interrupts() BEFORE premain(), but the IOCS
-     * routines invoked above (CRTMOD, G_CLR_ON, etc.) internally
-     * reprogram the MFP — timers, IMR, and the interrupt vectors —
-     * clobbering our V-DISP (0x134) and Timer D (0x110) handlers.  With
-     * those gone, ss_vsync_counter never advances, so ss_run()'s first
-     * wait_vsync() freezes: the screen shows only the initial render
-     * (background + empty windows) and never responds to keyboard/mouse.
-     *
-     * Mirror standalone/main.c, which calls ss_set_interrupts() LAST for
-     * exactly this reason.  This re-applies IMR=$FF/$7F and reinstalls
-     * our V-DISP / Timer D handlers so the scheduler and input wake up.
+     * CRTMOD, G_CLR_ON, and mouse IOCS routines can reprogram the MFP
+     * timers, masks, and vectors.  Installing our V-DISP (0x134) and
+     * Timer D (0x110) handlers here keeps the setup after those changes
+     * and avoids running custom ISRs before C initialization is complete.
      */
     ss_set_interrupts();
 
@@ -132,16 +123,17 @@ void premain(void) {
      * その絞り込みが IPL ROM ハンドラが期待する状態を崩し、
      * 結果としてマウス受信ワークが更新されない症状の原因になっていた。
      */
-    *(volatile uint8_t*)0xE88003 = 0x06;   /* AER */
+    *(volatile uint8_t*)0xE88003 = 0x06; /* AER */
     /* IMRA/IMRB are left at the $FF/$7F set by ss_set_interrupts(). */
 
     ss_init();
-    /* entry.s enabled MFP interrupts before premain.  Keep registration
-     * atomic even though the low-level helper cannot restore the old SR. */
+    /* MFP interrupts are active after the final setup above.  Keep
+     * registration atomic even though the low-level helper cannot restore
+     * the old SR. */
     ss_disable_interrupts();
     static SSTask main_tcb;
     if (ss_main_task_register(&main_tcb, 8) != SS_OK) {
-        for (;;) ;
+        for (;;);
     }
     ss_enable_interrupts();
     ss_run();

@@ -227,7 +227,6 @@ ss_vdisp_handler:
 		addq.l	#1, ss_vdisp_fire_count
 
 		movem.l	(sp)+, d0/a0
-					move.w	#0x2000, %sr		| Re-enable interrupts
 			rte
 
 		| ============================================================
@@ -269,7 +268,6 @@ ss_timerd_handler:
 		move.b	d0, (a0)
 
 		movem.l	(sp)+, d0/a0
-						move.w	#0x2000, %sr		| Re-enable interrupts
 			rte
 
 		| ============================================================

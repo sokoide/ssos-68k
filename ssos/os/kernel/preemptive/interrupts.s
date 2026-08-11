@@ -225,7 +225,6 @@ ss_vdisp_handler:
 		move.b	#1, ss_vsync_flag
 
 		movem.l	(sp)+, d0/a0
-		move.w	#0x2000, %sr		| Re-enable interrupts
 		rte
 
 		| ============================================================
@@ -295,7 +294,6 @@ ss_timerd_handler:
 		andi.b	#0xef, d0
 		move.b	d0, (a0)
 		movem.l	(sp)+, d0/a0
-		move.w	#0x2000, %sr		| Re-enable interrupts
 		rte
 
 	.no_switch_full:
@@ -304,7 +302,6 @@ ss_timerd_handler:
 		andi.b	#0xef, d0
 		move.b	d0, (a0)
 		movem.l	(sp)+, d0-d7/a0-a6
-		move.w	#0x2000, %sr		| Re-enable interrupts
 		rte
 
 		| ============================================================

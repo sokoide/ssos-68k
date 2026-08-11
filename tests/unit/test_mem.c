@@ -8,8 +8,8 @@
  * and the 64-bit host (8-byte pointer), so tests derive sizes from the struct
  * rather than hard-coding byte counts. */
 
-#include "ssos_test.h"
 #include "memory.h"
+#include "ssos_test.h"
 
 #include <stdint.h>
 #include <string.h>
@@ -17,6 +17,8 @@
 /* Test arena. 256KB is enough to hold the order map plus several max-order
  * (64KB) blocks. Aligned so the base address itself is sane. */
 static uint8_t arena[256 * 1024] __attribute__((aligned(16)));
+static uint8_t tiny_arena[16] __attribute__((aligned(16)));
+static uint8_t slab_overflow_arena[(UINT16_MAX + 1u) * sizeof(SSSlabObj)];
 
 /* ---- buddy: init ---- */
 
@@ -29,6 +31,24 @@ TEST(mem_init_has_free_space) {
     ss_mem_init(arena, sizeof(arena));
     /* After reserving the order map, most of the arena must remain free. */
     ASSERT_TRUE(ss_mem_free_bytes() > (uint32_t)(128 * 1024));
+}
+
+TEST(mem_init_null_or_too_small_is_empty) {
+    ss_mem_init(arena, sizeof(arena));
+    ss_mem_init(NULL, sizeof(arena));
+    ASSERT_EQ(ss_mem_total(), 0);
+    ASSERT_EQ(ss_mem_free_bytes(), 0);
+    ASSERT_NULL(ss_alloc(1));
+
+    ss_mem_init(tiny_arena, sizeof(tiny_arena));
+    ASSERT_EQ(ss_mem_total(), 0);
+    ASSERT_EQ(ss_mem_free_bytes(), 0);
+    ASSERT_NULL(ss_alloc(1));
+
+    ss_mem_init(arena + 1, sizeof(arena) - 1);
+    ASSERT_EQ(ss_mem_total(), 0);
+    ASSERT_EQ(ss_mem_free_bytes(), 0);
+    ASSERT_NULL(ss_alloc(1));
 }
 
 /* ---- buddy: basic alloc/free ---- */
@@ -63,6 +83,13 @@ TEST(alloc_huge_returns_null) {
     ASSERT_NULL(ss_alloc(200000));
 }
 
+TEST(alloc_rejects_header_overflow_and_max_block_excess) {
+    ss_mem_init(arena, sizeof(arena));
+    ASSERT_NULL(ss_alloc(UINT32_MAX));
+    ASSERT_NULL(ss_alloc((1u << SS_BUDDY_MAX_ORDER) -
+                         (uint32_t)sizeof(SSBuddyBlock) + 1));
+}
+
 /* ---- buddy: coalescing ---- */
 
 TEST(two_allocs_reverse_free_coalesces) {
@@ -77,6 +104,29 @@ TEST(two_allocs_reverse_free_coalesces) {
     ss_free(b);
     ss_free(a);
     ASSERT_EQ(ss_mem_free_bytes(), before);
+}
+
+TEST(split_block_coalesces_back_to_max_order) {
+    ss_mem_init(arena, sizeof(arena));
+    uint32_t max_payload = (1u << SS_BUDDY_MAX_ORDER) - sizeof(SSBuddyBlock);
+    void* small = ss_alloc(1);
+    void* large[SS_BUDDY_ORDERS];
+    int large_count = 0;
+    ASSERT_NOT_NULL(small);
+
+    while (large_count < SS_BUDDY_ORDERS) {
+        void* block = ss_alloc(max_payload);
+        if (block == NULL)
+            break;
+        large[large_count++] = block;
+    }
+    ASSERT_NULL(ss_alloc(max_payload));
+
+    ss_free(small);
+    void* merged = ss_alloc(max_payload);
+    ASSERT_NOT_NULL(merged);
+    ss_free(merged);
+    for (int i = 0; i < large_count; i++) ss_free(large[i]);
 }
 
 TEST(repeated_alloc_free_no_leak) {
@@ -108,6 +158,12 @@ TEST(alloc_aligned_roundtrip_restores) {
     ASSERT_ALIGNED_4K(p);
     ss_free_aligned(p);
     ASSERT_EQ(ss_mem_free_bytes(), before);
+}
+
+TEST(alloc_aligned_rejects_overflow_and_oversized_alignment) {
+    ss_mem_init(arena, sizeof(arena));
+    ASSERT_NULL(ss_alloc_aligned(UINT32_MAX, 16));
+    ASSERT_NULL(ss_alloc_aligned(1, 1u << (SS_BUDDY_MAX_ORDER + 1)));
 }
 
 /* ---- slab ---- */
@@ -150,19 +206,69 @@ TEST(slab_free_restores_and_is_null_safe) {
     ASSERT_EQ(cache.free_count, 128);
 }
 
+TEST(slab_init_invalid_input_is_empty) {
+    SSSlabCache cache;
+
+    ss_slab_init(&cache, 0, arena, sizeof(arena));
+    ASSERT_EQ(cache.count, 0);
+    ASSERT_NULL(ss_slab_alloc(&cache));
+
+    ss_slab_init(&cache, (uint16_t)(sizeof(SSSlabObj) - 1), arena,
+                 sizeof(arena));
+    ASSERT_EQ(cache.count, 0);
+    ASSERT_NULL(ss_slab_alloc(&cache));
+
+    ss_slab_init(&cache, (uint16_t)(sizeof(SSSlabObj) + 1), arena,
+                 sizeof(arena));
+    ASSERT_EQ(cache.count, 0);
+    ASSERT_NULL(ss_slab_alloc(&cache));
+
+    ss_slab_init(&cache, (uint16_t)sizeof(SSSlabObj), arena + 1,
+                 sizeof(arena) - 1);
+    ASSERT_EQ(cache.count, 0);
+    ASSERT_NULL(ss_slab_alloc(&cache));
+
+    ss_slab_init(&cache, (uint16_t)sizeof(SSSlabObj), NULL, sizeof(arena));
+    ASSERT_EQ(cache.count, 0);
+    ASSERT_NULL(ss_slab_alloc(&cache));
+
+    ss_slab_init(&cache, (uint16_t)sizeof(SSSlabObj), arena,
+                 (uint32_t)sizeof(SSSlabObj) - 1);
+    ASSERT_EQ(cache.count, 0);
+    ASSERT_NULL(ss_slab_alloc(&cache));
+}
+
+TEST(slab_init_rejects_count_overflow_and_null_cache_ops) {
+    SSSlabCache cache;
+
+    ss_slab_init(&cache, (uint16_t)sizeof(SSSlabObj), slab_overflow_arena,
+                 sizeof(slab_overflow_arena));
+    ASSERT_EQ(cache.count, 0);
+    ASSERT_NULL(ss_slab_alloc(&cache));
+    ASSERT_NULL(ss_slab_alloc(NULL));
+    ss_slab_init(NULL, (uint16_t)sizeof(SSSlabObj), arena, sizeof(arena));
+    ss_slab_free(NULL, arena);
+}
+
 void run_mem_tests(void) {
     RUN_TEST(mem_init_reports_total);
     RUN_TEST(mem_init_has_free_space);
+    RUN_TEST(mem_init_null_or_too_small_is_empty);
     RUN_TEST(alloc_returns_valid_pointer);
     RUN_TEST(alloc_free_restores_free_bytes);
     RUN_TEST(alloc_zero_returns_null);
     RUN_TEST(alloc_huge_returns_null);
+    RUN_TEST(alloc_rejects_header_overflow_and_max_block_excess);
     RUN_TEST(two_allocs_reverse_free_coalesces);
+    RUN_TEST(split_block_coalesces_back_to_max_order);
     RUN_TEST(repeated_alloc_free_no_leak);
     RUN_TEST(alloc_aligned_is_4k_aligned);
     RUN_TEST(alloc_aligned_roundtrip_restores);
+    RUN_TEST(alloc_aligned_rejects_overflow_and_oversized_alignment);
     RUN_TEST(slab_init_counts);
     RUN_TEST(slab_alloc_decrements_free);
     RUN_TEST(slab_alloc_until_exhausted);
     RUN_TEST(slab_free_restores_and_is_null_safe);
+    RUN_TEST(slab_init_invalid_input_is_empty);
+    RUN_TEST(slab_init_rejects_count_overflow_and_null_cache_ops);
 }

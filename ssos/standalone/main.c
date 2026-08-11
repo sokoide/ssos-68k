@@ -544,18 +544,16 @@ static void print_bench_profile(const char* phase, uint32_t rounds,
              (unsigned)p->dma_mfc, (unsigned)p->dma_dfc, (unsigned)p->dma_bfc);
     bench_print_line(buf);
     snprintf(buf, sizeof(buf),
-             "SSPERF render all=%lu region=%lu background=%lu zmap=%lu\r\n",
+             "SSPERF render all=%lu region=%lu background=%lu\r\n",
              (unsigned long)p->render_all_calls,
              (unsigned long)p->render_region_calls,
-             (unsigned long)p->full_background_fills,
-             (unsigned long)p->zmap_rebuilds);
+             (unsigned long)p->full_background_fills);
     bench_print_line(buf);
     snprintf(buf, sizeof(buf),
-             "SSPERF windows considered=%lu rendered=%lu skip_overlap=%lu skip_occluded=%lu\r\n",
+             "SSPERF windows considered=%lu rendered=%lu skip_overlap=%lu\r\n",
              (unsigned long)p->windows_considered,
              (unsigned long)p->windows_rendered,
-             (unsigned long)p->windows_skipped_no_overlap,
-             (unsigned long)p->windows_skipped_occluded);
+             (unsigned long)p->windows_skipped_no_overlap);
     bench_print_line(buf);
     snprintf(buf, sizeof(buf),
              "SSPERF dirty marks=%lu submitted=%lu clipped=%lu\r\n",
