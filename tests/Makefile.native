@@ -63,8 +63,11 @@ UNIT_SRCS = \
 
 ALL_SRCS = $(FRAMEWORK_SRCS) $(UNIT_SRCS) $(OS_SRCS)
 # This suite is compiled in one invocation; any shared header change must
-# invalidate the runner just like a source change.
-HEADERS = $(wildcard framework/*.h $(SSOS)/*/*.h)
+# invalidate the runner just like a source change. Patterns that match
+# nothing expand away, so reserve every include location up front: the
+# tests root, unit/, and two levels under os/ (kernel/<sched>/ included).
+HEADERS = $(wildcard *.h framework/*.h unit/*.h \
+           $(SSOS)/*.h $(SSOS)/*/*.h $(SSOS)/*/*/*.h)
 
 .PHONY: all test clean
 all: $(TARGET)
