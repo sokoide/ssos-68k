@@ -27,6 +27,13 @@ CFLAGS  = -O2 -g -Wall -Wextra -Werror -std=c11 $(BUILD_DEF) -DSS_HOST_TEST -DSS
 SSOS    = ../ssos/os
 TARGET  = test_runner_native_$(SCHED)
 
+# Keep instrumented runners separate so switching modes cannot reuse a stale
+# binary. Stop at the first sanitizer finding, including undefined behavior.
+ifeq ($(SANITIZE),1)
+TARGET := $(TARGET)_sanitize
+CFLAGS += -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer
+endif
+
 # Pure-logic + host-seamed graphics + stubbed-HW sources. premain.c/main.c
 # and the asm objects (entry.s, interrupts.s) remain excluded.
 OS_SRCS = \
@@ -55,6 +62,9 @@ UNIT_SRCS = \
 	unit/test_ipc.c
 
 ALL_SRCS = $(FRAMEWORK_SRCS) $(UNIT_SRCS) $(OS_SRCS)
+# This suite is compiled in one invocation; any shared header change must
+# invalidate the runner just like a source change.
+HEADERS = $(wildcard framework/*.h $(SSOS)/*/*.h)
 
 .PHONY: all test clean
 all: $(TARGET)
@@ -63,8 +73,9 @@ test: $(TARGET)
 	@echo "=== SSOS Native Tests (SCHED=$(SCHED)) ==="
 	./$(TARGET)
 
-$(TARGET): $(ALL_SRCS)
-	$(CC) $(CFLAGS) $^ -o $(TARGET)
+$(TARGET): $(ALL_SRCS) $(HEADERS) Makefile.native
+	$(CC) $(CFLAGS) $(ALL_SRCS) -o $(TARGET)
 
 clean:
 	rm -f test_runner_native_cooperative test_runner_native_preemptive
+	rm -f test_runner_native_cooperative_sanitize test_runner_native_preemptive_sanitize

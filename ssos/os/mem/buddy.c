@@ -19,7 +19,6 @@ static void* block_buddy(void* ptr, uint8_t order) {
 }
 
 void ss_mem_init(void* base, uint32_t size) {
-    uint32_t i;
     uint32_t min_block = order_size(SS_BUDDY_MIN_ORDER);
 
     memset(&buddy, 0, sizeof(buddy));
@@ -52,28 +51,22 @@ void ss_mem_init(void* base, uint32_t size) {
     uint32_t usable_size = size - usable_start;
     uint8_t* usable_base = buddy.base;
 
-    /* Find largest order that fits */
-    uint8_t max_order = SS_BUDDY_MAX_ORDER;
-    while (max_order > SS_BUDDY_MIN_ORDER &&
-           order_size(max_order) > usable_size) {
-        max_order--;
-    }
-
-    /* Split from top order down */
-    for (i = 0; i < SS_BUDDY_ORDERS; i++) {
-        buddy.free_lists[i] = NULL;
-    }
-
-    /* Add the entire usable region as blocks of the max possible order */
+    /* Tile the usable region with decreasing orders. Each offset stays
+     * aligned to its block size relative to buddy.base, as required by XOR
+     * coalescing. Keep the smaller tail instead of discarding it. */
+    uint8_t order = SS_BUDDY_MAX_ORDER;
     uint32_t offset = 0;
-    while (offset + order_size(max_order) <= usable_size) {
+    while (offset < usable_size) {
+        while (order_size(order) > usable_size - offset) {
+            order--;
+        }
         SSBuddyBlock* blk = (SSBuddyBlock*)(usable_base + offset);
-        int idx = order_to_index(max_order);
+        int idx = order_to_index(order);
         blk->next = buddy.free_lists[idx];
-        blk->order = max_order;
+        blk->order = order;
         buddy.free_lists[idx] = blk;
-        buddy.order_map[block_index(blk)] = max_order;
-        offset += order_size(max_order);
+        buddy.order_map[block_index(blk)] = order;
+        offset += order_size(order);
     }
 }
 

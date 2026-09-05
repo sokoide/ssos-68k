@@ -33,6 +33,54 @@ TEST(mem_init_has_free_space) {
     ASSERT_TRUE(ss_mem_free_bytes() > (uint32_t)(128 * 1024));
 }
 
+TEST(mem_init_preserves_all_usable_blocks) {
+    const uint32_t min_block = 1u << SS_BUDDY_MIN_ORDER;
+    const uint32_t sizes[] = {32, 48, 560, 4096, 65536, sizeof(arena) - 1,
+                              sizeof(arena)};
+    for (unsigned i = 0; i < sizeof(sizes) / sizeof(sizes[0]); i++) {
+        uint32_t size = sizes[i] & ~(min_block - 1);
+        uint32_t map_size = size / min_block;
+        uint32_t reserved = (map_size + min_block - 1) & ~(min_block - 1);
+        ss_mem_init(arena, sizes[i]);
+        ASSERT_EQ(ss_mem_free_bytes(), size - reserved);
+    }
+}
+
+TEST(alloc_exhausts_tail_without_overlap_and_recovers) {
+    /* 4096 bytes reserve 256 map bytes, leaving 120 blocks of 32 bytes. */
+    enum { arena_size = 4096, block_size = 32, block_count = 120 };
+    void* blocks[block_count];
+    uint32_t payload = block_size - sizeof(SSBuddyBlock);
+    ss_mem_init(arena, arena_size);
+    for (int i = 0; i < block_count; i++) {
+        blocks[i] = ss_alloc(payload);
+        ASSERT_NOT_NULL(blocks[i]);
+        ASSERT_TRUE((uint8_t*)blocks[i] >= arena + 256);
+        ASSERT_TRUE((uint8_t*)blocks[i] + payload <= arena + arena_size);
+        memset(blocks[i], i + 1, payload);
+    }
+    ASSERT_NULL(ss_alloc(payload));
+    ASSERT_EQ(ss_mem_free_bytes(), 0);
+    for (int i = 0; i < block_count; i++) {
+        for (uint32_t j = 0; j < payload; j++) {
+            ASSERT_EQ(((uint8_t*)blocks[i])[j], i + 1);
+        }
+    }
+    /* Interleave frees to exercise merging across multiple initial orders. */
+    for (int parity = 0; parity < 2; parity++) {
+        for (int i = parity; i < block_count; i += 2) ss_free(blocks[i]);
+    }
+    ASSERT_EQ(ss_mem_free_bytes(), 3840);
+    const uint32_t orders[] = {2048, 1024, 512, 256};
+    for (unsigned i = 0; i < sizeof(orders) / sizeof(orders[0]); i++) {
+        blocks[i] = ss_alloc(orders[i] - sizeof(SSBuddyBlock));
+        ASSERT_NOT_NULL(blocks[i]);
+    }
+    ASSERT_EQ(ss_mem_free_bytes(), 0);
+    for (int i = 3; i >= 0; i--) ss_free(blocks[i]);
+    ASSERT_EQ(ss_mem_free_bytes(), 3840);
+}
+
 TEST(mem_init_null_or_too_small_is_empty) {
     ss_mem_init(arena, sizeof(arena));
     ss_mem_init(NULL, sizeof(arena));
@@ -107,7 +155,8 @@ TEST(two_allocs_reverse_free_coalesces) {
 }
 
 TEST(split_block_coalesces_back_to_max_order) {
-    ss_mem_init(arena, sizeof(arena));
+    /* 69920 bytes reserve 4384 map bytes, leaving exactly one 64KB block. */
+    ss_mem_init(arena, 69920);
     uint32_t max_payload = (1u << SS_BUDDY_MAX_ORDER) - sizeof(SSBuddyBlock);
     void* small = ss_alloc(1);
     void* large[SS_BUDDY_ORDERS];
@@ -253,6 +302,8 @@ TEST(slab_init_rejects_count_overflow_and_null_cache_ops) {
 void run_mem_tests(void) {
     RUN_TEST(mem_init_reports_total);
     RUN_TEST(mem_init_has_free_space);
+    RUN_TEST(mem_init_preserves_all_usable_blocks);
+    RUN_TEST(alloc_exhausts_tail_without_overlap_and_recovers);
     RUN_TEST(mem_init_null_or_too_small_is_empty);
     RUN_TEST(alloc_returns_valid_pointer);
     RUN_TEST(alloc_free_restores_free_bytes);

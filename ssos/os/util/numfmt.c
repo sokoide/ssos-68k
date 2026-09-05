@@ -1,8 +1,6 @@
 #include "numfmt.h"
 
-/* Decimal digit table lets us avoid a per-digit divmod loop building the
- * string; we still do the divmod but keep it tight.  Output is built
- * right-to-left into a local buffer then copied. */
+/* Output is built right-to-left into a local buffer then copied. */
 
 int ss_utoa_dec(uint32_t v, char* out) {
     char tmp[11];
@@ -32,8 +30,7 @@ int ss_itoa_dec(int32_t v, char* out) {
 int ss_itoa_dec_pad(int32_t v, char* out, int width) {
     char tmp[12];
     int n = ss_itoa_dec(v, tmp);          /* includes any '-' */
-    int pad = width - n;
-    if (pad < 0) pad = 0;
+    int pad = width > n ? width - n : 0;
     for (int i = 0; i < pad; i++) out[i] = ' ';
     for (int i = 0; i < n; i++) out[pad + i] = tmp[i];
     out[pad + n] = '\0';
@@ -42,7 +39,7 @@ int ss_itoa_dec_pad(int32_t v, char* out, int width) {
 
 int ss_utoa_hex(uint32_t v, char* out, int width) {
     static const char hex[] = "0123456789ABCDEF";
-    char tmp[8];
+    char tmp[9]; /* Eight uint32_t hex digits plus the terminator. */
     int i = (int)sizeof(tmp);
     tmp[--i] = '\0';
     if (v == 0) {
@@ -54,8 +51,7 @@ int ss_utoa_hex(uint32_t v, char* out, int width) {
         }
     }
     int digits = (int)sizeof(tmp) - 1 - i;
-    int pad = width - digits;
-    if (pad < 0) pad = 0;
+    int pad = width > digits ? width - digits : 0;
     for (int j = 0; j < pad; j++) out[j] = '0';
     for (int j = 0; j < digits; j++) out[pad + j] = tmp[i + j];
     out[pad + digits] = '\0';

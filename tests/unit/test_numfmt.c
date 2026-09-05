@@ -12,6 +12,7 @@
 #include "numfmt.h"
 
 #include <stdint.h>
+#include <limits.h>
 #include <string.h>
 
 /* ---- ss_utoa_dec ---- */
@@ -133,6 +134,20 @@ TEST(utoa_hex_width_smaller_than_digits) {
     ASSERT_EQ(n, 3);
 }
 
+TEST(utoa_hex_max_uint32) {
+    char buf[9];
+    ASSERT_EQ(ss_utoa_hex(UINT32_MAX, buf, 0), 8);
+    ASSERT_STR_EQ(buf, "FFFFFFFF");
+}
+
+TEST(format_minimum_width_does_not_overflow) {
+    char buf[12];
+    ASSERT_EQ(ss_itoa_dec_pad(INT32_MIN, buf, INT_MIN), 11);
+    ASSERT_STR_EQ(buf, "-2147483648");
+    ASSERT_EQ(ss_utoa_hex(UINT32_MAX, buf, INT_MIN), 8);
+    ASSERT_STR_EQ(buf, "FFFFFFFF");
+}
+
 void run_numfmt_tests(void) {
     RUN_TEST(utoa_dec_basic);
     RUN_TEST(utoa_dec_small);
@@ -149,4 +164,6 @@ void run_numfmt_tests(void) {
     RUN_TEST(utoa_hex_padded);
     RUN_TEST(utoa_hex_width8);
     RUN_TEST(utoa_hex_width_smaller_than_digits);
+    RUN_TEST(utoa_hex_max_uint32);
+    RUN_TEST(format_minimum_width_does_not_overflow);
 }

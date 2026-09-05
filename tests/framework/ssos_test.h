@@ -27,8 +27,9 @@ void reset_test_state(void);
         total_tests++; \
         printf("Running test: %s... ", #name); \
         fflush(stdout); \
+        int failures_before = failed_tests; \
         test_##name(); \
-        printf("PASS\n"); \
+        if (failed_tests == failures_before) printf("PASS\n"); \
     } while(0)
 
 // Assertion macros

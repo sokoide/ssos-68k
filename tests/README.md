@@ -16,6 +16,10 @@ Two test families, run from this directory:
 # Native: runs all C suites for both scheduler variants. Exits non-zero on any failure.
 make test
 
+# Detect out-of-bounds accesses and undefined behavior in both native variants.
+# Instrumented binaries are separate from normal runners (requires sanitizer support).
+make test SANITIZE=1
+
 # QEMU asm samples:
 make test-asm
 # or a single sample:
