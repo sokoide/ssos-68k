@@ -27,7 +27,7 @@ clean:
 
 format:
 	@echo "Formatting markdown files using $(RUNNER)..."
-	$(RUNNER) markdownlint-cli "**/*.md" --ignore "conductor/**" --ignore "CLAUDE.md" --ignore "node_modules/**" --fix
+	$(RUNNER) markdownlint-cli "**/*.md" --ignore "CLAUDE.md" --ignore "node_modules/**" --fix
 	$(EXEC) textlint --fix "**/*.md"
 
 # Native C tests (both SCHED variants) and QEMU asm samples. See tests/README.md.

@@ -31,7 +31,6 @@ Thumbs.db
 .codex/
 .gemini/
 .omc/
-conductor/archive/
 .zcode/
 
 # ---- Build artifacts ----
