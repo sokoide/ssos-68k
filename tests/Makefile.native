@@ -22,7 +22,7 @@ CC      = cc
 CFLAGS  = -O2 -g -Wall -Wextra -Werror -std=c11 $(BUILD_DEF) -DSS_HOST_TEST -DSS_PROFILE_GFX=1 \
           -Iframework -I../ssos/os/util -I../ssos/os/mem \
           -I../ssos/os/kernel -I../ssos/os/win -I../ssos/os/gfx \
-          -I../ssos/os/ipc
+          -I../ssos/os/ipc -I../ssos/os/app
 
 SSOS    = ../ssos/os
 TARGET  = test_runner_native_$(SCHED)
@@ -46,7 +46,8 @@ OS_SRCS = \
 	$(SSOS)/gfx/vram.c \
 	$(SSOS)/gfx/profile.c \
 	$(SSOS)/win/window.c \
-	$(SSOS)/ipc/message.c
+	$(SSOS)/ipc/message.c \
+	$(SSOS)/app/scene.c
 
 FRAMEWORK_SRCS = \
 	framework/test_runner.c \
@@ -59,7 +60,8 @@ UNIT_SRCS = \
 	unit/test_work_queue.c \
 	unit/test_window.c \
 	unit/test_gfx.c \
-	unit/test_ipc.c
+	unit/test_ipc.c \
+	unit/test_scene.c
 
 ALL_SRCS = $(FRAMEWORK_SRCS) $(UNIT_SRCS) $(OS_SRCS)
 # This suite is compiled in one invocation; any shared header change must

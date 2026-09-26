@@ -33,4 +33,8 @@ extern const SSSceneWindowSpec ss_scene_default_windows[SS_SCENE_WINDOW_COUNT];
 void ss_scene_run(const SSSceneHooks *hooks, SSSceneStats *stats);
 int ss_scene_last_key(void);
 
+#ifdef SS_HOST_TEST
+void ss_scene_test_set_input(int mx, int my, int btn);
+#endif
+
 #endif /* SS_APP_SCENE_H */

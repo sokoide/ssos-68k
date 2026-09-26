@@ -9,7 +9,9 @@
 #include "scene.h"
 #include <stdint.h>
 #include <string.h>
+#ifndef SS_HOST_TEST
 #include <x68k/iocs.h>
+#endif
 
 /* Drag state. The drag outline is a self-erasing XOR rectangle
  * (ss_gfx_xor_rect): no saved readback buffer, and it is redrawn
@@ -69,7 +71,21 @@ static int wait_vsync(void) {
 }
 
 static int cur_mx = 0, cur_my = 0, cur_btn = 0;
+#ifdef SS_HOST_TEST
+static int test_mx, test_my, test_btn;
+
+void ss_scene_test_set_input(int mx, int my, int btn) {
+    test_mx = mx;
+    test_my = my;
+    test_btn = btn;
+}
+#endif
 static void update_mouse(void) {
+#ifdef SS_HOST_TEST
+    cur_mx = test_mx;
+    cur_my = test_my;
+    cur_btn = test_btn;
+#else
     /* MS_CURGT (0x75): high word = X, low word = Y.
      * MS_GETDT (0x74): button state (bit9 = left, bit0 = right). */
     int pos = _iocs_ms_curgt();
@@ -77,13 +93,16 @@ static void update_mouse(void) {
     cur_mx = (int16_t)((pos >> 16) & 0xFFFF);
     cur_my = (int16_t)(pos & 0xFFFF);
     cur_btn = dt;
+#endif
 }
 
 static int last_key = -1;
 static void update_keyboard(void) {
+#ifndef SS_HOST_TEST
     if (_iocs_b_keysns() > 0) {
         last_key = _iocs_b_keyinp();
     }
+#endif
 }
 
 /* Software cursor (6x6) XOR outline position; -1 means "not on screen".
@@ -438,7 +457,7 @@ void ss_scene_run(const SSSceneHooks *hooks, SSSceneStats *stats) {
         ss_gfx_xor_rect(mx, my, 6, 6);
         cur_prev_x = mx; cur_prev_y = my;
 
-#ifndef LOCAL_MODE
+#if !defined(LOCAL_MODE) && !defined(SS_HOST_TEST)
         /* Deferred work is posted by baremetal ISR paths.  The standalone
          * host intentionally does not link work_queue.c or this queue. */
         ss_work_drain(&ss_main_work_queue);

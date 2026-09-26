@@ -506,9 +506,10 @@ static int parse_bench_rounds(const char* text, uint32_t* rounds) {
     return 1;
 }
 
-static int find_bench_option(int argc, char** argv, uint32_t* rounds) {
+static int find_bench_option(int argc, char** argv, const char* option,
+                             uint32_t* rounds) {
     for (int i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "-bench") != 0) continue;
+        if (strcmp(argv[i], option) != 0) continue;
 
         *rounds = SS_BENCH_DEFAULT_ROUNDS;
         if (i + 1 < argc) parse_bench_rounds(argv[i + 1], rounds);
@@ -528,6 +529,19 @@ static SSBenchResult bench_results[6];
 static uint32_t bench_result_count;
 static const SSGfxMode* bench_mode;
 static FILE* bench_log_file;
+
+#define SS_DMA_BENCH_WIDTHS  4
+#define SS_DMA_BENCH_HEIGHTS 3
+#define SS_DMA_BENCH_CASES (SS_DMA_BENCH_WIDTHS * SS_DMA_BENCH_HEIGHTS * 2)
+typedef struct {
+    uint16_t w, h;
+    uint8_t path;       /* 1 = CPU, 2 = DMA */
+    uint8_t pixels_ok;
+    uint32_t rounds, ticks, vsyncs;
+    SSGfxProfile profile;
+} SSDmaBenchResult;
+static SSDmaBenchResult dma_bench_results[SS_DMA_BENCH_CASES];
+static int dma_bench_result_count;
 
 static void bench_print_line(const char* line) {
     _iocs_b_print(line);
@@ -755,6 +769,75 @@ static void print_bench_results(void) {
     }
 }
 
+static void run_dma_benchmark(uint32_t rounds) {
+    static const int widths[SS_DMA_BENCH_WIDTHS] = {32, 64, 65, 128};
+    static const int heights[SS_DMA_BENCH_HEIGHTS] = {4, 5, 16};
+    const int x = 20, y = 20;
+    dma_bench_result_count = 0;
+    bench_mode = ss_current_mode;
+
+    for (int hi = 0; hi < SS_DMA_BENCH_HEIGHTS; hi++) {
+        for (int wi = 0; wi < SS_DMA_BENCH_WIDTHS; wi++) {
+            int w = widths[wi], h = heights[hi];
+            for (int order = 0; order < 2; order++) {
+                SSDmaBenchResult* result =
+                    &dma_bench_results[dma_bench_result_count++];
+                int path = ((hi * SS_DMA_BENCH_WIDTHS + wi + order) & 1) + 1;
+                result->w = (uint16_t)w;
+                result->h = (uint16_t)h;
+                result->path = (uint8_t)path;
+                result->rounds = rounds;
+
+                ss_gfx_set_dma_bench_mode(1);
+                ss_gfx_rect(x, y, w, h, 0);
+                ss_gfx_profile_reset();
+                uint32_t start_tick = ss_tick_counter;
+                uint32_t start_vsync = ss_vsync_counter;
+                ss_gfx_set_dma_bench_mode(path);
+                for (uint32_t i = 0; i < rounds; i++)
+                    ss_gfx_rect(x, y, w, h, 0x1234);
+                result->ticks = ss_tick_counter - start_tick;
+                result->vsyncs = ss_vsync_counter - start_vsync;
+                ss_gfx_profile_snapshot(&result->profile);
+
+                result->pixels_ok = 1;
+                for (int yy = y; yy < y + h; yy++) {
+                    volatile uint16_t* row = ss_draw_page +
+                        (uint32_t)yy * (ss_current_mode->bytes_per_line / 2);
+                    for (int xx = x; xx < x + w; xx++) {
+                        if (row[xx] != 0x1234) result->pixels_ok = 0;
+                    }
+                }
+                if (ss_gfx_dma_stop_unconfirmed()) {
+                    ss_gfx_set_dma_bench_mode(0);
+                    return;
+                }
+            }
+        }
+    }
+    ss_gfx_set_dma_bench_mode(0);
+}
+
+static void print_dma_benchmark(void) {
+    char buf[320];
+    for (int i = 0; i < dma_bench_result_count; i++) {
+        SSDmaBenchResult* r = &dma_bench_results[i];
+        SSGfxProfile* p = &r->profile;
+        snprintf(buf, sizeof(buf),
+                 "SSPERF dma-grid w=%u h=%u path=%s rounds=%lu ticks=%lu vsync=%lu pixels=%s attempts=%lu ok=%lu error=%lu timeout=%lu fallback_rows=%lu\r\n",
+                 (unsigned)r->w, (unsigned)r->h,
+                 r->path == 1 ? "cpu" : "dma", (unsigned long)r->rounds,
+                 (unsigned long)r->ticks, (unsigned long)r->vsyncs,
+                 r->pixels_ok ? "ok" : "FAIL",
+                 (unsigned long)p->dma_attempts, (unsigned long)p->dma_ok,
+                 (unsigned long)p->dma_error, (unsigned long)p->dma_timeout,
+                 (unsigned long)p->dma_fallback_rows);
+        bench_print_line(buf);
+    }
+    if (ss_gfx_dma_stop_unconfirmed())
+        bench_print_line("SSPERF dma-grid stopped=ACT-unconfirmed\r\n");
+}
+
 #endif /* SS_PROFILE_GFX */
 
 /* ================================================================
@@ -766,7 +849,9 @@ int main(int argc, char** argv) {
     int requested_mode = SS_CRTMOD_16;  /* Default: mode 16 */
 #if SS_PROFILE_GFX
     uint32_t bench_rounds;
-    int run_bench = find_bench_option(argc, argv, &bench_rounds);
+    int run_dma_bench = find_bench_option(argc, argv, "-dma-bench", &bench_rounds);
+    int run_bench = run_dma_bench ||
+                    find_bench_option(argc, argv, "-bench", &bench_rounds);
 #endif
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-8") == 0) {
@@ -840,6 +925,10 @@ int main(int argc, char** argv) {
     *(volatile uint32_t*)0x7C = (uint32_t)ss_nop_handler;
 
 #if SS_PROFILE_GFX
+    if (run_dma_bench) {
+        run_dma_benchmark(bench_rounds);
+        goto cleanup;
+    }
     if (run_bench) {
         for (int i = 0; i < SS_SCENE_WINDOW_COUNT; i++) {
             const SSSceneWindowSpec* spec = &ss_scene_default_windows[i];
@@ -887,15 +976,20 @@ cleanup:
      * records only after returning to the text console so the user can read
      * and capture them from the emulator terminal. */
     if (run_bench) {
-        bench_log_file = fopen("bench.txt", "w");
+        const char* bench_file = run_dma_bench ? "dma-bench.txt" : "bench.txt";
+        bench_log_file = fopen(bench_file, "w");
         if (bench_log_file == NULL) {
-            _iocs_b_print("SSPERF file=open-failed name=bench.txt\r\n");
+            _iocs_b_print("SSPERF file=open-failed\r\n");
         }
-        print_bench_results();
+        if (run_dma_bench) print_dma_benchmark();
+        else print_bench_results();
         if (bench_log_file != NULL) {
             fclose(bench_log_file);
             bench_log_file = NULL;
-            _iocs_b_print("SSPERF file=bench.txt\r\n");
+            if (run_dma_bench)
+                _iocs_b_print("SSPERF file=dma-bench.txt\r\n");
+            else
+                _iocs_b_print("SSPERF file=bench.txt\r\n");
         }
     } else {
         ss_gfx_profile_snapshot(&runtime_profile);

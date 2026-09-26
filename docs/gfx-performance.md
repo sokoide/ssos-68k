@@ -7,7 +7,7 @@
 
 - `SS_PROFILE_GFX=1` を有効にした `standalone` ビルド
 - 協調スケジューラとプリエンプティブスケジューラの両方
-- `standalone/.x` の `-8 -bench 100` 実行
+- `standalone/.x` の `-8 -bench 100` または `-8 -dma-bench 2000` 実行
 
 ## 事前確認
 
@@ -231,14 +231,18 @@ dirty は「変わった部分だけ更新できたか」を示す。
 
 | 対象 | 必要な追加測定 | 採用条件 |
 | --- | --- | --- |
-| 旧activeタイトルの部分再合成 | 共有`scene.c`のdrag begin/move/endを固定入力で再生し、drop時の`dirty submitted/clipped`、`GVRAM write`、画素を比較。既存`drag-region`ベンチだけでは判定しない | 重なり・隠れ・本文更新を含め画素一致、同一入力列で面積と実時間が改善 |
-| dirty textの差分末尾 | 数字の増減、桁減り、1文字更新、上位windowによるclipを固定入力で再生し、描画glyph数とGVRAM write・画素を比較。既存`text-update`ベンチは差分検出を通らない | 消去用の空白も含め画素一致、追加の差分探索コストを含む実時間が改善 |
+| 旧activeタイトルの部分再合成 | 共有`scene.c`のdrag入力とdrop後の画素比較はNativeで実施済み。次は同一入力列の`dirty submitted/clipped`、`GVRAM write`、実時間を測る。既存`drag-region`ベンチだけでは判定しない | 重なり・隠れ・本文更新を含め画素一致、同一入力列で面積と実時間が改善 |
+| dirty textの差分末尾 | 通常文字更新の画素一致はNativeで確認済み。次は桁減り・画面端clipを個別に試し、描画glyph数、GVRAM write、実時間を比較する。既存`text-update`ベンチは差分検出を通らない | 消去用の空白も含め画素一致、追加の差分探索コストを含む実時間が改善 |
 | DMA停止未確認 | ACT解除あり/なしを分けた故障注入で、後者にCPU fallback、次のDMA開始、source/descriptor更新がないことを確認 | 安全性の完了条件。性能評価の前提であり、速度による採否はしない |
-| DMA閾値 | 同じ矩形をCPU強制とDMA強制で描く専用ベンチを追加。幅は64の前後を含め、高さも現境界の4/5前後を含む複数値を測る。`-8`/`-16`、両方式で反復し、実時間、`vsync`、DMA `ok/error/timeout/fallback_rows`、画素を記録 | 安定して成功し、setup/poll込みでCPUより速い領域だけDMAを選ぶ。現行の幅`>64`・高さ`>4`は実測前に変更しない |
+| DMA閾値 | `-dma-bench`のCPU強制/DMA強制24条件を`-8`/`-16`、両方式で反復し、Timer D tick、`vsync`、DMA `ok/error/timeout/fallback_rows`、画素一致を記録 | 安定して成功し、setup/poll込みでCPUより速い領域だけDMAを選ぶ。現行の幅`>64`・高さ`>4`は実測前に変更しない |
 
 DMA閾値の比較では、現行の`SSPERF`は`vsync`が整数でwall-clock時間を出さないため、短い矩形を単発で比較しない。十分な反復数か追加の経過時間計測を用意し、実行順を入れ替えて複数回測る。転送成功率と画素一致が満たせない条件は、速く見えても採用しない。機種・clock・媒体・commit・profile設定・矩形の幅/高さ・反復数をログに残す。
 
-2026-09-26時点で旧activeタイトル限定、dirty textの両端差分、およびDMAのACT停止未確認時の描画停止をコードへ反映した。NativeのDMA故障注入はACT解除あり/なしを通すが、DMAC実機の停止保証にはならない。共有sceneのdrag/dirty textは決定的な画素比較テストが未整備であり、性能採否は未了。DMA閾値は実機のCPU強制/DMA強制の同条件ログがないため、幅`>64`・高さ`>4`のまま維持する。
+`-dma-bench` はprofile版 `.x` 専用で、CPU強制とDMA強制を同じ矩形で反復する。例えば `ssos_pre_profile1.x -8 -dma-bench 2000` を実機で実行する。結果は終了処理後の `dma-bench.txt` に `SSPERF dma-grid` 行として保存される。幅32/64/65/128、高さ4/5/16の24条件を測り、組ごとにCPU→DMAとDMA→CPUの順を交互にする。`ticks` はTimer Dの5ms単位、`vsync` はV-DISP単位、`pixels=ok` は最後の矩形の全画素一致を示す。`path=dma`でも `attempts=0`、`ok<rounds×h`、`error/timeout/fallback_rows>0`ならDMA優位の根拠にしない。`stopped=ACT-unconfirmed` が出た場合は転送停止を確認できず、以降の描画・測定を止めている。原因確認まで再起動しない。
+
+同じ機種・clock・モードで複数回採取し、CPU/DMA両経路の`pixels=ok`とDMA全行成功を先に確認する。tickが0や僅差なら反復数を増やす。Xeijでの値だけを実機閾値として採用しない。計測器は用意したが実機ログは未取得なので、幅`>64`・高さ`>4`の閾値は維持する。
+
+2026-09-26時点で旧activeタイトル限定、dirty textの両端差分、およびDMAのACT停止未確認時の描画停止をコードへ反映した。NativeのDMA故障注入はACT解除あり/なしを通すが、DMAC実機の停止保証にはならない。共有sceneの非重複・部分重複・全面遮蔽のドラッグ終了後、通常文字更新後、252回再前面化後は、決定的入力に対する全面再描画との画素比較をNativeで通した。ドラッグ中は本文更新を保留するため、全面再描画とは一致しない。実機の性能採否は未了。
 
 ## ログ整理
 

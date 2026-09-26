@@ -85,17 +85,25 @@ static uint8_t dma_disabled_after_timeout;
  * shared source/descriptor.  This state is sticky until process exit. */
 static uint8_t dma_stop_unconfirmed;
 
+#if SS_PROFILE_GFX
+static int dma_bench_mode;
+
+void ss_gfx_set_dma_bench_mode(int mode) {
+    if (mode >= 0 && mode <= 2) dma_bench_mode = mode;
+}
+#endif
+
 int ss_gfx_dma_stop_unconfirmed(void) {
     return dma_stop_unconfirmed != 0;
 }
 
 #ifdef SS_HOST_TEST
-/* 0: register stub, 1: timeout then ACT clears, 2: ACT stays set. */
+/* -1: CPU only, 0: register stub, 1: abort clears ACT, 2: ACT stays set. */
 static int dma_test_status_mode;
 
 void ss_gfx_test_dma_status_mode(int mode) {
     dma_test_status_mode = mode;
-    dma_disabled_after_timeout = 0;
+    dma_disabled_after_timeout = mode < 0;
     dma_stop_unconfirmed = 0;
 }
 
@@ -346,8 +354,12 @@ void ss_gfx_rect(int x, int y, int w, int h, uint16_t color) {
     volatile uint16_t* vram_start = ss_draw_page;
     volatile uint16_t* vram_end = ss_draw_page + ss_current_mode->page_size / 2;
 
-    if (w > SS_DMA_FILL_THRESHOLD && w <= 512 && h > 4 &&
-        !dma_disabled_after_timeout) {
+    int use_dma = w > SS_DMA_FILL_THRESHOLD && w <= 512 && h > 4;
+#if SS_PROFILE_GFX
+    if (dma_bench_mode == 1) use_dma = 0;
+    if (dma_bench_mode == 2) use_dma = w <= 512;
+#endif
+    if (use_dma && !dma_disabled_after_timeout) {
         ss_dma_fill_setup(color, w);
         dma_fill_init();
         int ok = 1;

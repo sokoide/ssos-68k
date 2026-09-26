@@ -45,6 +45,7 @@ unit/
   test_window.c    RAM framebuffer — window CRUD, z-order, dirty regions, pixels
   test_gfx.c       RAM framebuffer — clipping, stipple, glyphs, XOR, page flip
   test_ipc.c       stubbed HW — message queue: send/recv, FIFO, wraparound, full
+  test_scene.c     deterministic mouse input — drag/drop and dirty text pixels
 asm/              self-contained m68k samples for QEMU virt (Goldfish TTY)
   t01_hello.s, t02_subroutines.s, t03_ctx_save_restore.s (progressive)
 qemu/             SSOS scheduler + ctx switch driven on QEMU (C + asm)
@@ -114,7 +115,7 @@ X68000 HW/asm dependencies are stubbed in `framework/test_mocks.c`:
 | `ss_tick_counter` (bumped by ISR)      | host-controlled variable (`ADVANCE_TICK`)  |
 | `ss_task_stack_base` (from app)        | static 512 KB arena                        |
 | GVRAM / CRTC addresses                 | same-layout RAM pages/register array       |
-| DMAC fill                              | normally disabled; fault-injection tests force timeout with ACT cleared/stuck to check fallback and sticky write blocking |
+| DMAC fill                              | normally disabled; fault injection checks ACT cleared/stuck, and benchmark policy tests force CPU/DMA selection |
 | palette IOCS programming               | logical palette-index stub                 |
 
 The scheduler is built twice via `SCHED=`. Both builds use the same scheduler
@@ -122,7 +123,9 @@ core and tests; only the small wakeup-dispatch policy differs.
 
 ## Scope and limitations (read before trusting a green run)
 
-These tests cover **C logic only**. They deliberately do **not** exercise:
+These tests cover **C logic and RAM-backed pixels only**. The scene test feeds
+fixed mouse positions through the normal frame loop and compares incremental
+output after two drops with a full repaint. They deliberately do **not** exercise:
 
 - **Physical VRAM / CRTC / DMA / IOCS / MFP** — graphics algorithms and final
   pixels are covered using RAM, but actual MMIO, bus timing, DMA transfer, and

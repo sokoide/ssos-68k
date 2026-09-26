@@ -1,5 +1,6 @@
 #include "ssos_test.h"
 #include "gfx.h"
+#include "profile.h"
 
 static uint32_t stride(void) {
     return (uint32_t)ss_current_mode->bytes_per_line / 2;
@@ -111,6 +112,23 @@ TEST(gfx_dma_abort_confirmed_allows_cpu_fallback) {
     ASSERT_EQ(pixel(90, 14), 0x1111);
 }
 
+TEST(gfx_dma_bench_policy_forces_each_path) {
+    reset_gfx(SS_CRTMOD_16, 0x1111);
+    ss_gfx_test_dma_status_mode(1);
+    ss_gfx_set_dma_bench_mode(1);
+    ss_gfx_profile_reset();
+    ss_gfx_rect(10, 10, 32, 4, 0x2222);
+    ASSERT_EQ(ss_gfx_profile.dma_attempts, 0);
+    ASSERT_EQ(pixel(10, 10), 0x2222);
+
+    ss_gfx_set_dma_bench_mode(2);
+    ss_gfx_profile_reset();
+    ss_gfx_rect(10, 10, 32, 4, 0x3333);
+    ASSERT_EQ(ss_gfx_profile.dma_attempts, 1);
+    ASSERT_EQ(pixel(41, 13), 0x3333);
+    ss_gfx_set_dma_bench_mode(0);
+}
+
 TEST(gfx_dma_abort_unconfirmed_freezes_writes_and_source) {
     reset_gfx(SS_CRTMOD_16, 0x1111);
     ss_gfx_test_dma_status_mode(2);
@@ -136,5 +154,6 @@ void run_gfx_tests(void) {
     RUN_TEST(gfx_xor_perimeter_twice_restores);
     RUN_TEST(gfx_flip_switches_pages);
     RUN_TEST(gfx_dma_abort_confirmed_allows_cpu_fallback);
+    RUN_TEST(gfx_dma_bench_policy_forces_each_path);
     RUN_TEST(gfx_dma_abort_unconfirmed_freezes_writes_and_source);
 }
