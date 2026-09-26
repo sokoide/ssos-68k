@@ -6,7 +6,7 @@
  * the logic under test. See tests/README.md for the test-scope limitations.
  *
  * Stubbed dependencies:
- *   - Interrupt enable/disable  (real: move.w #imm,%sr)  -> no-op
+ *   - IRQ save/restore          (real: SR mask and restore) -> no-op
  *   - ss_task_yield             (real: asm context switch) -> call ss_do_context_switch()
  *   - ss_tick_counter et al.    (real: bumped by Timer D ISR) -> host-controlled vars
  *   - ss_task_stack_base        (real: app-provided)        -> static arena
@@ -22,12 +22,10 @@
 
 #include <stdint.h>
 
-/* ---- 1. Interrupt enable/disable -------------------------------------- */
-/* Real: move.w #0x2700/%sr (disable) / #0x2000/%sr (enable). The scheduler
- * uses these only to guard queue critical sections; no-op is correct because
- * the test is single-threaded. */
-void ss_disable_interrupts(void) { }
-void ss_enable_interrupts(void)  { }
+/* ---- 1. IRQ save/restore ----------------------------------------------- */
+/* Native tests are single-threaded; the real functions mask and restore SR. */
+uint16_t ss_irq_save(void) { return 0x2000; }
+void ss_irq_restore(uint16_t saved_sr) { (void)saved_sr; }
 
 /* ---- 2. Tick/vsync counters (defined in interrupts.s on real HW) ------ */
 volatile uint32_t ss_tick_counter      = 0;

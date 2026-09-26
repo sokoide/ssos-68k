@@ -13,7 +13,7 @@ uint8_t* ss_task_stack_base;
 
 void ss_init(void) {
     ss_mem_init((void*)&__ssosram_start, (uintptr_t)&__ssosram_size);
-    ss_task_stack_base = (uint8_t*)ss_alloc(SS_MAX_TASKS * SS_TASK_STACK);
+    ss_task_stack_base = &__ssosstack_start;
     ss_sched_init();
     ss_work_init(&ss_main_work_queue);
     ss_ipc_init();

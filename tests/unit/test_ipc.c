@@ -87,6 +87,29 @@ TEST(recv_nb_no_current_task) {
     ASSERT_EQ(ss_recv_nb(&out), (int16_t)SS_ERR_STATE);
 }
 
+TEST(recv_rejects_task_outside_table) {
+    ss_ipc_init();
+    SSTask main_tcb = {0};
+    ss_curr_task = &main_tcb;
+    SSMessage out;
+    ASSERT_EQ(ss_recv_nb(&out), (int16_t)SS_ERR_STATE);
+    ASSERT_EQ(ss_recv(&out), (int16_t)SS_ERR_STATE);
+}
+
+TEST(recv_empty_without_runnable_peer) {
+    ss_sched_init();
+    ss_ipc_init();
+    SSTask* curr = &tcb_table[0];
+    curr->state = SS_TS_READY;
+    curr->pri = 1;
+    ss_curr_task = curr;
+    ss_sched_enqueue(curr);
+    SSMessage out;
+    ASSERT_EQ(ss_recv(&out), (int16_t)SS_ERR_STATE);
+    ASSERT_EQ(curr->state, SS_TS_READY);
+    ASSERT_EQ(curr->ipc_waiting, 0);
+}
+
 TEST(send_fills_to_limit) {
     ss_ipc_init();
     SSMessage in = make_msg(1, 0, "x");
@@ -176,6 +199,8 @@ void run_ipc_tests(void) {
     RUN_TEST(send_null_msg);
     RUN_TEST(recv_nb_null);
     RUN_TEST(recv_nb_no_current_task);
+    RUN_TEST(recv_rejects_task_outside_table);
+    RUN_TEST(recv_empty_without_runnable_peer);
     RUN_TEST(send_fills_to_limit);
     RUN_TEST(fifo_order);
     RUN_TEST(tail_wraparound);

@@ -1,6 +1,6 @@
 ENTRY(entry)
 
-__ssosram_size = 0x00AB0000;
+__ssosstack_size = 32 * 16384;
 
 MEMORY
 {
@@ -42,8 +42,13 @@ SECTIONS
 	_end = .;
 
 	.ssos : {
+		. = ALIGN(4);
+		__ssosstack_start = .;
+		. = . + __ssosstack_size;
+		__ssosstack_end = .;
 		__ssosram_start = .;
-		. = . + __ssosram_size;
+		. = ORIGIN(SSOSRAM) + LENGTH(SSOSRAM);
 		__ssosram_end = .;
 	} > SSOSRAM
+	__ssosram_size = __ssosram_end - __ssosram_start;
 }

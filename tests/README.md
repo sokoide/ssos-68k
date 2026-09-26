@@ -2,7 +2,7 @@
 
 Unit tests for SSOS-68k, rebuilt against the current kernel/window API.
 
-Two test families, run from this directory:
+Three test families, run from this directory:
 
 | Target          | What it runs                                   | Toolchain                          |
 |-----------------|------------------------------------------------|------------------------------------|
@@ -48,9 +48,9 @@ unit/
 asm/              self-contained m68k samples for QEMU virt (Goldfish TTY)
   t01_hello.s, t02_subroutines.s, t03_ctx_save_restore.s (progressive)
 qemu/             SSOS scheduler + ctx switch driven on QEMU (C + asm)
-  common/  stub.c, tty.h, linker.ld (shared)
-  coop/    ctx_switch.s + t01_single_yield, t02_round_robin, t03_register_save
-  pre/     preempt_ctx_switch.s + t01_round_robin, t02_register_save, t03_sleep_wakeup
+  common/  stub.c, tty.h, linker.ld, IPC blocking test, output verifier
+  coop/    ctx_switch.s + yield, round-robin, register, main-task, IPC tests
+  pre/     preempt_ctx_switch.s + preemption, sleep, main-task, IPC tests
 Makefile.native   native build (SCHED=cooperative|preemptive)
 Makefile / Makefile.qemu  top-level routing
 ```
@@ -70,6 +70,8 @@ links against a QEMU port of the context switch.
   - `t01_single_yield` — one worker yields and returns to main (`TM`)
   - `t02_round_robin` — two workers round-robin (`1212...`)
   - `t03_register_save` — distinct d2-d7 patterns survive each yield
+  - `t05_ipc_blocking` — high-priority receiver leaves the ready queue until
+    a lower-priority sender posts a message; nested SR masks are restored
 - **`pre/`** — preemptive path (ISR driven by `trap #0`; resume via
   `.resume_interrupted` / `rte`). `preempt_ctx_switch.s` ports
   `ss_timerd_handler` + `.resume_task`. A trap exception frame (SR+PC) is
@@ -78,6 +80,8 @@ links against a QEMU port of the context switch.
   - `t02_register_save` — distinct d2-d7 patterns survive each `rte`
   - `t03_sleep_wakeup` — `ss_task_sleep(N)` blocks, ticks advance in the ISR,
     task resumes after N ticks
+  - `t06_ipc_blocking` — same receiver/sender and SR checks on the preemptive
+    context-switch port
   - `t05_timerd_cadence` — production-equivalent 10-Timer-D-tick switch
     cadence: 9 ticks retain the current task; tick 10 switches via the
     interrupted/`rte` path.  It also verifies a sleep deadline between switch
@@ -88,6 +92,9 @@ not a true asynchronous hardware preemption: no instruction can be interrupted
 unless the test explicitly fires a trap.  It validates the ISR-driven
 context-switch mechanics and the 10-tick cadence, but not real-time MFP Timer-D
 delivery, MFP EOI, or Timer-D period setup (QEMU virt has no MFP).
+Each QEMU run must print `OK` and no `FAIL`; launch errors and missing verdicts
+fail the Make target. A timeout is accepted only after `OK` because tests park
+in a loop after reporting their result.
 
 ## How native tests work
 
@@ -99,7 +106,7 @@ X68000 HW/asm dependencies are stubbed in `framework/test_mocks.c`:
 
 | Real dependency                        | Stub in test_mocks.c                       |
 |----------------------------------------|--------------------------------------------|
-| `ss_disable/enable_interrupts` (asm)   | no-op (tests are single-threaded)          |
+| `ss_irq_save/restore` (asm)             | no-op (tests are single-threaded)          |
 | `ss_task_yield` (asm ctx switch)       | calls `ss_do_context_switch()` only — queue rotation, no register swap |
 | `ss_tick_counter` (bumped by ISR)      | host-controlled variable (`ADVANCE_TICK`)  |
 | `ss_task_stack_base` (from app)        | static 512 KB arena                        |

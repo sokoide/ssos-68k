@@ -127,14 +127,12 @@ void premain(void) {
     /* IMRA/IMRB are left at the $FF/$7F set by ss_set_interrupts(). */
 
     ss_init();
-    /* MFP interrupts are active after the final setup above.  Keep
-     * registration atomic even though the low-level helper cannot restore
-     * the old SR. */
-    ss_disable_interrupts();
+    /* MFP interrupts are active after the final setup above. */
+    uint16_t saved_sr = ss_irq_save();
     static SSTask main_tcb;
     if (ss_main_task_register(&main_tcb, 8) != SS_OK) {
         for (;;);
     }
-    ss_enable_interrupts();
+    ss_irq_restore(saved_sr);
     ss_run();
 }

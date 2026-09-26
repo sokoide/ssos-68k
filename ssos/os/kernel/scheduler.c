@@ -125,7 +125,7 @@ uint16_t ss_task_create(SSTaskInfo* info) {
 
     extern uint8_t* ss_task_stack_base;
 
-    ss_disable_interrupts();
+    uint16_t saved_sr = ss_irq_save();
 
     uint16_t i;
     for (i = 0; i < SS_MAX_TASKS; i++) {
@@ -133,11 +133,11 @@ uint16_t ss_task_create(SSTaskInfo* info) {
             break;
     }
     if (i >= SS_MAX_TASKS) {
-        ss_enable_interrupts();
+        ss_irq_restore(saved_sr);
         return SS_ERR_LIMIT;
     }
     if (info->stack == NULL && ss_task_stack_base == NULL) {
-        ss_enable_interrupts();
+        ss_irq_restore(saved_sr);
         return SS_ERR_STATE;
     }
 
@@ -162,7 +162,7 @@ uint16_t ss_task_create(SSTaskInfo* info) {
 
     ss_stack_canary_init(i + 1);
 
-    ss_enable_interrupts();
+    ss_irq_restore(saved_sr);
     return i + 1; /* 1-based ID */
 }
 
@@ -170,11 +170,11 @@ uint16_t ss_task_start(uint16_t id) {
     if (id == 0 || id > SS_MAX_TASKS)
         return SS_ERR_ID;
 
-    ss_disable_interrupts();
+    uint16_t saved_sr = ss_irq_save();
     SSTask* tcb = &tcb_table[id - 1];
 
     if (tcb->state != SS_TS_DORMANT) {
-        ss_enable_interrupts();
+        ss_irq_restore(saved_sr);
         return SS_ERR_STATE;
     }
 
@@ -185,7 +185,7 @@ uint16_t ss_task_start(uint16_t id) {
         ss_curr_task = tcb;
     }
 
-    ss_enable_interrupts();
+    ss_irq_restore(saved_sr);
     return SS_OK;
 }
 
@@ -195,11 +195,10 @@ void ss_do_context_switch(void) {
      * the TimerD ISR (which calls ss_do_wakeups → ss_sched_enqueue)
      * from corrupting the queue mid-operation.
      *
-     * Interrupts remain disabled on return; the resumed task's SR
-     * will be restored from the yield/ISR frame (cooperative yield
-     * pushes 0x2000, so the next task resumes with interrupts on).
+     * Interrupts remain disabled on return. Assembly restores the selected
+     * task's SR from its yield frame or CPU exception frame.
      */
-    ss_disable_interrupts();
+    (void)ss_irq_save();
 
     SSTask* curr = ss_curr_task;
     if (curr == NULL) {
@@ -229,7 +228,7 @@ uint16_t ss_task_sleep(uint32_t ticks) {
     if (curr == NULL)
         return SS_ERR_STATE;
 
-    ss_disable_interrupts();
+    uint16_t saved_sr = ss_irq_save();
     curr->state = SS_TS_WAIT;
     curr->wait_until = ss_tick_counter + ticks;
     ss_sched_dequeue(curr);
@@ -237,13 +236,14 @@ uint16_t ss_task_sleep(uint32_t ticks) {
         curr->state = SS_TS_READY;
         curr->wait_until = 0;
         ss_sched_enqueue(curr);
-        ss_enable_interrupts();
+        ss_irq_restore(saved_sr);
         return SS_ERR_STATE;
     }
     curr->sleep_next = sleeping_tasks;
     sleeping_tasks = curr;
-    /* Yield immediately — rte restores interrupts (SR=0x2000) */
+    /* Yield saves the masked SR; resume restores it before returning here. */
     ss_task_yield();
+    ss_irq_restore(saved_sr);
     return SS_OK;
 }
 

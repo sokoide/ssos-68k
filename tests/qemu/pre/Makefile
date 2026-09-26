@@ -8,7 +8,7 @@ CC      = m68k-elf-gcc
 ASFLAGS = -m68000 -Wa,--register-prefix-optional
 CFLAGS  = -m68000 -O2 -g -ffreestanding -nostdlib -fno-builtin \
           -Wall -Wextra -Wno-unused-parameter \
-          -I../common -I../common/include -I../../../ssos/os/kernel
+          -I../common -I../common/include -I../../../ssos/os/kernel -I../../../ssos/os/ipc
 LDFLAGS = -T ../common/linker.ld -nostdlib -Wl,--gc-sections -lgcc
 
 QEMU    = qemu-system-m68k
@@ -20,7 +20,7 @@ SSOS   = ../../../ssos/os
 # t04_main_task_register exercises the production main-task bootstrap.
 # t05_timerd_cadence rebuilds the ISR port with the production 10-tick cadence.
 TESTS = t01_round_robin t02_register_save t03_sleep_wakeup t04_main_task_register \
-	t05_timerd_cadence
+	t05_timerd_cadence t06_ipc_blocking
 
 # Shared objects
 stub.o: ../common/stub.c
@@ -31,12 +31,16 @@ wakeups.o: $(SSOS)/kernel/preemptive/wakeups.c
 	$(CC) $(CFLAGS) -c $< -o $@
 main_task.o: $(SSOS)/kernel/main_task.c
 	$(CC) $(CFLAGS) -c $< -o $@
+ipc.o: $(SSOS)/ipc/message.c
+	$(CC) $(CFLAGS) -c $< -o $@
+t06_ipc_blocking.o: ../common/t_ipc_blocking.c
+	$(CC) $(CFLAGS) -c $< -o $@
 preempt_ctx_switch.o: preempt_ctx_switch.s
 	$(CC) $(ASFLAGS) -c $< -o $@
 preempt_ctx_switch_10.o: preempt_ctx_switch.s
 	$(CC) $(ASFLAGS) -Wa,--defsym,SS_TIMERD_SWITCH_TICKS=10 -c $< -o $@
 
-COMMON_OBJS = stub.o sched.o wakeups.o main_task.o preempt_ctx_switch.o
+COMMON_OBJS = stub.o sched.o wakeups.o main_task.o ipc.o preempt_ctx_switch.o
 
 .PHONY: all run clean
 all: $(addsuffix .elf,$(TESTS))
@@ -51,9 +55,9 @@ t05_timerd_cadence.elf: t05_timerd_cadence.o stub.o sched.o wakeups.o main_task.
 	$(CC) $(CFLAGS) -c $< -o $@
 
 run: all
-	@for t in $(TESTS); do \
+	@set -e; for t in $(TESTS); do \
 		echo "=== pre/$$t ==="; \
-		timeout --foreground $(TIMEOUT_SECS) $(QEMU) $(QFLAGS) -kernel $$t.elf 2>/dev/null || true; \
+		sh ../common/run_test.sh $(TIMEOUT_SECS) $(QEMU) $(QFLAGS) -kernel $$t.elf; \
 		echo; \
 	done
 

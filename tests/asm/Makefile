@@ -23,7 +23,7 @@ TIMEOUT_SECS ?= 1
 .PHONY: all run runall dump clean
 
 all:
-	@for name in $(SOURCES); do \
+	@set -e; for name in $(SOURCES); do \
 		echo "=== $$name ==="; \
 		$(AS) $(ASFLAGS) -al=$$name.lst -o $$name.o $$name.s && \
 		$(LD) $(LDFLAGS) -o $$name.elf $$name.o && \
@@ -36,14 +36,14 @@ run:
 	$(AS) $(ASFLAGS) -al=$(S).lst -o $(S).o $(S).s
 	$(LD) $(LDFLAGS) -o $(S).elf $(S).o
 	rm -f $(S).o
-	timeout --foreground $(TIMEOUT_SECS) $(QEMU) $(QFLAGS) -kernel $(S).elf || true
+	sh ../qemu/common/run_test.sh $(TIMEOUT_SECS) $(QEMU) $(QFLAGS) -kernel $(S).elf
 
 # Run all samples (m68k halt is an infinite loop, so timeout is required).
 runall: all
-	@for name in $(SOURCES); do \
+	@set -e; for name in $(SOURCES); do \
 		echo ""; \
 		echo "=== $$name ==="; \
-		timeout --foreground $(TIMEOUT_SECS) $(QEMU) $(QFLAGS) -kernel $$name.elf 2>/dev/null || true; \
+		sh ../qemu/common/run_test.sh $(TIMEOUT_SECS) $(QEMU) $(QFLAGS) -kernel $$name.elf; \
 		echo ""; \
 	done
 

@@ -9,9 +9,9 @@ void ss_work_init(SSWorkQueue* q) {
 }
 
 int16_t ss_work_enqueue(SSWorkQueue* q, void (*handler)(void*), void* arg) {
-    ss_disable_interrupts();
+    uint16_t saved_sr = ss_irq_save();
     if (q->count >= SS_WORK_QUEUE_SIZE) {
-        ss_enable_interrupts();
+        ss_irq_restore(saved_sr);
         return SS_ERR_LIMIT;
     }
 
@@ -22,22 +22,22 @@ int16_t ss_work_enqueue(SSWorkQueue* q, void (*handler)(void*), void* arg) {
     q->tail = (q->tail + 1) % SS_WORK_QUEUE_SIZE;
     q->count++;
 
-    ss_enable_interrupts();
+    ss_irq_restore(saved_sr);
     return SS_OK;
 }
 
 void ss_work_drain(SSWorkQueue* q) {
     while (q->count > 0) {
-        ss_disable_interrupts();
+        uint16_t saved_sr = ss_irq_save();
         if (q->count == 0) {
-            ss_enable_interrupts();
+            ss_irq_restore(saved_sr);
             break;
         }
 
         SSWorkItem item = q->items[q->head];
         q->head = (q->head + 1) % SS_WORK_QUEUE_SIZE;
         q->count--;
-        ss_enable_interrupts();
+        ss_irq_restore(saved_sr);
 
         if (item.handler) {
             item.handler(item.arg);

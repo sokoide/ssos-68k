@@ -19,6 +19,7 @@ struct SSTask {
     uint8_t  ctx_level;    /* SS_CTX_MINIMAL/NORMAL/FULL */
     uint8_t  resume_type;  /* 0 = interrupted, 1 = yielded */
     SSTask*  sleep_next;
+    uint8_t  ipc_waiting;
 };
 
 #if UINTPTR_MAX == UINT32_MAX

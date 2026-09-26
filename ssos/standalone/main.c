@@ -189,9 +189,9 @@ static int draw_content_dirty(SSWindow* w) {
          * Snapshot first, then draw with interrupts enabled; otherwise a
          * Timer D preemption can leave a mixed old/new string in VRAM while
          * content_prev incorrectly records the new string as complete. */
-        ss_disable_interrupts();
+        uint16_t saved_sr = ss_irq_save();
         memcpy(current, w->content[i], sizeof(current));
-        ss_enable_interrupts();
+        ss_irq_restore(saved_sr);
 
         if (memcmp(current, w->content_prev[i], sizeof(current)) != 0) {
             changed = 1;
@@ -225,10 +225,10 @@ static int draw_content_dirty(SSWindow* w) {
             /* Do not acknowledge a value that changed while it was drawn.
              * Leaving content_prev untouched schedules one clean redraw on
              * the next frame. */
-            ss_disable_interrupts();
+            saved_sr = ss_irq_save();
             if (memcmp(w->content[i], current, sizeof(current)) == 0)
                 memcpy(w->content_prev[i], current, sizeof(current));
-            ss_enable_interrupts();
+            ss_irq_restore(saved_sr);
         }
     }
     return changed;
@@ -283,19 +283,19 @@ static void draw_content_region(SSWindow* w, const SSGfxRect* clip) {
             y >= clip->y + clip->h || y + SS_FONT_H <= clip->y)
             continue;
 
-        ss_disable_interrupts();
+        uint16_t saved_sr = ss_irq_save();
         memcpy(current, w->content[i], sizeof(current));
-        ss_enable_interrupts();
+        ss_irq_restore(saved_sr);
 
         ss_gfx_draw_text_region(x, y, current, C_BLACK, C_WHITE, clip);
 
         int fully_clipped = x >= clip->x && y >= clip->y &&
                             x + line_w <= clip->x + clip->w &&
                             y + SS_FONT_H <= clip->y + clip->h;
-        ss_disable_interrupts();
+        saved_sr = ss_irq_save();
         if (fully_clipped && memcmp(w->content[i], current, sizeof(current)) == 0)
             memcpy(w->content_prev[i], current, sizeof(current));
-        ss_enable_interrupts();
+        ss_irq_restore(saved_sr);
     }
 }
 
@@ -624,12 +624,12 @@ static int bench_drag_saved_highest_active_z;
 static void bench_drag_region_prepare(void) {
     SSWindow* dragged = ss_win_get_ptr(win_ids[2]);
 
-    ss_disable_interrupts();
+    uint16_t saved_sr = ss_irq_save();
     for (int i = 0; i < 3; i++)
         memcpy(&bench_drag_saved[i], ss_win_get_ptr(win_ids[i]),
                sizeof(bench_drag_saved[i]));
     bench_drag_saved_highest_active_z = highest_active_z;
-    ss_enable_interrupts();
+    ss_irq_restore(saved_sr);
 
     ss_win_move(dragged->id, SS_BENCH_DRAG_X0, SS_BENCH_DRAG_Y0);
     ss_win_show(dragged->id);
@@ -666,18 +666,18 @@ static void bench_drag_region(uint32_t rounds) {
 /* Restore outside the profile interval.  redraw_desktop updates content_prev,
  * so copy the exact model one final time after repainting. */
 static void bench_drag_region_restore(void) {
-    ss_disable_interrupts();
+    uint16_t saved_sr = ss_irq_save();
     for (int i = 0; i < 3; i++)
         memcpy(ss_win_get_ptr(win_ids[i]), &bench_drag_saved[i],
                sizeof(bench_drag_saved[i]));
-    ss_enable_interrupts();
+    ss_irq_restore(saved_sr);
     redraw_desktop();
-    ss_disable_interrupts();
+    saved_sr = ss_irq_save();
     for (int i = 0; i < 3; i++)
         memcpy(ss_win_get_ptr(win_ids[i]), &bench_drag_saved[i],
                sizeof(bench_drag_saved[i]));
     highest_active_z = bench_drag_saved_highest_active_z;
-    ss_enable_interrupts();
+    ss_irq_restore(saved_sr);
 }
 
 typedef void (*SSBenchPhase)(uint32_t rounds);

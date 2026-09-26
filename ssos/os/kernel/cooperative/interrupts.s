@@ -3,7 +3,7 @@
 		.section .text
 		.align	2
 		.globl	ss_set_interrupts, ss_restore_interrupts
-		.globl	ss_disable_interrupts, ss_enable_interrupts
+		.globl	ss_irq_save, ss_irq_restore
 		.globl	ss_tick_counter, ss_vsync_counter
 		.globl	ss_vsync_flag
 		.globl	ss_save_data_base
@@ -14,12 +14,14 @@
 		.globl	ss_context_switch_count
 		.type	ss_set_interrupts, @function
 
-ss_disable_interrupts:
-		move.w	#0x2700, %sr
+ss_irq_save:
+		move.w	%sr, %d0
+		ori.w	#0x0700, %sr
 		rts
 
-ss_enable_interrupts:
-		move.w	#0x2000, %sr
+ss_irq_restore:
+		move.l	4(%sp), %d0
+		move.w	%d0, %sr
 		rts
 
 		| ============================================================
@@ -332,7 +334,7 @@ ss_context_switch:
 ss_task_yield:
 		| Build manual resume frame: SR + return PC
 		pea		.yield_resume
-		move.w	#0x2000, -(sp)
+		move.w	%sr, -(sp)
 		| Save all registers (must save ALL — cooperative switch resumes
 	| in a different task context where d2-d7/a2-a6 are clobbered)
 		movem.l	d0-d7/a0-a6, -(sp)

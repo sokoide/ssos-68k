@@ -58,14 +58,15 @@ void ss_run(void);
 /* Interrupt setup (defined in interrupts.s) */
 void ss_set_interrupts(void);
 void ss_restore_interrupts(void);
-void ss_disable_interrupts(void);
-void ss_enable_interrupts(void);
+uint16_t ss_irq_save(void);
+void ss_irq_restore(uint16_t saved_sr);
 
 /* Linker symbols */
 extern uint8_t __text_start, __text_end, __text_size;
 extern uint8_t __data_start, __data_end, __data_size;
 extern uint8_t __bss_start, __bss_end, __bss_size;
 extern uint8_t __ssosram_start, __ssosram_size;
+extern uint8_t __ssosstack_start, __ssosstack_end;
 
 /* MFP register addresses */
 #define SS_MFP_IERA  (*(volatile uint8_t*)0xE88007)

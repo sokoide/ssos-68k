@@ -51,13 +51,15 @@ _start:
 # ----------------------------------------------------------------------------
 # Interrupt enable/disable (scheduler.c guards queue sections with these).
 # ----------------------------------------------------------------------------
-        .globl  ss_disable_interrupts, ss_enable_interrupts
-ss_disable_interrupts:
-        move.w  #0x2700, %sr
+        .globl  ss_irq_save, ss_irq_restore
+ss_irq_save:
+        move.w  %sr, %d0
+        ori.w   #0x0700, %sr
         rts
 
-ss_enable_interrupts:
-        move.w  #0x2000, %sr
+ss_irq_restore:
+        move.l  4(%sp), %d0
+        move.w  %d0, %sr
         rts
 
 # ----------------------------------------------------------------------------
@@ -68,7 +70,7 @@ ss_enable_interrupts:
         .globl  ss_task_yield
 ss_task_yield:
         pea     .yield_resume
-        move.w  #0x2000, -(sp)
+        move.w  %sr, -(sp)
         movem.l d0-d7/a0-a6, -(sp)
         move.l  ss_curr_task, a1
         move.b  #1, 31(a1)              | resume_type = 1 (yielded)

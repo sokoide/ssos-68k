@@ -14,9 +14,7 @@
  * before this TCB can be resumed; registration is not a general-purpose
  * way to enqueue an arbitrary suspended context.
  *
- * The function deliberately does not call ss_disable_interrupts() or
- * ss_enable_interrupts(): those assembly helpers force SR values instead of
- * restoring the caller's SR. The caller owns interrupt exclusion.
+ * The caller owns interrupt exclusion via ss_irq_save/ss_irq_restore.
  */
 uint16_t ss_main_task_register(SSTask* tcb, uint8_t pri);
 

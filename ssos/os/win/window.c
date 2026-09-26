@@ -22,7 +22,7 @@ uint16_t ss_win_create(int x, int y, int w, int h, uint16_t z) {
         y > UINT16_MAX || w > UINT16_MAX || h > UINT16_MAX)
         return 0;
 
-    ss_disable_interrupts();
+    uint16_t saved_sr = ss_irq_save();
 
     uint16_t i;
     for (i = 0; i < SS_MAX_WINDOWS; i++) {
@@ -30,7 +30,7 @@ uint16_t ss_win_create(int x, int y, int w, int h, uint16_t z) {
             break;
     }
     if (i >= SS_MAX_WINDOWS) {
-        ss_enable_interrupts();
+        ss_irq_restore(saved_sr);
         return 0;
     }
 
@@ -53,7 +53,7 @@ uint16_t ss_win_create(int x, int y, int w, int h, uint16_t z) {
     SS_PROFILE_DIRTY_MARK();
     SS_PROFILE_DIRTY_AREA((uint32_t)w * (uint32_t)h);
 
-    ss_enable_interrupts();
+    ss_irq_restore(saved_sr);
     return win->id;
 }
 
@@ -61,9 +61,9 @@ void ss_win_destroy(uint16_t id) {
     SSWindow* win = window_by_id(id);
     if (win == NULL)
         return;
-    ss_disable_interrupts();
+    uint16_t saved_sr = ss_irq_save();
     memset(win, 0, sizeof(*win));
-    ss_enable_interrupts();
+    ss_irq_restore(saved_sr);
 }
 
 void ss_win_show(uint16_t id) {
@@ -325,9 +325,9 @@ void ss_win_set_content_line(uint16_t id, int line, const char* text) {
         return;
     /* Guard the copy: preemptive Timer D ISR can preempt a main-thread
      * read mid-strncpy. Cooperative never preempts a strncpy, but the
-     * cost of disable/enable here is negligible, so guard unconditionally
+     * cost of saving/restoring SR here is negligible, so guard unconditionally
      * for correctness under both threading models. */
-    ss_disable_interrupts();
+    uint16_t saved_sr = ss_irq_save();
     /* Copy then space-pad to the full buffer width. Padding makes every
      * byte deterministic so callers can do a differential redraw (only
      * repainting the changed suffix) without leaving stale trailing
@@ -338,7 +338,7 @@ void ss_win_set_content_line(uint16_t id, int line, const char* text) {
     dst[cap - 1] = '\0';
     for (size_t i = strlen(dst); i < cap - 1; i++) dst[i] = ' ';
     dst[cap - 1] = '\0';
-    ss_enable_interrupts();
+    ss_irq_restore(saved_sr);
 }
 
 void ss_win_set_render(uint16_t id,

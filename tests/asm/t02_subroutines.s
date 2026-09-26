@@ -67,4 +67,4 @@ print_dec:
 # ---- data ----
 msg1:    .asciz "subroutines:\n"
 msg_line: .asciz "line\n"
-msg2:    .asciz "done\n"
+msg2:    .asciz "done\nOK\n"

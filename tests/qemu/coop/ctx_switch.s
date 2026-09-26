@@ -17,7 +17,7 @@
         .align  2
 
         .globl  _start
-        .globl  ss_disable_interrupts, ss_enable_interrupts
+        .globl  ss_irq_save, ss_irq_restore
         .globl  ss_task_yield, ss_do_context_switch
         .globl  ss_curr_task, ss_scheduled_task
 
@@ -34,12 +34,14 @@ _start:
 # ----------------------------------------------------------------------------
 # Interrupt enable/disable (real SR manipulation; QEMU handles SR correctly).
 # ----------------------------------------------------------------------------
-ss_disable_interrupts:
-        move.w  #0x2700, %sr
+ss_irq_save:
+        move.w  %sr, %d0
+        ori.w   #0x0700, %sr
         rts
 
-ss_enable_interrupts:
-        move.w  #0x2000, %sr
+ss_irq_restore:
+        move.l  4(%sp), %d0
+        move.w  %d0, %sr
         rts
 
 # ----------------------------------------------------------------------------
@@ -51,7 +53,7 @@ ss_enable_interrupts:
         .globl  ss_task_yield
 ss_task_yield:
         pea     .yield_resume        | return PC for when we come back
-        move.w  #0x2000, -(sp)       | SR to restore (interrupts on)
+        move.w  %sr, -(sp)           | restore this task's own SR
         movem.l d0-d7/a0-a6, -(sp)   | save ALL regs (resume in another context)
 
         move.l  ss_curr_task, a1

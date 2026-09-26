@@ -26,4 +26,4 @@ done:
     bra     done                | park forever (QEMU timeout reaps us)
 
 msg:
-    .asciz "Hello, m68k!\n"
+    .asciz "Hello, m68k!\nOK\n"
