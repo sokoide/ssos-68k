@@ -28,10 +28,20 @@ static const SceneInput inputs[] = {
 
 #define BASIC_INPUT_COUNT ((int)(sizeof(inputs) / sizeof(inputs[0])))
 #define Z_RENUMBER_DRAGS 252
-#define TOTAL_INPUT_COUNT (BASIC_INPUT_COUNT + 2 * Z_RENUMBER_DRAGS)
+#define Z_INPUT_COUNT (2 * Z_RENUMBER_DRAGS)
+
+static const SceneInput edge_inputs[] = {
+    {1000, 400, 0}, /* Mouse X grows to four digits */
+    {9, 400, 0},    /* Mouse X shrinks; old trailing glyph must clear */
+};
+
+#define EDGE_INPUT_COUNT ((int)(sizeof(edge_inputs) / sizeof(edge_inputs[0])))
+#define EDGE_START (BASIC_INPUT_COUNT + Z_INPUT_COUNT)
+#define TOTAL_INPUT_COUNT (EDGE_START + EDGE_INPUT_COUNT)
 
 static SceneInput input_for_step(int step) {
     if (step < BASIC_INPUT_COUNT) return inputs[step];
+    if (step >= EDGE_START) return edge_inputs[step - EDGE_START];
     /* Repeatedly raise Keyboard past the z renumbering boundary. */
     SceneInput input = {400, 150, ((step - BASIC_INPUT_COUNT) & 1) ? 0 : 0x0200};
     return input;
@@ -78,10 +88,20 @@ static int scene_test_wait(void* ctx) {
     if (state->step > 0 &&
         (state->step == 3 || state->step == 6 || state->step == 7 ||
          state->step == 10 || state->step == 11 ||
+         state->step == EDGE_START ||
+         state->step == EDGE_START + 1 ||
          state->step == TOTAL_INPUT_COUNT))
         compare_with_full_repaint(state, state->step - 1);
     if (state->mismatch_step || state->step == TOTAL_INPUT_COUNT)
         return 1;
+    if (state->step == EDGE_START) {
+        /* The UI drag clamps windows on-screen. Place Mouse partly beyond
+         * the edge here to exercise clipped dirty glyphs directly. */
+        SceneInput last = input_for_step(state->step - 1);
+        ss_win_move(3, 490, 120);
+        ss_win_render_all();
+        ss_gfx_xor_rect(last.mx, last.my, 6, 6);
+    }
     SceneInput input = input_for_step(state->step);
     ss_scene_test_set_input(input.mx, input.my, input.btn);
     state->step++;
@@ -108,6 +128,7 @@ TEST(scene_drag_and_dirty_text_match_full_repaint) {
     }
     ASSERT_EQ(state.step, TOTAL_INPUT_COUNT);
     ASSERT_TRUE(ss_win_get_z(2) < 10); /* renumber actually happened */
+    ASSERT_EQ(ss_win_get_x(3), 490);    /* dirty text crosses screen edge */
 }
 
 void run_scene_tests(void) {

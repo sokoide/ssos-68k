@@ -232,7 +232,7 @@ dirty は「変わった部分だけ更新できたか」を示す。
 | 対象 | 必要な追加測定 | 採用条件 |
 | --- | --- | --- |
 | 旧activeタイトルの部分再合成 | 共有`scene.c`のdrag入力とdrop後の画素比較はNativeで実施済み。次は同一入力列の`dirty submitted/clipped`、`GVRAM write`、実時間を測る。既存`drag-region`ベンチだけでは判定しない | 重なり・隠れ・本文更新を含め画素一致、同一入力列で面積と実時間が改善 |
-| dirty textの差分末尾 | 通常文字更新の画素一致はNativeで確認済み。次は桁減り・画面端clipを個別に試し、描画glyph数、GVRAM write、実時間を比較する。既存`text-update`ベンチは差分検出を通らない | 消去用の空白も含め画素一致、追加の差分探索コストを含む実時間が改善 |
+| dirty textの差分末尾 | 通常文字更新に加え、Mouse窓を画面端へ一部はみ出す位置へテスト側で配置し、X表示の1000→9と画面端clipの画素一致をNativeで確認済み。次は同一入力列の描画glyph数、GVRAM write、実時間を比較する。既存`text-update`ベンチは差分検出を通らない | 消去用の空白も含め画素一致、追加の差分探索コストを含む実時間が改善 |
 | DMA停止未確認 | ACT解除あり/なしを分けた故障注入で、後者にCPU fallback、次のDMA開始、source/descriptor更新がないことを確認 | 安全性の完了条件。性能評価の前提であり、速度による採否はしない |
 | DMA閾値 | `-dma-bench`のCPU強制/DMA強制24条件を`-8`/`-16`、両方式で反復し、Timer D tick、`vsync`、DMA `ok/error/timeout/fallback_rows`、画素一致を記録 | 安定して成功し、setup/poll込みでCPUより速い領域だけDMAを選ぶ。現行の幅`>64`・高さ`>4`は実測前に変更しない |
 

@@ -45,7 +45,7 @@ unit/
   test_window.c    RAM framebuffer — window CRUD, z-order, dirty regions, pixels
   test_gfx.c       RAM framebuffer — clipping, stipple, glyphs, XOR, page flip
   test_ipc.c       stubbed HW — message queue: send/recv, FIFO, wraparound, full
-  test_scene.c     deterministic mouse input — drag/drop and dirty text pixels
+  test_scene.c     deterministic mouse input — drag/drop, edge clip, digit shrink pixels
 asm/              self-contained m68k samples for QEMU virt (Goldfish TTY)
   t01_hello.s, t02_subroutines.s, t03_ctx_save_restore.s (progressive)
 qemu/             SSOS scheduler + ctx switch driven on QEMU (C + asm)
