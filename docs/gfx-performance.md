@@ -28,7 +28,6 @@
 
 ```sh
 cd /Users/scott/repo/sokoide/ssos-68k/ssos
-make clean
 make SCHED=cooperative standalone
 make SCHED=preemptive standalone
 ```
@@ -42,7 +41,6 @@ make SCHED=preemptive standalone
 
 ```sh
 cd /Users/scott/repo/sokoide/ssos-68k/ssos
-make clean
 SS_PROFILE_GFX=1 make SCHED=cooperative standalone
 ```
 
@@ -50,7 +48,6 @@ SS_PROFILE_GFX=1 make SCHED=cooperative standalone
 
 ```sh
 cd /Users/scott/repo/sokoide/ssos-68k/ssos
-make clean
 SS_PROFILE_GFX=1 make SCHED=preemptive standalone
 ```
 
@@ -59,13 +56,13 @@ SS_PROFILE_GFX=1 make SCHED=preemptive standalone
 ```sh
 cd /Users/scott/repo/sokoide/ssos-68k/ssos
 SS_PROFILE_GFX=1 make SCHED=cooperative standalone
-cp ~/tmp/ssos_cop.x ~/tmp/ssos_cop_8bench.x
+cp ~/tmp/ssos_cop_profile1.x ~/tmp/ssos_cop_8bench.x
 ```
 
 ```sh
 cd /Users/scott/repo/sokoide/ssos-68k/ssos
 SS_PROFILE_GFX=1 make SCHED=preemptive standalone
-cp ~/tmp/ssos_pre.x ~/tmp/ssos_pre_8bench.x
+cp ~/tmp/ssos_pre_profile1.x ~/tmp/ssos_pre_8bench.x
 ```
 
 実行時は `-8 -bench 100` を付ける。
@@ -76,13 +73,13 @@ cp ~/tmp/ssos_pre.x ~/tmp/ssos_pre_8bench.x
 ### 協調スケジューラ
 
 ```sh
-~/tmp/ssos_cop.x -8 -bench 100
+~/tmp/ssos_cop_profile1.x -8 -bench 100
 ```
 
 ### プリエンプティブスケジューラ
 
 ```sh
-~/tmp/ssos_pre.x -8 -bench 100
+~/tmp/ssos_pre_profile1.x -8 -bench 100
 ```
 
 ### SSPERF ログの収集
@@ -102,10 +99,10 @@ type bench.txt
 `-bench` なしで起動した場合も、ESC終了時に同じSSPERF形式を `runtime.txt` に保存する。Windowの重なりやドラッグを含む実使用の描画量を測る用途であり、決定的ベンチマークの `bench.txt` とは混在させない。
 
 ```text
-ssos_cop.x -8
+ssos_cop_profile1.x -8
 cp runtime.txt runtime-cop.txt
 
-ssos_pre.x -8
+ssos_pre_profile1.x -8
 cp runtime.txt runtime-pre.txt
 ```
 
@@ -114,28 +111,28 @@ cp runtime.txt runtime-pre.txt
 DMAエラーが残る場合は、まず `-bench 1` で診断ログを取得する。
 
 ```text
-ssos_cop.x -8 -bench 1
+ssos_cop_profile1.x -8 -bench 1
 cp bench.txt bench-cop-dma-diagnostic.txt
 ```
 
 `SSPERF dma` 行の `status_samples`、`csr`、`cer` を確認する。`error` はDMAエラーが発生した矩形行数であり、`cer` が原因コードである。`config_samples` と `dcr/ocr/scr/mfc/dfc/bfc` はDMA開始時の設定値を示す。`ok=0` のままではDMA高速化とは判定せず、CPUフォールバックによる高速化と区別する。
 
 ```sh
-~/tmp/ssos_cop.x -8 -bench 100 > logs/gfx-cop-8bench.log 2>&1
+~/tmp/ssos_cop_profile1.x -8 -bench 100 > logs/gfx-cop-8bench.log 2>&1
 ```
 
 ```sh
-~/tmp/ssos_pre.x -8 -bench 100 > logs/gfx-pre-8bench.log 2>&1
+~/tmp/ssos_pre_profile1.x -8 -bench 100 > logs/gfx-pre-8bench.log 2>&1
 ```
 
 必要なら `tee` で画面表示と保存を両立する。
 
 ```sh
-~/tmp/ssos_cop.x -8 -bench 100 2>&1 | tee logs/gfx-cop-8bench.log
+~/tmp/ssos_cop_profile1.x -8 -bench 100 2>&1 | tee logs/gfx-cop-8bench.log
 ```
 
 ```sh
-~/tmp/ssos_pre.x -8 -bench 100 2>&1 | tee logs/gfx-pre-8bench.log
+~/tmp/ssos_pre_profile1.x -8 -bench 100 2>&1 | tee logs/gfx-pre-8bench.log
 ```
 
 ## 比較方法

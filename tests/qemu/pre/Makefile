@@ -20,7 +20,7 @@ SSOS   = ../../../ssos/os
 # t04_main_task_register exercises the production main-task bootstrap.
 # t05_timerd_cadence rebuilds the ISR port with the production 10-tick cadence.
 TESTS = t01_round_robin t02_register_save t03_sleep_wakeup t04_main_task_register \
-	t05_timerd_cadence t06_ipc_blocking
+	t05_timerd_cadence t06_ipc_blocking t07_task_return
 
 # Shared objects
 stub.o: ../common/stub.c
@@ -34,6 +34,8 @@ main_task.o: $(SSOS)/kernel/main_task.c
 ipc.o: $(SSOS)/ipc/message.c
 	$(CC) $(CFLAGS) -c $< -o $@
 t06_ipc_blocking.o: ../common/t_ipc_blocking.c
+	$(CC) $(CFLAGS) -c $< -o $@
+t07_task_return.o: ../common/t_task_return.c
 	$(CC) $(CFLAGS) -c $< -o $@
 preempt_ctx_switch.o: preempt_ctx_switch.s
 	$(CC) $(ASFLAGS) -c $< -o $@

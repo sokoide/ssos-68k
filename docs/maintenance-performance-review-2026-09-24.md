@@ -10,7 +10,9 @@
 
 スケジューラ本体と通常UIの共通化、sleepリスト、部分再合成、文字描画の高速経路、CPU描画のRAM置換テスト、allocatorの境界値検査は既にある。これらを新規導入する提案はしない。`.x` のベンチ・DOS入出力と `.xdf` の初期化を分ける現設計も維持する。
 
-本書ではコードから確認できる事実、追加プローブによる再現、性能仮説を区別する。行番号は調査時点のもの。本文（R01〜R14と「今回の検証結果と限界」）は2026-09-24〜25の調査時点の記録であり、実装の進行状況は「実施計画（正本）」に集約する。
+本書ではコードから確認できる事実、追加プローブによる再現、性能仮説を区別する。行番号は調査時点のもの。本文（R01〜R14と「今回の検証結果と限界」）は2026-09-24〜25の調査時点の記録であり、後続の実装状況は「実施計画（P1時点）」と末尾の「P2実装状況」に記録する。
+
+2026-09-26の追加P2対応は末尾の「P2実装状況」に記録する。調査時点の根拠と提案は履歴として残し、現在のコードの説明として読み替えない。
 
 ## 優先順位
 
@@ -195,9 +197,9 @@ sceneの入力と1 frameの更新を分離し、通常のdrag_begin/move/endを�
 
 **検証:** 抽出前後の逆アセンブル差分、両方式QEMU、両 `.x` / `.xdf` buildとハードウェア確認。既存 `_Static_assert` は維持する。
 
-## 実施計画（正本）
+## 実施計画（P1時点の記録）
 
-2026-09-26時点の作業計画は本節を正本とする。R05 → R01/R03 → R02/R04の順で第1〜3段階として実施する。調査時の推奨にあったR07は本計画から外し、ビルド成果物の分離が必要になった時点で改めて計画する。
+2026-09-26のP1作業計画。R05 → R01/R03 → R02/R04の順で第1〜3段階として実施した。当時R07は本計画から外していたが、その後のP2で着手した。
 
 | 段階 | 項目 | 状態（2026-09-26） |
 | --- | --- | --- |
@@ -268,3 +270,16 @@ ss_recv_nb(&msg); /* 現状、ASan/UBSan付きホスト実行で範囲外検出 
 | H4 | `32_IOMAP.md` DMAC、`02_DMA.md` | MMIO配置、OCR/SCR/CCR、MAR/MTC descriptor |
 
 `02_DMA.md` にはCSR/CCRのoffsetやbit、OCRのCHAIN位置について `32_IOMAP.md` と食い違う記述がある。本書の具体的DMAC値は詳細表の `32_IOMAP.md` を採用し、矛盾する概要表をコード変更の根拠にしない。新しい転送方式・停止失敗時の復旧条件など、資料で保証できない細部は**要原典確認**。VaultのDMAノートにも16bit MTCに表現できない全画面転送長の例があるため、そのまま転記しない。skill/Vault自体の変更は今回の対象外。
+
+## P2実装状況（2026-09-26）
+
+P1は `80a5318` でコミットした。以下はその後に着手したP2の状態であり、上の調査時点の記述を置き換える。
+
+- **R06 異常終了復元**: `.x` 専用の `standalone/trap14.s` に例外処理を集約した。abort時は緊急スタック上で `ss_abort_cleanup()` を呼び、Timer D/V-DISPを含むベクタとMFP、COPY/NMI、TRAP #14、表示・入力状態を段階フラグに応じて復元する。通常終了も同じcleanupを通る。`.xdf`にはHuman68Kのabort処理をリンクしない。実機・Human68Kエミュレータでの故障注入と、初期化途中・再入の確認は未実施。
+- **R08 タスク契約**: `entry(arg)` を両方式の起動assemblyから呼び、戻り値は破棄し、return時は `ss_task_exit()` が `TERMINATED` に移す。ID・stackは再利用しない。`ctx_level`の不正値とcustom stackの最小サイズ・整列を拒否する。NativeとQEMUの引数・returnテストを追加した。
+- **R09 所有者**: [runtime-ownership.md](runtime-ownership.md) にscheduler、IPC/work、allocator、描画、DMAC Ch.2の所有者・排他契約を記載し、公開headerにも主要制約を追記した。DMAC abort後の停止未確認問題は解決しておらず、実機確認が必要。
+- **R10 起床責務**: cooperativeの起床をsceneからschedulerの切替点へ移し、IRQ mask下で処理する。main taskがsleep中にworkerだけがyieldするQEMUテストを追加した。watchdogのMFP再設定とVSync busy waitは未変更。
+- **R07 ビルド分離**: `os/`、`standalone/`、`boot/`の中間物を方式・形式・profile別に分離した。`.xdf`生成場所も分離し、profile 1は公開ファイル名に `_profile1` を付ける。Cのheader依存は `.d` で追跡する。両方式のprofile 0/1とprofile切替後の並列buildは成功。header変更後に対象objectが再構築されることも確認したが、二度連続の完全no-op判定は残る。
+- **R14 重複・仕様**: TRAP #14をstandalone専用に、MFP状態保存復元を `os/kernel/mfp_state.s` に抽出した。READMEのtick/switch周期、stack、wakeups、ビルド手順を更新した。方式別context switchとQEMU portの差分、TCB offset共通化は残る。
+
+自動検証: Native各109件、QEMU cooperative 7件・preemptive 7件、asm 5件がPASS。両方式の `.x` / `.xdf` はクロスビルド・リンク済み。これはMFP実割り込み、Human68K abort、実画面・DMAを検証したことを意味しない。

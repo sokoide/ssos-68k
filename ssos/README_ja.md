@@ -190,7 +190,7 @@ pixel(x, y) = GVRAM[y * GVRAM_STR + x]  /* uint16_t write */
 | コンポーネント      | 役割                                                                                                                                                                              |
 | :---                | :---                                                                                                                                                                              |
 | `ss_trap14_handler` | 例外発生時に Human68K が TRAP #14 で呼び出す。d7=エラーコード、a6=パラメータブロック(SR+PC) を trapbuf に保存し `_ABORTJOB` でプロセス abort。**ハンドラ内では I/O を行わない**。 |
-| `ss_trap14_abort`   | abort 後に Human68K が呼び出す (ベクタ 0xFFF2/0xFFF1)。元の TRAP #14 ベクタを復元し、エラー種別・PC を表示して `_ABORTRST` で終了。                                              |
+| `ss_trap14_abort`   | abort 後に Human68K が呼び出す (ベクタ 0xFFF2/0xFFF1)。緊急スタック上で `ss_abort_cleanup()` を呼び、Timer D/V-DISP・MFP・COPY/NMI・TRAP #14・画面入力を復元してから例外を表示し `_ABORTRST` で終了。 |
 | `ss_init_trap14`    | 0xB8 にハンドラ設置 + `_B_INTVCS` で 0xFFF2/0xFFF1 に abort ハンドラ設置。                                                                                                        |
 | `ss_restore_trap14` | 0xB8 を元のベクタに復元。                                                                                                                                                         |
 
@@ -202,7 +202,7 @@ TRAP #14 は CPU の trap 命令で SR+PC がスタックに push されるた�
 
 ### 設計方針
 
-Timer D 割り込み (200Hz) はティック加算と起床要求フラグの設定だけを行い、強制コンテキストスイッチは行わない。メインループがフラグを受けて `ss_do_wakeups()` を実行し、タスクの切り替えはタスク自身が `ss_task_yield()` を呼び出した時のみ発生する。
+Timer D 割り込み (200Hz) はティック加算と起床要求フラグの設定だけを行い、強制コンテキストスイッチは行わない。起床処理はschedulerのコンテキスト切替時に割り込みをマスクして実行する。待機中のmain taskもworkerのyieldで起床できる。切替自体はタスクの `ss_task_yield()` が契機となる。
 
 ### `ss_task_yield` の動作
 

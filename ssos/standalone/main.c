@@ -79,6 +79,12 @@ static int highest_active_z = -1;
 
 static uint32_t saved_copy_vec;
 static uint32_t saved_nmi_vec;
+static int saved_crt_mode;
+static uint8_t trap14_active;
+static uint8_t interrupts_active;
+static uint8_t abort_vectors_active;
+static uint8_t display_active;
+static uint8_t abort_cleanup_started;
 extern void ss_nop_handler(void);
 
 extern void ss_init_trap14(void);
@@ -88,10 +94,39 @@ extern uint16_t ss_trapbuf_sr;
 extern uint32_t ss_trapbuf_pc;
 extern char* ss_trapbuf_msg;
 
-extern volatile uint8_t ss_wakeups_needed;
-extern void ss_process_wakeups(void);
-
 static SSTask main_tcb;
+
+/* Called on trap14.s's emergency stack after Human68K starts an abort. */
+void ss_abort_cleanup(void) {
+    uint16_t saved_sr = ss_irq_save();
+    if (abort_cleanup_started) {
+        ss_irq_restore(saved_sr);
+        return;
+    }
+    abort_cleanup_started = 1;
+    if (interrupts_active) {
+        interrupts_active = 0;
+        ss_restore_interrupts();
+    }
+    if (abort_vectors_active) {
+        abort_vectors_active = 0;
+        *(volatile uint32_t*)0xB0 = saved_copy_vec;
+        *(volatile uint32_t*)0x7C = saved_nmi_vec;
+    }
+    if (trap14_active) {
+        trap14_active = 0;
+        ss_restore_trap14();
+    }
+    ss_irq_restore(saved_sr);
+
+    if (display_active) {
+        display_active = 0;
+        _iocs_ms_curof();
+        _iocs_skey_mod(-1, 0, 0);
+        _iocs_crtmod(saved_crt_mode);
+        _iocs_b_curon();
+    }
+}
 
 #if SS_PROFILE_GFX
 
@@ -757,13 +792,20 @@ int main(int argc, char** argv) {
     int old_usp = _iocs_b_super(0);
 
     ss_init_trap14();
+    trap14_active = 1;
 
     ss_mem_init(local_memory, sizeof(local_memory));
     ss_sched_init();
 
-    if (ss_main_task_register(&main_tcb, 8) != SS_OK) _exit(1);
+    if (ss_main_task_register(&main_tcb, 8) != SS_OK) {
+        ss_abort_cleanup();
+        _iocs_b_super(old_usp);
+        _exit(1);
+    }
 
     int old_mode = _iocs_crtmod(-1);
+    saved_crt_mode = old_mode;
+    display_active = 1;
     _iocs_crtmod(ss_current_mode->crtmod);
     _iocs_g_clr_on();
     set_palette();
@@ -789,9 +831,11 @@ int main(int argc, char** argv) {
      * ss_set_interrupts() before them.
      */
     ss_set_interrupts();
+    interrupts_active = 1;
 
     saved_copy_vec = *(volatile uint32_t*)0xB0;
     saved_nmi_vec = *(volatile uint32_t*)0x7C;
+    abort_vectors_active = 1;
     *(volatile uint32_t*)0xB0 = (uint32_t)ss_nop_handler;
     *(volatile uint32_t*)0x7C = (uint32_t)ss_nop_handler;
 
@@ -821,6 +865,7 @@ int main(int argc, char** argv) {
     ss_scene_run(&scene_hooks, &runtime_stats);
 
 cleanup:
+    ss_abort_cleanup();
     if (ss_trapbuf_flag != 0) {
         char buf[128];
         _iocs_b_print("\r\n=== EXCEPTION CAUGHT (TRAP #14) ===\r\n");
@@ -836,17 +881,6 @@ cleanup:
         _iocs_b_super(old_usp);
         _exit(1);
     }
-
-    ss_restore_interrupts();
-    ss_restore_trap14();
-
-    *(volatile uint32_t*)0xB0 = saved_copy_vec;
-    *(volatile uint32_t*)0x7C = saved_nmi_vec;
-
-    _iocs_ms_curof();
-    _iocs_skey_mod(-1, 0, 0);
-    _iocs_crtmod(old_mode);
-    _iocs_b_curon();
 
 #if SS_PROFILE_GFX
     /* CRTMOD restoration clears the graphics page.  Emit retained benchmark

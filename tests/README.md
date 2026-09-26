@@ -72,6 +72,8 @@ links against a QEMU port of the context switch.
   - `t03_register_save` — distinct d2-d7 patterns survive each yield
   - `t05_ipc_blocking` — high-priority receiver leaves the ready queue until
     a lower-priority sender posts a message; nested SR masks are restored
+  - `t06_task_return` — entry receives `arg`; returning terminates the task
+  - `t07_scheduler_wakeup` — a sleeping main task wakes without scene polling
 - **`pre/`** — preemptive path (ISR driven by `trap #0`; resume via
   `.resume_interrupted` / `rte`). `preempt_ctx_switch.s` ports
   `ss_timerd_handler` + `.resume_task`. A trap exception frame (SR+PC) is
@@ -82,6 +84,7 @@ links against a QEMU port of the context switch.
     task resumes after N ticks
   - `t06_ipc_blocking` — same receiver/sender and SR checks on the preemptive
     context-switch port
+  - `t07_task_return` — entry argument and return-to-termination contract
   - `t05_timerd_cadence` — production-equivalent 10-Timer-D-tick switch
     cadence: 9 ticks retain the current task; tick 10 switches via the
     interrupted/`rte` path.  It also verifies a sleep deadline between switch

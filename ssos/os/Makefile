@@ -35,9 +35,13 @@ SRCS= \
 	app/scene.c
 ASRCS= \
 	kernel/entry.s \
+	kernel/mfp_state.s \
 	$(KDIR)/interrupts.s
 
-OBJS=$(ASRCS:.s=.o) $(SRCS:.c=.o)
+BUILD_DIR=build/$(SCHED)/profile-$(SS_PROFILE_GFX)
+OBJS=$(addprefix $(BUILD_DIR)/,$(ASRCS:.s=.o) $(SRCS:.c=.o))
+TARGET_ELF=$(BUILD_DIR)/$(TARGET).elf
+TARGET_BIN=$(BUILD_DIR)/$(TARGET).bin
 
 CC=m68k-xelf-gcc
 AS=m68k-xelf-as
@@ -49,32 +53,38 @@ READELF=m68k-elf-readelf
 INCLUDE=-I$(XELF_BASE)/m68k-elf/include -I../include -I./kernel -I./$(KDIR) -I./mem -I./app -I./gfx -I./win -I./ipc -I./util
 LIB=-L$(XELF_BASE)/m68k-elf/lib -L$(shell dirname $(shell m68k-xelf-gcc -print-libgcc-file-name))
 
-CCFLAGS=$(INCLUDE) -g -O2 -Wa,-adhlns="$@.lst" -DSS_PROFILE_GFX=$(SS_PROFILE_GFX)
+CCFLAGS=$(INCLUDE) -g -O2 -MMD -MP -DSS_PROFILE_GFX=$(SS_PROFILE_GFX)
 LDFLAGS=$(LIB) -lx68kiocs -Tkernel/linker.ld -nostdlib -lc -lm -lgcc -lnosys
 ASFLAGS=-m68000 --register-prefix-optional --traditional-format -I../include -I./kernel
 
 .PHONY: all clean dump readelf
 
-all: $(TARGET).bin
+all: $(TARGET_BIN)
 
-$(TARGET).bin: $(TARGET)
-	$(OBJCOPY) -O binary $(TARGET).elf $(TARGET).bin
+$(TARGET_BIN): $(TARGET_ELF)
+	$(OBJCOPY) -O binary $< $@
 
-$(TARGET): $(OBJS) kernel/linker.ld
-	$(LD) --strip-all $(OBJS) -o $(TARGET).elf $(LDFLAGS) -e entry
+$(TARGET_ELF): $(OBJS) kernel/linker.ld
+	@mkdir -p $(dir $@)
+	$(LD) --strip-all $(OBJS) -o $@ $(LDFLAGS) -e entry
 
-dump: $(TARGET).elf
-	$(OBJDUMP) -d -S -C $(TARGET).elf
+dump: $(TARGET_ELF)
+	$(OBJDUMP) -d -S -C $(TARGET_ELF)
 
-readelf: $(TARGET).elf
-	$(READELF) -a $(TARGET).elf
+readelf: $(TARGET_ELF)
+	$(READELF) -a $(TARGET_ELF)
 
-%.o: %.s
-	$(AS) --strip-local-absolute $^ -o $@ $(ASFLAGS)
+$(BUILD_DIR)/%.o: %.s
+	@mkdir -p $(dir $@)
+	$(AS) --strip-local-absolute $< -o $@ $(ASFLAGS)
 
-%.o: %.c
+$(BUILD_DIR)/%.o: %.c
+	@mkdir -p $(dir $@)
 	$(CC) -c $< -o $@ $(CCFLAGS)
 
+-include $(OBJS:.o=.d)
+
 clean:
-	rm -rf $(TARGET) $(TARGET).bin $(TARGET).elf $(OBJS)
+	rm -rf build
+	rm -f $(TARGET) $(TARGET).bin $(TARGET).elf $(ASRCS:.s=.o) $(SRCS:.c=.o)
 	rm -f kernel/*.o kernel/*.lst kernel/cooperative/*.o kernel/preemptive/*.o

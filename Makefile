@@ -11,10 +11,10 @@ EXEC := $(shell command -v pnpm >/dev/null 2>&1 && echo "pnpm exec" || echo "npx
 # Single unified tree under ssos/; the threading model is selected by SCHED=.
 all: tools/makedisk ssos-cooperative ssos-preemptive
 
-ssos-cooperative:
+ssos-cooperative: tools/makedisk
 	$(MAKE) -C ssos all SCHED=cooperative
 
-ssos-preemptive:
+ssos-preemptive: tools/makedisk
 	$(MAKE) -C ssos all SCHED=preemptive
 
 $(SUBDIRS):

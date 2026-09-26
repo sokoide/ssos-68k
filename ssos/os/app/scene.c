@@ -12,7 +12,7 @@
 #include <x68k/iocs.h>
 
 /* Drag state. The drag outline is a self-erasing XOR rectangle
- * (ss_gfx_xor_rect): no save buffer, no GVRAM read, and it is redrawn
+ * (ss_gfx_xor_rect): no saved readback buffer, and it is redrawn
  * only when the mouse actually moves — the old hot path read+restored
  * the full window perimeter every frame. */
 static int drag_id = -1;
@@ -442,7 +442,6 @@ void ss_scene_run(const SSSceneHooks *hooks, SSSceneStats *stats) {
          * host intentionally does not link work_queue.c or this queue. */
         ss_work_drain(&ss_main_work_queue);
 #endif
-        ss_process_wakeups();
         ss_task_yield();
         (void)right;
     }

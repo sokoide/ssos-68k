@@ -12,6 +12,7 @@
 #   +20  entry
 #   +31  resume_type (1 = yielded, 0 = interrupted)
 #   +32  sleep_next  (not used by the context switch)
+#   +38  arg
 
         .section .text
         .align  2
@@ -102,7 +103,10 @@ ss_task_yield:
         rte
 
 .start_task:
-        | first run of a task: set SR and jump straight to entry
+        | first run of a task: call entry(arg), then terminate on return
         move.l  20(a1), a0           | a0 = task entry function
+        move.l  38(a1), -(sp)
         move.w  #0x2000, %sr
-        jmp     (%a0)
+        jsr     (%a0)
+        addq.l  #4, sp
+        jmp     ss_task_exit

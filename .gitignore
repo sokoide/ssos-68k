@@ -58,6 +58,7 @@ Thumbs.db
 
 # ---- Build system dirs ----
 /build/
+/ssos/**/build/
 /dist/
 /out/
 /bin/

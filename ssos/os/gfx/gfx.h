@@ -29,7 +29,9 @@ typedef struct {
     int h;
 } SSGfxRect;
 
-/* Current graphics mode (extern, defined in gfx.c) */
+/* The UI task exclusively owns the mode, VRAM page state, and DMA channel 2.
+ * Graphics/DMA APIs are synchronous and are not ISR-safe or reentrant. */
+/* Current graphics mode (extern, defined in vram.c) */
 extern const SSGfxMode* ss_current_mode;
 
 /* Mode Selection API */

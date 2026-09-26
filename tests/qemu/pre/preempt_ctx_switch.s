@@ -165,8 +165,11 @@ ss_context_switch:
 
 .start_task:
         move.l  20(a1), a0              | a0 = entry
+        move.l  38(a1), -(sp)
         move.w  #0x2000, %sr
-        jmp     (%a0)
+        jsr     (%a0)
+        addq.l  #4, sp
+        jmp     ss_task_exit
 
 # ----------------------------------------------------------------------------
         .section .bss

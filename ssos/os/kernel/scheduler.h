@@ -20,6 +20,7 @@ struct SSTask {
     uint8_t  resume_type;  /* 0 = interrupted, 1 = yielded */
     SSTask*  sleep_next;
     uint8_t  ipc_waiting;
+    void*    arg;
 };
 
 #if UINTPTR_MAX == UINT32_MAX
@@ -28,14 +29,16 @@ _Static_assert(offsetof(SSTask, stack_base) == 12, "SSTask.stack_base ABI change
 _Static_assert(offsetof(SSTask, entry) == 20, "SSTask.entry ABI changed");
 _Static_assert(offsetof(SSTask, resume_type) == 31, "SSTask.resume_type ABI changed");
 _Static_assert(offsetof(SSTask, sleep_next) == 32, "SSTask.sleep_next ABI changed");
+_Static_assert(offsetof(SSTask, arg) == 38, "SSTask.arg ABI changed");
 #endif
 
 typedef struct {
-    void* (*entry)(void*);
+    void* (*entry)(void*); /* entry(arg); return value is ignored */
     uint8_t pri;
     uint8_t ctx_level;
-    uint16_t stack_size;
-    void*    stack;        /* NULL = auto-allocate */
+    uint16_t stack_size;   /* custom stack must be >= SS_MIN_TASK_STACK */
+    void*    stack;        /* NULL = pool; otherwise last aligned word of region */
+    void*    arg;          /* passed to entry; NULL by default */
 } SSTaskInfo;
 
 typedef struct {
@@ -67,6 +70,18 @@ void     ss_do_wakeups(void);
 uint16_t ss_task_sleep(uint32_t ticks);
 void     ss_task_yield(void);
 void     ss_process_wakeups(void);
+void     ss_task_exit(void) __attribute__((noreturn));
+
+/* Custom stack is a descending region [stack - stack_size + 4, stack + 4).
+ * It remains caller-owned until system shutdown; it is not reclaimed.
+ * Returning from entry calls ss_task_exit. The task becomes TERMINATED and
+ * its slot/stack remain reserved; there is no join or stack reclamation yet.
+ * ss_task_create returns IDs 1..SS_MAX_TASKS or a uint16_t-encoded SS_ERR_*.
+ * ctx_level is accepted but all registers are currently saved at every switch.
+ */
+
+/* ss_do_wakeups mutates sleeping/ready queues. Call only with IRQs masked;
+ * ss_process_wakeups is invoked by ss_do_context_switch under that mask. */
 
 /* Stack debugging */
 uint32_t ss_stack_check(uint16_t id);

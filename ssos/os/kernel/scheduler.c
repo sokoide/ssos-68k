@@ -116,10 +116,11 @@ SSTask* ss_sched_pick(void) {
 uint16_t ss_task_create(SSTaskInfo* info) {
     if (info == NULL || info->entry == NULL)
         return SS_ERR_PARAM;
-    if (info->pri >= SS_MAX_PRI)
+    if (info->pri >= SS_MAX_PRI || info->ctx_level > SS_CTX_FULL)
         return SS_ERR_PARAM;
     if (info->stack != NULL &&
-        (((uintptr_t)info->stack & 1u) != 0 || info->stack_size < 4 ||
+        (((uintptr_t)info->stack & 3u) != 0 ||
+         info->stack_size < SS_MIN_TASK_STACK ||
          (info->stack_size & 3u) != 0))
         return SS_ERR_PARAM;
 
@@ -145,6 +146,7 @@ uint16_t ss_task_create(SSTaskInfo* info) {
     memset(tcb, 0, sizeof(SSTask));
     tcb->state = SS_TS_DORMANT;
     tcb->entry = info->entry;
+    tcb->arg = info->arg;
     tcb->pri = info->pri;
     tcb->ctx_level = info->ctx_level;
 
@@ -210,6 +212,10 @@ void ss_do_context_switch(void) {
         ss_sched_enqueue(curr);
     }
 
+    /* Both policies process due sleepers at the scheduler boundary, with
+     * interrupts masked. The cooperative policy consumes its ISR flag here. */
+    ss_process_wakeups();
+
     SSTask* next = ss_sched_pick();
     if (next == NULL || next == curr) {
         ss_scheduled_task = curr;
@@ -266,4 +272,16 @@ void ss_do_wakeups(void) {
             link = &tcb->sleep_next;
         }
     }
+}
+
+/* A returned task cannot release or reuse its stack while executing on it. */
+void ss_task_exit(void) {
+    uint16_t saved_sr = ss_irq_save();
+    SSTask* curr = ss_curr_task;
+    if (curr != NULL && curr->state == SS_TS_READY) {
+        ss_sched_dequeue(curr);
+        curr->state = SS_TS_TERMINATED;
+    }
+    ss_irq_restore(saved_sr);
+    for (;;) ss_task_yield();
 }

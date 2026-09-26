@@ -86,6 +86,24 @@ TEST(task_create_bad_pri_rejected) {
     ASSERT_EQ(ss_task_create(&info), (uint16_t)SS_ERR_PARAM);
 }
 
+TEST(task_create_bad_context_level_rejected) {
+    ss_sched_init();
+    SSTaskInfo info = { .entry = dummy_entry, .pri = 1,
+                        .ctx_level = SS_CTX_FULL + 1 };
+    ASSERT_EQ(ss_task_create(&info), (uint16_t)SS_ERR_PARAM);
+}
+
+TEST(task_create_custom_stack_minimum) {
+    ss_sched_init();
+    uint32_t stack[SS_MIN_TASK_STACK / sizeof(uint32_t)];
+    SSTaskInfo info = { .entry = dummy_entry, .pri = 1,
+                        .stack_size = SS_MIN_TASK_STACK - 4,
+                        .stack = &stack[SS_MIN_TASK_STACK / sizeof(uint32_t) - 1] };
+    ASSERT_EQ(ss_task_create(&info), (uint16_t)SS_ERR_PARAM);
+    info.stack_size = SS_MIN_TASK_STACK;
+    ASSERT_EQ(ss_task_create(&info), 1);
+}
+
 TEST(task_create_bad_custom_stack_rejected) {
     ss_sched_init();
     SSTaskInfo info = {
@@ -242,6 +260,8 @@ void run_scheduler_tests(void) {
     RUN_TEST(pick_prefers_lower_pri_number);
     RUN_TEST(task_create_null_entry_rejected);
     RUN_TEST(task_create_bad_pri_rejected);
+    RUN_TEST(task_create_bad_context_level_rejected);
+    RUN_TEST(task_create_custom_stack_minimum);
     RUN_TEST(task_create_bad_custom_stack_rejected);
     RUN_TEST(task_create_missing_arena_does_not_consume_slot);
     RUN_TEST(task_create_returns_ascending_ids);

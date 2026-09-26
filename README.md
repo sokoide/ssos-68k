@@ -43,7 +43,6 @@ export PATH=$XELF_BASE/bin:$PATH
 
 ```bash
 cd ssos
-make clean SCHED=cooperative    # SCHED 切替時に必須
 make standalone SCHED=cooperative
 # 出力: ~/tmp/ssos_cop.x （プリエンプティブ版は SCHED=preemptive で ~/tmp/ssos_pre.x）
 ```
@@ -53,24 +52,20 @@ make standalone SCHED=cooperative
 ```bash
 cd /path/to/ssos-68k
 . ~/.elf2x68k
-SS_PROFILE_GFX=1 make clean
 SS_PROFILE_GFX=1 make
 ```
 
-このコマンドは `ssos/standalone/ssos_cop.x` と `ssos/standalone/ssos_pre.x`、および両モデルの `.xdf` を生成する。通常は `~/tmp` にもコピーされるが、コピー先の権限エラーが出た場合でも、`ssos/standalone/` 内の生成物は利用できる。
-
-**`make clean`が必要な理由**: `.x` と `.xdf` でコンパイルフラグが異なるため（`LOCAL_MODE` 定義の有無）。
+このコマンドは両モデルの `.x` / `.xdf` を生成する。中間成果物は `ssos/{standalone,os,boot}/build/<方式>/` に、ディスクイメージは `ssos/build/disk/<方式>/profile-<値>/` に分離する。公開用コピーは `~/tmp/ssos_{cop,pre}_profile1.{x,xdf}`。通常ビルド（profile 0）は従来の `~/tmp/ssos_{cop,pre}.{x,xdf}` である。コピー先の権限エラーが出ても、各 `build/` 内の成果物は利用できる。
 
 ### OS ビルド（起動可能ディスク）
 
 ```bash
 cd ssos
-make clean SCHED=cooperative    # SCHED 切替時に必須
 make SCHED=cooperative
 # 出力: ~/tmp/ssos_cop.xdf（起動可能ディスクイメージ。プリエンプティブ版は SCHED=preemptive で ssos_pre.xdf）
 ```
 
-**`make clean`が必要な理由**: `.x` と `.xdf` でコンパイルフラグが異なるため（`LOCAL_MODE` 定義の有無）。同じソースファイルでも生成されるオブジェクトが異なるため、ターゲット切り替え時は中間ファイルをクリアして再ビルドが必要。
+方式・形式・profileを切り替えても中間ファイルは別ディレクトリなので `make clean` は不要。
 
 ### 全ターゲット一括ビルド
 
@@ -78,8 +73,7 @@ make SCHED=cooperative
 
 ```bash
 # リポジトリルートで
-SS_PROFILE_GFX=1 make clean
-SS_PROFILE_GFX=1 make
+make -j2
 # 成果物: ~/tmp/ssos_cop.x, ~/tmp/ssos_cop.xdf, ~/tmp/ssos_pre.x, ~/tmp/ssos_pre.xdf
 ```
 
@@ -92,10 +86,10 @@ SS_PROFILE_GFX=1 make
 `SS_PROFILE_GFX=1` でビルドしたスタンドアロン版は、Human68K上で決定的な描画フェーズを測定できる。
 
 ```text
-ssos_cop.x -8 -bench 100
+ssos_cop_profile1.x -8 -bench 100
 cp bench.txt bench-cop.txt
 
-ssos_pre.x -8 -bench 100
+ssos_pre_profile1.x -8 -bench 100
 cp bench.txt bench-pre.txt
 ```
 
@@ -106,10 +100,10 @@ cp bench.txt bench-pre.txt
 通常操作の実測では、`-bench` を付けずに起動し、Windowのドラッグや重なりを試してから ESC で終了する。
 
 ```text
-ssos_cop.x -8
+ssos_cop_profile1.x -8
 cp runtime.txt runtime-cop.txt
 
-ssos_pre.x -8
+ssos_pre_profile1.x -8
 cp runtime.txt runtime-pre.txt
 ```
 
@@ -271,7 +265,7 @@ SSOSRAM 領域は **Buddy + Slab ハイブリッド**アロケータで管理す
   │ ▼
 [os/app/main.c:ss_init]
   │ • ss_mem_init()                 ← SSOSRAM を Buddy で初期化
-  │ • ss_task_stack_base = ss_alloc(SS_MAX_TASKS * SS_TASK_STACK)
+  │ • ss_task_stack_base = linker予約の専用512 KiB stack pool
   │ • ss_sched_init() / ss_work_init() / ss_ipc_init()
   │ • ss_gfx_init() / ss_win_init()
   │ • ss_run() に fall through
@@ -305,15 +299,15 @@ ssos-68k/
 │   │   │   ├── kernel.h                 #   共通カーネルヘッダ（ハードウェアアドレス、API）
 │   │   │   ├── scheduler.h              #   共通タスク API・SSTask 構造体
 │   │   │   ├── scheduler.c              #   共通スケジューラ本体
+│   │   │   ├── mfp_state.s              #   両方式共通のMFP・ベクタ保存復元
+│   │   │   ├── premain.c                #   .xdf のC初期化
 │   │   │   ├── work_queue.{c,h}         #   遅延処理キュー
 │   │   │   ├── linker.ld                #   OS イメージ用リンカスクリプト
 │   │   │   ├── cooperative/             # ─ 協調的マルチタスク（明示的 yield）─
-│   │   │   │   ├── premain.c            #     C 初期化（IOCS 呼び出し群、再 ss_set_interrupts）
 │   │   │   │   ├── interrupts.s         #     MFP 初期化、ISR、cooperative コンテキストスイッチ
 │   │   │   │   └── wakeups.c            #     deferred wakeup 方針
 │   │   │   └── preemptive/              # ─ プリエンプティブ（Timer D ISR で切替）─
-│   │   │       ├── premain.c
-│   │   │       ├── interrupts.s         #     1ms タイマ駆動のプリエンプティブ切替
+│   │   │       ├── interrupts.s         #     5ms tick、10 tickごとのプリエンプティブ切替
 │   │   │       └── wakeups.c            #     ISR wakeup 方針
 │   │   ├── mem/                         # メモリ管理（Buddy + Slab）共有
 │   │   ├── gfx/                         # グラフィックス（VRAM 直接アクセス、DMAC fill、高速フォント）共有
@@ -322,7 +316,7 @@ ssos-68k/
 │   │   ├── util/                        # numfmt（sprintf 排除用の軽量数値→文字列）
 │   │   └── app/                         # 通常UI（scene.c）と .xdf 側の入口（main.c）
 │   ├── include/                         # iocscall.mac（IOCS マクロ定義）
-│   └── standalone/main.c                # スタンドアロン (.x) ビルド（os/win・app 系を共有）
+│   └── standalone/                    # スタンドアロン (.x) ホスト入口とTRAP #14処理
 ├── tests/                               # 単体テスト（m68k-xelf-gcc + native runner）
 │   ├── unit/                            # test_scheduler.c, test_memory.c, test_layers.c 等
 │   ├── framework/                       # テストフレームワーク
@@ -341,7 +335,8 @@ ssos-68k/
 | :---                    | :---                                                                                                |
 | **kernel/entry.s**      | OS エントリ。SP を 0x010000 に設定し `ss_set_interrupts()` を呼び `premain()` に制御を渡す          |
 | **kernel/premain.c**    | C 初期化。IOCS 呼び出し群、`ss_set_interrupts()` 再呼び出し、AER/IMR 設定、`ss_init()` → `ss_run()` |
-| **kernel/interrupts.s** | MFP 初期化、Timer D / V-DISP / TRAP #14 ハンドラ、`ss_context_switch` / `ss_task_yield`             |
+| **kernel/interrupts.s** | MFP 初期化、Timer D / V-DISP ハンドラ、`ss_context_switch` / `ss_task_yield`             |
+| **standalone/trap14.s** | `.x` 専用のHuman68K例外・abortハンドラ |
 | **kernel/scheduler.c**  | タスク管理。16 優先度レディーキュー、ラウンドロビン、`ss_task_yield` / `ss_task_sleep`              |
 | **kernel/work_queue.c** | 遅延処理。ISR から post してメインループで `ss_work_drain`                                          |
 | **mem/buddy.c**         | Buddy system（16B〜64KB、可変長）                                                                   |
@@ -417,12 +412,12 @@ graph TD
 
 | 観点                     | 協調的 (`SCHED=cooperative`)                                                  | プリエンプティブ (`SCHED=preemptive`)                        |
 | :---                     | :---                                                                          | :---                                                         |
-| コンテキストスイッチ契機 | タスクが `ss_task_yield()` を呼んだ時                                         | Timer D ISR (5ms 毎、200Hz)                                  |
+| コンテキストスイッチ契機 | タスクが `ss_task_yield()` を呼んだ時                                         | Timer D ISR (10 tick毎、約50ms)、または明示yield              |
 | レジスタ保存             | yield 時 `d0-d7/a0-a6` 全 16 レジスタ                                         | ISR 内で `d0-d7/a0-a6` 全保存（10 ティックに 1 回）          |
 | ISR の重み               | 軽い（カウンタ + flag のみ、6 命令）                                          | 重い（10 ティック毎に全レジスタ保存 + C 関数呼び出し）       |
 | `ss_task_yield()` の有無 | 必須（タスクの責任）                                                          | 任意（即座に切り替わるので呼ぶ必要なし）                     |
-| 起床処理                 | メインループが `ss_wakeups_needed` フラグを見て `ss_process_wakeups()` を呼ぶ | ISR 内で直接 `ss_do_wakeups()` を呼ぶ（`ss_switch_tick=10`） |
-| スタック                 | 全タスクで同じ SP から始める（main の stack を共有）                          | 各タスクに独立したスタック（`ss_task_stack_base` 配下）      |
+| 起床処理                 | schedulerのコンテキスト切替時に `ss_process_wakeups()` を呼ぶ                 | ISR 内で直接 `ss_do_wakeups()` を呼ぶ（`ss_switch_tick=10`） |
+| スタック                 | 各タスクに独立したスタック（`ss_task_stack_base` 配下）                       | 各タスクに独立したスタック（`ss_task_stack_base` 配下）      |
 | 実装位置                 | `os/kernel/cooperative/{interrupts.s,wakeups.c}`                              | `os/kernel/preemptive/{interrupts.s,wakeups.c}`              |
 | 検証                     | 実機 / エミュレータで動作確認済み                                             | 実機 / エミュレータで動作確認済み                            |
 
@@ -467,7 +462,7 @@ ss_timerd_handler:
 ## スタンドアロン vs OS モード
 
 - **スタンドアロンモード** (`.x`): `LOCAL_MODE` を定義して Human68K 実行形式としてコンパイルする。`os/win/window.c` と共有通常UI `os/app/scene.c` をリンクするため、`.xdf` と同じ z-order、ヒットテスト、コンテンツ管理、描画・ドラッグ処理を使う。グラフィックスモードとパレットの選択、V-sync watchdog、`SS_PROFILE_GFX=1` 時のベンチはホスト固有だが、通常UIのメインループは共有である。開発時の反復が速い。
-- **OS モード** (`.xdf`): カスタムブートローダを持つ完全起動可能システム。スタンドアロンモードから切り替える際は `make clean` が必要
+- **OS モード** (`.xdf`): カスタムブートローダを持つ完全起動可能システム。`.x` と中間成果物を共有しない。
 
 ### s30 後の統一: ウィンドウ実装の共有
 
@@ -515,19 +510,7 @@ s30 以前は `.x` は独自の `Win` 構造体 / `zmap[3]` / `bring_to_front` /
 
 ### `.x` ビルドでリンクされるオブジェクト
 
-`ssos/standalone/Makefile` の `SRCS` から:
-
-```makefile
-SRCS=	main.c \
-		../os/app/scene.c \
-		../os/kernel/main_task.c \
-		../os/kernel/scheduler.c \
-		../os/mem/buddy.c \
-		../os/mem/slab.c \
-		../os/gfx/vram.c \
-		../os/win/window.c    # s30 で追加
-ASRCS=	../os/kernel/interrupts.s
-```
+`ssos/standalone/Makefile` はホストの `main.c` と共有 `os/app/scene.c`・scheduler・memory・gfx・window・util をリンクする。assembly は方式別 `interrupts.s`、共通 `os/kernel/mfp_state.s`、Human68K専用 `standalone/trap14.s` に分離される。
 
 `os/app/main.c` は `.x` には含まれず、`.xdf` 側の初期化・`ss_run()` 入口である。`.x` は `standalone/main.c` から共有 `os/app/scene.c` を呼ぶ。`os/app/scene.c`、`os/win/window.c`、`os/win/win.h` の変更は両ビルドに影響する。
 
@@ -591,11 +574,11 @@ Timer D と V-DISP の両 ISR は:
 
 ### 例外ハンドラ（TRAP #14）
 
-`os/kernel/interrupts.s` の `ss_trap14_handler` が Human68K 発行の TRAP #14（バスエラー/アドレスエラー/不当命令）を捕捉する。
+`standalone/trap14.s` の `ss_trap14_handler` が Human68K 発行の TRAP #14（バスエラー/アドレスエラー/不当命令）を捕捉する。`.xdf` にはこの処理をリンクしない。
 
 1. 例外情報を `ss_trapbuf_flag` / `ss_trapbuf_sr` / `ss_trapbuf_pc` に保存
 2. `_ABORTJOB` を発行し、Human68K にプロセス abort ベクタ（0xFFF2 / 0xFFF1）へ飛ばせる
-3. `ss_trap14_abort`（同じくベクタに登録）が PC, SR, 例外種別を `_B_PRINT` 経由でテキスト VRAM に出力
+3. `ss_trap14_abort` は緊急スタックに切り替え、Timer D/V-DISP・MFP・COPY/NMI・TRAP #14・表示入力を復元してから例外情報を出力
 4. `_ABORTRST` でプロセス終了
 
 スタック破壊やコンテキストスイッチ失敗の検出に有用。

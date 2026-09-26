@@ -21,6 +21,8 @@ struct SSWindow {
     char content_prev[3][30];
 };
 
+/* The UI task owns the window model and all rendering. Local IRQ guards on
+ * selected setters do not make the full API safe for concurrent callers. */
 void     ss_win_init(void);
 /* Returns 0 when geometry is not representable or no slot is available. */
 uint16_t ss_win_create(int x, int y, int w, int h, uint16_t z);

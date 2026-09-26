@@ -32,6 +32,7 @@
 #define SS_MAX_TASKS   32
 #define SS_MAX_PRI     16
 #define SS_TASK_STACK  16384
+#define SS_MIN_TASK_STACK 256
 
 /* Context save levels */
 #define SS_CTX_MINIMAL 0x00
@@ -43,6 +44,7 @@
 #define SS_TS_DORMANT  1
 #define SS_TS_READY    2
 #define SS_TS_WAIT     3
+#define SS_TS_TERMINATED 4
 
 /* Global counters (defined in interrupts.s) */
 extern volatile uint32_t ss_tick_counter;
