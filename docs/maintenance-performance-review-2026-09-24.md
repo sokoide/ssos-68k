@@ -283,3 +283,26 @@ P1は `80a5318` でコミットした。以下はその後に着手したP2の�
 - **R14 重複・仕様**: TRAP #14をstandalone専用に、MFP状態保存復元を `os/kernel/mfp_state.s` に抽出した。READMEのtick/switch周期、stack、wakeups、ビルド手順を更新した。方式別context switchとQEMU portの差分、TCB offset共通化は残る。
 
 自動検証: Native各109件、QEMU cooperative 7件・preemptive 7件、asm 5件がPASS。両方式の `.x` / `.xdf` はクロスビルド・リンク済み。これはMFP実割り込み、Human68K abort、実画面・DMAを検証したことを意味しない。
+
+## 4形式の動作確認後の残課題（2026-09-26）
+
+利用者から `ssos_cop.x`、`ssos_pre.x`、および両 `.xdf` のdisk bootがいずれもOKとの報告を受けた。4形式の通常起動確認として記録する。機種・画面モード・操作範囲・ログは未提示なので、異常終了後の復元、DMAの正常転送・停止失敗、性能改善まで確認済みとは扱わない。上の「実機未確認」は調査当時の記述であり、現在の通常起動状況は本節を正とする。
+
+残作業は安全性を性能より先に扱う。下表の優先度は現在の実装状況によるもので、R11〜R13の調査時点の区分を変更する。
+
+| 順序 | 対象 | 現行コードから確認できること | 完了条件 |
+| --- | --- | --- | --- |
+| 1・安全性 | R13 DMA停止未確認 | SAB後も`ACT`が残る場合は`-3`で区別し、source/descriptor更新、再DMA、CPU fallbackを止める。さらに描画APIのGVRAM書き込みもprocess-lifetimeで停止する。NativeでACT解除あり/なしを故障注入済み。 | 実機でACT判定・DMA異常時の振る舞いを確認する。`void`描画APIにエラーが伝播しないため、利用者への異常通知と復旧方針は別途必要。 |
+| 2・描画量 | R11 drag終了 | 共有`scene.c`の旧active再合成をタイトル高12pxへ限定した。既存`drag-region`ベンチは通常UI入力を通らない。 | 重なり・隠れ・drag中の本文更新・z再番号付けで画素一致を検証する。通常UIの決定的入力テストと`runtime`測定が必要。240×48→240×12はこの1要求の面積75%減に限る。 |
+| 3・文字描画 | R12 dirty text | 共有`draw_content_dirty()`は先頭と末尾の差分を求め、その区間だけ描く。桁減り時のpad空白も差分区間に含む。`text-update`ベンチはこの処理を測らない。 | 上下左右clip、上位windowとの重なり、桁減りの画素一致と、通常UIのglyph数・GVRAM write・実時間を測る。 |
+| 4・実測採否 | R13 DMA閾値 | 現条件は幅`>64`、幅`<=512`、高さ`>4`。行ごとにchain setup/start/pollするため閾値の最適性は起動成功からは分からない。 | 同一矩形をCPU強制/DMA強制で比較する測定経路を作り、幅・高さ・画面モード別に成功率、fallback、所要時間、画素一致を測る。停止未確認が0である構成だけで閾値を決める。値64の変更は測定後。 |
+
+別途残る検証・保守作業: R06のTRAP #14/abort故障注入と復元後の入力・割り込み確認、R10のwatchdogがIMRA/IMRBを固定値へ書き換える経路とVSync busy wait、R13のtarget ABI上でのDMAC構造体offset/size assert、R14のTCB offsetとQEMU移植差分の共通管理。XORの`^=`によるread-modify-writeと矛盾したコメントは訂正済み。R01の32 stack境界・枯渇結合テスト、R02のIPL/ネスト検証、R04のIPC競合テストも自動検証の残りである。これらを通常起動OKだけで完了扱いしない。
+
+DMAの詳細レジスタ値は資料間に不一致がある。ここでは既存設定を変更せず、`x68k-master/resources/02_DMA.md` と本書H4で指摘した差異を要原典確認として維持する。性能測定とログ条件は[gfx-performance.md](gfx-performance.md)を参照する。
+
+## Xeijの約1分後の例外調査（2026-09-26）
+
+利用者の`ssos_pre.xdf`でPC=`0x0004EE4C`、命令語=`0x583A`、SR=`0x0418`のundefined instructionが発生した。変更前のpreemptive ELFをシンボル付きで同条件再リンクした配置では、`0x4EE4C`は`win_content[2].line[0]`の先頭で、表示文字列`X:`のASCIIが`0x583A`となる。CPUが実行コードでなくマウス表示用データへ分岐したのであり、Xeijの未知命令解釈だけを原因として無視できない。
+
+`ss_task_yield()`は割り込みをマスクせずにmanual復帰フレームを作成し、TCBの`resume_type=1`を書いていた。Timer Dがこの書込みからcontext保存までの間に入ると`resume_type=0`に上書きされ、元のmanualフレームを`rte`フレームとして復帰し得る。SR/PCの解釈が2バイトずれ、異常SRやデータ領域への分岐と整合する。これを有力なコード上の競合として、元SRをフレームへ保存した直後にIPL7へ上げ、復帰時にSRを戻すよう変更した。QEMUの同期TRAPテストは復帰経路を通すが、Xeijの非同期Timer Dの同タイミングを再現していない。修正版`.xdf`で長時間・反復操作の再試験が完了するまで、単一の例外をこの競合と断定しない。

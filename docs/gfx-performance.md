@@ -66,7 +66,7 @@ cp ~/tmp/ssos_pre_profile1.x ~/tmp/ssos_pre_8bench.x
 ```
 
 実行時は `-8 -bench 100` を付ける。
-`-8` は 256 色モード、`-bench 100` は各決定的フェーズを100回実行する指定である。実行順は `full`、`region`、`z-expose`、`text-update`、`drag-region`、`xor-move`。`drag-region` は固定した2位置の間で、実アプリと同じ hide → 旧領域再合成 → XOR → move/show → 新領域再合成を繰り返す。マウスやキーボードの操作は不要で、終了後は通常の復元処理を通る。
+`-8` は 256 色モード、`-bench 100` は各決定的フェーズを100回実行する指定である。実行順は `full`、`region`、`z-expose`、`text-update`、`drag-region`、`xor-move`。`drag-region` は固定した2位置の間でhide → 旧領域再合成 → XOR → move/show → 新領域再合成を繰り返すが、共有`scene.c`の通常drag終了処理とは同一ではない。旧active windowの再合成は両経路ともタイトル領域のみになった。`text-update`も固定文字列の直接描画であり、`draw_content_dirty()`の差分検出を測らない。マウスやキーボードの操作は不要で、終了後は通常の復元処理を通る。
 
 ## 実行
 
@@ -142,7 +142,7 @@ cp bench.txt bench-cop-dma-diagnostic.txt
 
 ### 測定値の扱い
 
-過去のログはcommit、機種またはエミュレータ、clock、画面モード、`SS_PROFILE_GFX`、通常UIか決定的ベンチかを添えて保存する。条件が不明な数値は現行コードの性能値として再掲しない。改善判定には同一条件の`vsync`、DMA成功・失敗・timeout、GVRAM write、rendered windowsを併記する。
+過去のログはcommit、機種またはエミュレータ、clock、画面モード、`SS_PROFILE_GFX`、通常UIか決定的ベンチかを添えて保存する。条件が不明な数値は現行コードの性能値として再掲しない。改善判定には同一条件の`vsync`、DMA成功・失敗・timeout、GVRAM write、rendered windowsを併記する。現在の`SSPERF`に直接のwall-clock `total`/`frame`時間はない。`vsync`は整数カウントなので短い処理では差が量子化される。
 
 ### 比較の流れ
 
@@ -155,21 +155,20 @@ cp bench.txt bench-cop-dma-diagnostic.txt
 
 | 項目 | baseline | improvement | 解釈 |
 | :--- | :--- | :--- | :--- |
-| total |  |  | 全体時間。まずここで総量を見る |
-| frame |  |  | 1 フレームあたりの負荷 |
-| V-DISP |  |  | 表示更新に伴う割り込み回数や待ち時間 |
+| phase / rounds |  |  | 同じ処理・反復数か確認 |
+| vsync |  |  | フェーズ中の表示同期回数。短い処理では粗い |
 | GVRAM read |  |  | VRAM から読んだ量。少ない方が望ましい |
-| GVRAM write |  |  | VRAM に書いた量。描画量の主要指標 |
-| primitive |  |  | CPU 描画プリミティブの使用量 |
-| DMA |  |  | 試行・成功・失敗・CPU fallback の内訳 |
-| window |  |  | ウィンドウ再描画・再構成のコスト |
-| dirty |  |  | dirty 領域だけ更新できているかの指標 |
+| GVRAM write |  |  | 描画側が計上した語数。DMA失敗時の実バス書込量とは限らない |
+| primitive |  |  | 描画APIの呼出・glyph処理数。CPU専用とは限らない |
+| DMA attempts / ok / error / timeout / fallback_rows |  |  | 経路と失敗の内訳 |
+| windows rendered / render region |  |  | ウィンドウ再描画回数 |
+| dirty submitted / clipped |  |  | 要求・clip後の再描画面積 |
 
 ## 指標の読み方
 
-### V-DISP
+### vsync
 
-V-DISP は画面同期の基準になる。増減だけで良し悪しを決めず、他の描画項目と一緒に見る。
+`vsync` はフェーズ中のV-DISPカウンタ差であり、直接の処理時間ではない。増減だけで良し悪しを決めず、他の描画項目と一緒に見る。
 
 - 増える場合: 描画が VBlank 周辺に寄っている、または待機が増えている可能性
 - 減る場合: 同期待ちが減ったか、そもそも描画負荷が下がった可能性
@@ -180,21 +179,20 @@ V-DISP は画面同期の基準になる。増減だけで良し悪しを決め�
   - 減るほどよい
   - XOR 枠線や保存復元、オーバーレイ再描画のような経路で増えやすい
 - `GVRAM write`: 画面へ書いている量
-  - 画面更新の主負荷
+  - 現行のprofileは経路によって予定面積を先に計上する。DMA失敗やfallback時に実際のバス書込語数を厳密に示す値ではない
   - dirty 更新やクリッピングの改善で減ることがある
 
 ### primitive
 
-CPU 側の基本描画関数の使用量を見る。
+基本描画関数の呼出数を見る。`primitive`はDMA経由の矩形も数えるため、CPU専用の仕事量ではない。
 
-- `ss_gfx_rect` や `ss_gfx_hline` が増えるなら、直描画依存が強い
-- `primitive` が減って `DMA` が増えるなら、矩形系は DMAC に寄っている
+- `rect`や`hline`の増減は呼出回数の差であり、CPU/DMAの選択は`dma attempts/ok`で判定する
 
 ### DMA
 
 矩形塗りつぶしのような大きい書き込みを DMAC に逃がしたかを見る。
 
-- DMA の増減だけでは優劣を決めない。setup/poll のコストがあるため、同じフェーズで `V-DISP` または `GVRAM write` が改善した場合だけ採用根拠になる
+- DMA の増減だけでは優劣を決めない。同じ矩形ならCPU/DMAで書き込む画素数は概ね同じで、`GVRAM write`の減少はDMA高速化の必要条件ではない。setup/pollを含めた実時間と`vsync`を比較し、`ok`・`error`・`timeout`・`fallback_rows`を必ず確認する
 
 ### window
 
@@ -207,26 +205,40 @@ CPU 側の基本描画関数の使用量を見る。
 
 dirty は「変わった部分だけ更新できたか」を示す。
 
-- 増える: 変更箇所が局所的で、部分更新が使えている
-- 減る: full redraw が増えている、または dirty 判定が広すぎる
+- `marks`の増減だけでは優劣を決めない。同じ入力列で`submitted`/`clipped`面積と最終画素を比較する
 
 ## 2 系列の見方
 
 ベースラインと改善版を比較するときは、次の順で見る。
 
-1. `total` と `frame` が改善したか
-2. `GVRAM read` と `GVRAM write` が減ったか
-3. `DMA` の試行・成功・fallback が描画量の削減に結び付いたか
-4. `dirty` が増えて `window` が減ったか
+1. `phase`・`rounds`・機種・画面モード・入力列が一致するか
+2. 同じ画素結果で`vsync`または別途取得した実時間が改善したか
+3. `GVRAM read/write`、glyph数、`dirty submitted/clipped`、window再描画回数が期待方向か
+4. DMAを使う場合、成功率とtimeout・fallbackが悪化していないか
 
 ### 典型的な解釈
 
-- `GVRAM read` 減少 + `dirty` 増加:
+- `GVRAM read` 減少 + `dirty clipped` 減少:
   - 保存復元や全面再描画を局所化できている可能性が高い
-- `DMA ok` 増加 + `GVRAM write` または `V-DISP` 改善:
-  - 大きい矩形のDMA化が実際に有利だった可能性が高い
-- `V-DISP` だけ変化して他が不変:
+- `DMA ok` 増加 + 同一画素で実時間改善 + timeout なし:
+  - 対象矩形ではDMA化が有利だった可能性がある
+- `vsync` だけ変化して他が不変:
   - 描画改善ではなく同期条件や測定条件差を疑う
+
+## P3を判定する追加測定
+
+4形式の通常起動がOKでも、以下の性能値は得られない。P3の採否には同じ機種・clock・CRTMOD・入力列で変更前後を比較する。`-bench`は`.x`専用であり、`.xdf`は同じ描画結果の目視・故障確認を別途行う。
+
+| 対象 | 必要な追加測定 | 採用条件 |
+| --- | --- | --- |
+| 旧activeタイトルの部分再合成 | 共有`scene.c`のdrag begin/move/endを固定入力で再生し、drop時の`dirty submitted/clipped`、`GVRAM write`、画素を比較。既存`drag-region`ベンチだけでは判定しない | 重なり・隠れ・本文更新を含め画素一致、同一入力列で面積と実時間が改善 |
+| dirty textの差分末尾 | 数字の増減、桁減り、1文字更新、上位windowによるclipを固定入力で再生し、描画glyph数とGVRAM write・画素を比較。既存`text-update`ベンチは差分検出を通らない | 消去用の空白も含め画素一致、追加の差分探索コストを含む実時間が改善 |
+| DMA停止未確認 | ACT解除あり/なしを分けた故障注入で、後者にCPU fallback、次のDMA開始、source/descriptor更新がないことを確認 | 安全性の完了条件。性能評価の前提であり、速度による採否はしない |
+| DMA閾値 | 同じ矩形をCPU強制とDMA強制で描く専用ベンチを追加。幅は64の前後を含め、高さも現境界の4/5前後を含む複数値を測る。`-8`/`-16`、両方式で反復し、実時間、`vsync`、DMA `ok/error/timeout/fallback_rows`、画素を記録 | 安定して成功し、setup/poll込みでCPUより速い領域だけDMAを選ぶ。現行の幅`>64`・高さ`>4`は実測前に変更しない |
+
+DMA閾値の比較では、現行の`SSPERF`は`vsync`が整数でwall-clock時間を出さないため、短い矩形を単発で比較しない。十分な反復数か追加の経過時間計測を用意し、実行順を入れ替えて複数回測る。転送成功率と画素一致が満たせない条件は、速く見えても採用しない。機種・clock・媒体・commit・profile設定・矩形の幅/高さ・反復数をログに残す。
+
+2026-09-26時点で旧activeタイトル限定、dirty textの両端差分、およびDMAのACT停止未確認時の描画停止をコードへ反映した。NativeのDMA故障注入はACT解除あり/なしを通すが、DMAC実機の停止保証にはならない。共有sceneのdrag/dirty textは決定的な画素比較テストが未整備であり、性能採否は未了。DMA閾値は実機のCPU強制/DMA強制の同条件ログがないため、幅`>64`・高さ`>4`のまま維持する。
 
 ## ログ整理
 

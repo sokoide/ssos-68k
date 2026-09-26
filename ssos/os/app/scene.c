@@ -30,7 +30,7 @@ static uint32_t frame = 0;   /* vsync counter shown in the Timer window */
  * release when its is_fg flips (render_region's small rect won't
  * reach windows that don't overlap the dropped position). */
 static int prev_active_valid = 0;
-static int prev_active_x, prev_active_y, prev_active_w, prev_active_h;
+static int prev_active_x, prev_active_y, prev_active_w;
 
 /* Window layout (standalone-compatible) */
 #define TITLE_H   12
@@ -135,17 +135,19 @@ static void draw_content_dirty(uint16_t id) {
     int target_pos;
     int nclip = build_text_clip_windows(id, clip_wins, &target_pos);
     for (int i = 0; i < 3; i++) {
-        if (memcmp(c->line[i], c->prev[i], 30) != 0) {
-            /* Redraw only the changed suffix: lines are pad_line'd to
-             * LINE_LEN and left-aligned, so the first differing column
-             * is where the visible change starts. Redrawing from there
-             * to the (space-padded) tail handles both growth and erase.
-             * Turns "Vsync: 100" -> "Vsync: 101" into a 1-char repaint. */
+        if (memcmp(c->line[i], c->prev[i], LINE_LEN) != 0) {
+            /* Find the smallest changed span.  Padded spaces in the new
+             * line still erase characters removed from the old line. */
             int j = 0;
             while (j < LINE_LEN && c->line[i][j] == c->prev[i][j]) j++;
+            int end = LINE_LEN;
+            while (end > j && c->line[i][end - 1] == c->prev[i][end - 1]) end--;
+            char changed[LINE_LEN + 1];
+            memcpy(changed, c->line[i] + j, (size_t)(end - j));
+            changed[end - j] = '\0';
             int tx = x + 4 + j * SS_FONT_ADV;
             int ty = y + CONTENT_Y + i * LINE_H;
-            int tw = (LINE_LEN - j - 1) * SS_FONT_ADV + SS_FONT_W;
+            int tw = (end - j - 1) * SS_FONT_ADV + SS_FONT_W;
             int covered = 0;
             for (int k = target_pos + 1; k < nclip; k++) {
                 int* upper = &clip_wins[k * 4];
@@ -156,11 +158,11 @@ static void draw_content_dirty(uint16_t id) {
                 }
             }
             if (target_pos >= 0 && covered) {
-                ss_gfx_draw_text_clip(tx, ty, c->line[i] + j,
+                ss_gfx_draw_text_clip(tx, ty, changed,
                                       PAL_BLACK, PAL_WHITE,
                                       clip_wins, nclip, target_pos);
             } else {
-                ss_gfx_draw_text_fast(tx, ty, c->line[i] + j,
+                ss_gfx_draw_text_fast(tx, ty, changed,
                                       PAL_BLACK, PAL_WHITE);
             }
             memcpy(c->prev[i], c->line[i], 30);
@@ -289,7 +291,7 @@ static void update_content(uint16_t wt, uint16_t wk, uint16_t wm,
  * the earlier marching-ants + ol_save/ol_restore path, which read the full
  * window perimeter from GVRAM (slow, wait-stated) every frame the mouse
  * moved and rewrote it every frame for the animation. Now: no save buffer,
- * no GVRAM read, and the outline is touched only when the position changes.
+ * only XOR's read-modify-write, and updates only when the position changes.
  */
 
 static void drag_begin(int mx, int my, int hid) {
@@ -303,7 +305,6 @@ static void drag_begin(int mx, int my, int hid) {
             prev_active_x = ss_win_get_x(i);
             prev_active_y = ss_win_get_y(i);
             prev_active_w = ss_win_get_w(i);
-            prev_active_h = ss_win_get_h(i);
             prev_active_valid = 1;
             break;
         }
@@ -370,7 +371,7 @@ static void drag_end(void) {
      * title would be left painted in the active color. Force its repaint. */
     if (prev_active_valid) {
         ss_win_render_region(prev_active_x, prev_active_y,
-                             prev_active_w, prev_active_h);
+                             prev_active_w, TITLE_H);
     }
     drag_id = -1;
     drag_prev_x = -1;

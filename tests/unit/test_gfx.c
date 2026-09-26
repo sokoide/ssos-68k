@@ -101,6 +101,31 @@ TEST(gfx_flip_switches_pages) {
     ASSERT_EQ(ss_gfx_test_crtc[SS_CRTC_SCROLL_Y], 512);
 }
 
+TEST(gfx_dma_abort_confirmed_allows_cpu_fallback) {
+    reset_gfx(SS_CRTMOD_16, 0x1111);
+    ss_gfx_test_dma_status_mode(1);
+    ss_gfx_rect(10, 10, 80, 5, 0x2222);
+    ASSERT_EQ(ss_gfx_dma_stop_unconfirmed(), 0);
+    ASSERT_EQ(pixel(10, 10), 0x2222);
+    ASSERT_EQ(pixel(89, 14), 0x2222);
+    ASSERT_EQ(pixel(90, 14), 0x1111);
+}
+
+TEST(gfx_dma_abort_unconfirmed_freezes_writes_and_source) {
+    reset_gfx(SS_CRTMOD_16, 0x1111);
+    ss_gfx_test_dma_status_mode(2);
+    ss_gfx_rect(10, 10, 80, 5, 0x2222);
+    ASSERT_EQ(ss_gfx_dma_stop_unconfirmed(), 1);
+    ASSERT_EQ(pixel(10, 10), 0x1111);
+    ASSERT_EQ(ss_gfx_test_dma_source_first(), 0x2222);
+    ss_gfx_rect(10, 10, 1, 1, 0x3333);
+    ss_gfx_char_fast(10, 10, 'A', 0x3333, 0x4444);
+    ss_dma_fill_setup(0x5555, 80);
+    ASSERT_EQ(ss_gfx_test_dma_source_first(), 0x2222);
+    ASSERT_EQ(ss_dma_fill_row(ss_draw_page, 80), -3);
+    ASSERT_EQ(pixel(10, 10), 0x1111);
+}
+
 void run_gfx_tests(void) {
     RUN_TEST(gfx_set_mode_rejects_unimplemented_values);
     RUN_TEST(gfx_rect_clips_and_preserves_outside);
@@ -110,4 +135,6 @@ void run_gfx_tests(void) {
     RUN_TEST(gfx_char_fast_matches_slow);
     RUN_TEST(gfx_xor_perimeter_twice_restores);
     RUN_TEST(gfx_flip_switches_pages);
+    RUN_TEST(gfx_dma_abort_confirmed_allows_cpu_fallback);
+    RUN_TEST(gfx_dma_abort_unconfirmed_freezes_writes_and_source);
 }

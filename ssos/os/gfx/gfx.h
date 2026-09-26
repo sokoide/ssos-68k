@@ -128,12 +128,21 @@ void ss_gfx_draw_text_clip(int x, int y, const char* str, uint16_t fg, uint16_t 
                            const int* clip_wins, int nclip, int zpos);
 
 void ss_dma_fill_setup(uint16_t value, int count);
+/* 0 = complete, -1 = DMA error after stop, -2 = timeout with stop confirmed,
+ * -3 = stop unconfirmed; -3 permanently blocks graphics writes. */
 int  ss_dma_fill_row(volatile uint16_t* dst, int count);
+int  ss_gfx_dma_stop_unconfirmed(void);
+
+#ifdef SS_HOST_TEST
+/* Fault injection: 1 = abort confirmed, 2 = ACT remains set. */
+void ss_gfx_test_dma_status_mode(int mode);
+uint16_t ss_gfx_test_dma_source_first(void);
+#endif
 
 /* XOR the perimeter of [x,y,w,h] against the draw page (clipped to screen).
  * Self-erasing: drawing the same rect twice restores the original pixels.
  * Used for transient UI (software cursor, drag outline) without a save
- * buffer or any VRAM read — cheap on the slow GVRAM read path. */
+ * buffer; XOR itself performs a GVRAM read-modify-write. */
 void ss_gfx_xor_rect(int x, int y, int w, int h);
 
 #endif /* SS_GFX_H */

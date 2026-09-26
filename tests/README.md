@@ -114,7 +114,7 @@ X68000 HW/asm dependencies are stubbed in `framework/test_mocks.c`:
 | `ss_tick_counter` (bumped by ISR)      | host-controlled variable (`ADVANCE_TICK`)  |
 | `ss_task_stack_base` (from app)        | static 512 KB arena                        |
 | GVRAM / CRTC addresses                 | same-layout RAM pages/register array       |
-| DMAC fill                              | disabled; CPU raster fallback is exercised |
+| DMAC fill                              | normally disabled; fault-injection tests force timeout with ACT cleared/stuck to check fallback and sticky write blocking |
 | palette IOCS programming               | logical palette-index stub                 |
 
 The scheduler is built twice via `SCHED=`. Both builds use the same scheduler

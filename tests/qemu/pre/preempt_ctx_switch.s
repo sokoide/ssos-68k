@@ -64,13 +64,14 @@ ss_irq_restore:
 
 # ----------------------------------------------------------------------------
 # ss_task_yield - voluntary context switch (callable from C, e.g. ss_task_sleep).
-# Builds a manual resume frame (PC + SR), saves all regs, marks resume_type=1,
+# Builds a manual resume frame (PC + SR), masks interrupts, marks resume_type=1,
 # and resumes whatever the scheduler picks next.
 # ----------------------------------------------------------------------------
         .globl  ss_task_yield
 ss_task_yield:
-        pea     .yield_resume
         move.w  %sr, -(sp)
+        ori.w   #0x0700, %sr
+        pea     .yield_resume
         movem.l d0-d7/a0-a6, -(sp)
         move.l  ss_curr_task, a1
         move.b  #1, 31(a1)              | resume_type = 1 (yielded)
@@ -155,8 +156,8 @@ ss_context_switch:
         beq.s   .resume_interrupted
 
         movem.l (sp)+, d0-d7/a0-a6
-        move.w  (sp)+, %sr
         move.l  (sp)+, %a0
+        move.w  (sp)+, %sr
         jmp     (%a0)
 
 .resume_interrupted:

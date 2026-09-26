@@ -81,6 +81,37 @@ static uint8_t dma_disabled_after_timeout = 1;
 #else
 static uint8_t dma_disabled_after_timeout;
 #endif
+/* If SAB did not clear ACT, the transfer may still write GVRAM or read the
+ * shared source/descriptor.  This state is sticky until process exit. */
+static uint8_t dma_stop_unconfirmed;
+
+int ss_gfx_dma_stop_unconfirmed(void) {
+    return dma_stop_unconfirmed != 0;
+}
+
+#ifdef SS_HOST_TEST
+/* 0: register stub, 1: timeout then ACT clears, 2: ACT stays set. */
+static int dma_test_status_mode;
+
+void ss_gfx_test_dma_status_mode(int mode) {
+    dma_test_status_mode = mode;
+    dma_disabled_after_timeout = 0;
+    dma_stop_unconfirmed = 0;
+}
+
+uint16_t ss_gfx_test_dma_source_first(void) {
+    return dma_fill_buf[0];
+}
+#endif
+
+static uint8_t dma_read_status(int aborting) {
+#ifdef SS_HOST_TEST
+    if (dma_test_status_mode == 1) return aborting ? 0 : DMA_CSR_ACT;
+    if (dma_test_status_mode == 2) return DMA_CSR_ACT;
+#endif
+    (void)aborting;
+    return dma_ch2->csr;
+}
 
 const uint8_t ss_font_data[][SS_FONT_H] = {
     {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, /* 0x20 ' ' */
@@ -190,6 +221,7 @@ void ss_fill_long(volatile uint32_t* dst, uint32_t val, uint32_t count) {
 }
 
 static void dma_fill_init(void) {
+    if (dma_stop_unconfirmed) return;
     const uint8_t dcr = 0x08;
     const uint8_t ocr = 0x19; /* MAR=RAM (dma_fill_buf) -> DAR=GVRAM */
     const uint8_t scr = 0x05;
@@ -209,12 +241,28 @@ static void dma_fill_init(void) {
 }
 
 void ss_dma_fill_setup(uint16_t value, int count) {
+    if (dma_stop_unconfirmed) return;
     for (int i = 0; i < count && i < 512; i++) {
         dma_fill_buf[i] = value;
     }
 }
 
+static int dma_abort_and_confirm(void) {
+    int timeout = 10000;
+    dma_ch2->ccr = DMA_CCR_SAB;
+    while ((dma_read_status(1) & DMA_CSR_ACT) && --timeout > 0) {
+    }
+    if (dma_read_status(1) & DMA_CSR_ACT) {
+        dma_stop_unconfirmed = 1;
+        return -3;
+    }
+    dma_ch2->ccr = 0x00;
+    dma_ch2->csr = 0xFF;
+    return -2;
+}
+
 int ss_dma_fill_row(volatile uint16_t* dst, int count) {
+    if (dma_stop_unconfirmed) return -3;
     int timeout = 10000;
     xfr_table.mar = (uint8_t*)dma_fill_buf;
     xfr_table.mtc = (uint16_t)count;
@@ -225,26 +273,24 @@ int ss_dma_fill_row(volatile uint16_t* dst, int count) {
     dma_ch2->ccr = 0x80;
 
     while (timeout-- > 0) {
-        uint8_t csr = dma_ch2->csr;
+        uint8_t csr = dma_read_status(0);
         if (csr & DMA_CSR_ERR) {
             SS_PROFILE_DMA_ERROR_STATUS(csr, dma_ch2->cer);
+            if (csr & DMA_CSR_ACT) {
+                int stop = dma_abort_and_confirm();
+                return stop == -3 ? -3 : -1;
+            }
             dma_ch2->csr = 0xFF;
             return -1;
         }
-        if (csr & DMA_CSR_COC) {
+        if ((csr & DMA_CSR_COC) && !(csr & DMA_CSR_ACT)) {
             dma_ch2->csr = 0xFF;
             return 0;
         }
     }
     /* A status clear does not stop an active channel.  Abort before the CPU
      * fallback so a late DMA write cannot race with the same VRAM row. */
-    dma_ch2->ccr = DMA_CCR_SAB;
-    timeout = 10000;
-    while ((dma_ch2->csr & DMA_CSR_ACT) && --timeout > 0) {
-    }
-    dma_ch2->ccr = 0x00;
-    dma_ch2->csr = 0xFF;
-    return -2;
+    return dma_abort_and_confirm();
 }
 
 void ss_gfx_init(void) {
@@ -269,6 +315,7 @@ void ss_gfx_flip(void) {
 }
 
 void ss_gfx_clear(uint16_t color) {
+    if (dma_stop_unconfirmed) return;
     uint32_t c2 = ((uint32_t)color << 16) | color;
     uint32_t n = (uint32_t)(ss_current_mode->page_size / 4);
     ss_fill_long((volatile uint32_t*)ss_draw_page, c2, n);
@@ -277,6 +324,7 @@ void ss_gfx_clear(uint16_t color) {
 }
 
 void ss_gfx_rect(int x, int y, int w, int h, uint16_t color) {
+    if (dma_stop_unconfirmed) return;
     int submitted_w = w;
     int submitted_h = h;
     SS_PROFILE_PRIMITIVE_CALL();
@@ -317,7 +365,7 @@ void ss_gfx_rect(int x, int y, int w, int h, uint16_t color) {
                 SS_PROFILE_DMA_OK();
                 dma_rows++;
             } else {
-                if (dma_result == -2) {
+                if (dma_result == -2 || dma_result == -3) {
                     SS_PROFILE_DMA_TIMEOUT();
                     dma_disabled_after_timeout = 1;
                 } else {
@@ -326,6 +374,7 @@ void ss_gfx_rect(int x, int y, int w, int h, uint16_t color) {
                 ok = 0;
             }
         }
+        if (dma_stop_unconfirmed) return;
         dma_ch2->ccr = 0x00;
         if (ok) return;
         /* Completed DMA rows are already correct.  Starting CPU fallback at
@@ -380,6 +429,7 @@ void ss_gfx_hline(int x, int y, int w, uint16_t color) {
 }
 
 void ss_gfx_fill_stipple(int x, int y, int w, int h, uint16_t c1, uint16_t c2) {
+    if (dma_stop_unconfirmed) return;
     int submitted_w = w;
     int submitted_h = h;
     SS_PROFILE_PRIMITIVE_CALL();
@@ -418,6 +468,7 @@ void ss_gfx_fill_stipple(int x, int y, int w, int h, uint16_t c1, uint16_t c2) {
 }
 
 void ss_gfx_char(int x, int y, char ch, uint16_t fg, uint16_t bg) {
+    if (dma_stop_unconfirmed) return;
     uint32_t writes = 0;
     SS_PROFILE_PRIMITIVE_CALL();
     SS_PROFILE_GLYPH_SLOW();
@@ -450,6 +501,7 @@ void ss_gfx_draw_text(int x, int y, const char* str, uint16_t fg, uint16_t bg) {
 }
 
 void ss_gfx_char_fast(int x, int y, char ch, uint16_t fg, uint16_t bg) {
+    if (dma_stop_unconfirmed) return;
     /* Caller guarantees the glyph is fully on-screen, so we drop the
      * per-pixel bounds checks and unroll the 5 font columns. The row
      * pointer is advanced by the word stride each scanline. */
@@ -508,6 +560,7 @@ static void ss_gfx_char_region(int x, int y, char ch, uint16_t fg, uint16_t bg,
 
 void ss_gfx_draw_text_region(int x, int y, const char* str, uint16_t fg, uint16_t bg,
                              const SSGfxRect* clip) {
+    if (dma_stop_unconfirmed) return;
     if (clip == NULL) {
         ss_gfx_draw_text_fast(x, y, str, fg, bg);
         return;
@@ -542,10 +595,11 @@ static uint32_t ss_gfx_xor_hline(volatile uint16_t* row, int x0, int x1) {
 }
 
 void ss_gfx_xor_rect(int x, int y, int w, int h) {
+    if (dma_stop_unconfirmed) return;
     /* XOR 0xFFFF on the rectangle perimeter, clipped to the screen.
      * Self-erasing: two passes over the same rect restore the original,
      * so callers use it for transient UI (cursor, drag outline) with no
-     * save buffer and no GVRAM read. */
+     * save buffer, but each XOR is a GVRAM read-modify-write. */
     uint32_t stride = ss_current_mode->bytes_per_line / 2;
     int W = ss_current_mode->display_w, H = ss_current_mode->display_h;
     volatile uint16_t* v = ss_draw_page;
@@ -584,6 +638,7 @@ void ss_gfx_xor_rect(int x, int y, int w, int h) {
 
 void ss_gfx_char_clip(int x, int y, char ch, uint16_t fg, uint16_t bg,
                       const int* clip_wins, int nclip, int zpos) {
+    if (dma_stop_unconfirmed) return;
     uint32_t writes = 0;
     SS_PROFILE_PRIMITIVE_CALL();
     SS_PROFILE_GLYPH_CLIP();

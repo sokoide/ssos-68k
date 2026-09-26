@@ -239,8 +239,8 @@ ss_context_switch:
 
 		| resume_type == 1: yielded, manual SR/PC restore (no rte)
 		movem.l	(sp)+, d0-d7/a0-a6
-		move.w	(sp)+, %sr
 		move.l	(sp)+, %a0
+		move.w	(sp)+, %sr
 		jmp		(%a0)
 
 	.resume_interrupted:
@@ -262,9 +262,12 @@ ss_context_switch:
 		| ss_task_yield - Voluntary context switch (callable from C)
 		| ============================================================
 ss_task_yield:
-		| Build manual resume frame: SR + return PC
-		pea		.yield_resume
+		| Keep the original SR in the frame, then mask Timer D before
+		| touching resume_type or context.  Otherwise an interrupt can
+		| replace the yielded frame with an rte frame between those writes.
 		move.w	%sr, -(sp)
+		ori.w	#0x0700, %sr
+		pea		.yield_resume
 		| Save all registers
 		movem.l	d0-d7/a0-a6, -(sp)
 		| Mark as yielded (resume_type = 1)
