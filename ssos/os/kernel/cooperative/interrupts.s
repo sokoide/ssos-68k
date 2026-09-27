@@ -1,4 +1,5 @@
 		.include "iocscall.mac"
+		#include "scheduler_abi.h"
 
 		.section .text
 		.align	2
@@ -129,19 +130,7 @@ ss_vdisp_handler:
 		| ss_task_yield(). Wakeups run later at the scheduler boundary.
 		| This ISR saves only d0/a0 for its counters and MFP EOI.
 		|
-		| SSTask struct offsets:
-		|   context    = 0   (void*)
-		|   prev       = 4   (SSTask*)
-		|   next       = 8   (SSTask*)
-		|   stack_base = 12  (void*)
-		|   stack_size = 16  (uint32_t)
-		|   entry      = 20  (function pointer)
-		|   wait_until = 24  (uint32_t)
-		|   state      = 28  (uint8_t)
-		|   pri        = 29  (uint8_t)
-		|   ctx_level  = 30  (uint8_t)
-		|   resume_type = 31  (uint8_t)
-		|   sleep_next  = 32  (SSTask*)
+		| TCB offsets shared with the C layout in scheduler_abi.h.
 		| ============================================================
 
 			.globl	ss_wakeups_needed
@@ -172,7 +161,7 @@ ss_timerd_handler:
 ss_context_switch:
 		| Save current SP to curr_task->context
 		move.l	ss_curr_task, a1
-		move.l	sp, (a1)
+		move.l	sp, SS_TCB_CONTEXT_OFFSET(a1)
 
 		| Call C scheduler to pick next task
 		bsr	ss_do_context_switch
@@ -181,25 +170,25 @@ ss_context_switch:
 
 		| ============================================================
 		| .resume_task - Resume the scheduled task
-		| Uses resume_type (TCB offset 31) to select restore method
+		| Uses the shared resume_type offset to select restore method
 		| ============================================================
 	.resume_task:
 		move.l	ss_scheduled_task, a1
-		move.l	(a1), sp
+		move.l	SS_TCB_CONTEXT_OFFSET(a1), sp
 
 		| Check if this is a new (never-run) task.  A created task has
 		| context == stack_base and a non-NULL entry.  The bootstrap main
 		| task uses the same stack sentinel but deliberately has no entry.
-		move.l	(a1), a0
-		move.l	12(a1), d0
+		move.l	SS_TCB_CONTEXT_OFFSET(a1), a0
+		move.l	SS_TCB_STACK_BASE_OFFSET(a1), d0
 		cmp.l	a0, d0
 		bne.s	.resume_existing
-		tst.l	20(a1)
+		tst.l	SS_TCB_ENTRY_OFFSET(a1)
 		bne.w	.start_task
 	.resume_existing:
 
-		| Check resume_type at TCB offset 31
-		cmpi.b	#0, 31(a1)
+		| Check resume_type at its shared TCB offset
+		cmpi.b	#0, SS_TCB_RESUME_TYPE_OFFSET(a1)
 		beq.s	.resume_interrupted
 
 		| resume_type == 1: yielded, manual SR/PC restore (no rte)
@@ -215,8 +204,8 @@ ss_context_switch:
 
 	.start_task:
 		| New task: call the C entry with arg; returning ends the task.
-		move.l	20(a1), a0		| a0 = task entry function
-		move.l	38(a1), -(sp)		| entry(arg)
+		move.l	SS_TCB_ENTRY_OFFSET(a1), a0		| a0 = task entry function
+		move.l	SS_TCB_ARG_OFFSET(a1), -(sp)		| entry(arg)
 		move.w	#0x2000, %sr		| enable interrupts
 		jsr		(%a0)
 		addq.l	#4, sp
@@ -234,9 +223,9 @@ ss_task_yield:
 		movem.l	d0-d7/a0-a6, -(sp)
 		| Mark as yielded (resume_type = 1)
 		move.l	ss_curr_task, a1
-		move.b	#1, 31(a1)
+		move.b	#1, SS_TCB_RESUME_TYPE_OFFSET(a1)
 		| Save SP and switch
-		move.l	sp, (a1)
+		move.l	sp, SS_TCB_CONTEXT_OFFSET(a1)
 		bsr	ss_do_context_switch
 		bra.w	.resume_task
 	.yield_resume:

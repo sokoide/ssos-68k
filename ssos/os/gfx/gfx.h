@@ -2,6 +2,7 @@
 #define SS_GFX_H
 
 #include <stdint.h>
+#include <stddef.h>
 
 /* Graphics Mode Constants */
 #define SS_CRTMOD_8  8
@@ -94,10 +95,33 @@ typedef struct __attribute__((packed)) {
     uint8_t  bfc;
 } SSDmaReg;
 
+/* HD63450 channel registers are laid out with byte/word/long fields at
+ * fixed offsets.  The packed pointers must remain 32-bit on the target.
+ * Native builds use host-width pointers and cannot validate this ABI. */
+#if UINTPTR_MAX == UINT32_MAX
+_Static_assert(offsetof(SSDmaReg, csr) == 0, "DMAC CSR offset changed");
+_Static_assert(offsetof(SSDmaReg, dcr) == 4, "DMAC DCR offset changed");
+_Static_assert(offsetof(SSDmaReg, ccr) == 7, "DMAC CCR offset changed");
+_Static_assert(offsetof(SSDmaReg, mtc) == 10, "DMAC MTC offset changed");
+_Static_assert(offsetof(SSDmaReg, mar) == 12, "DMAC MAR offset changed");
+_Static_assert(offsetof(SSDmaReg, dar) == 20, "DMAC DAR offset changed");
+_Static_assert(offsetof(SSDmaReg, btc) == 26, "DMAC BTC offset changed");
+_Static_assert(offsetof(SSDmaReg, bar) == 28, "DMAC BAR offset changed");
+_Static_assert(offsetof(SSDmaReg, mfc) == 41, "DMAC MFC offset changed");
+_Static_assert(offsetof(SSDmaReg, dfc) == 49, "DMAC DFC offset changed");
+_Static_assert(sizeof(SSDmaReg) == 58, "DMAC channel register layout changed");
+#endif
+
 typedef struct __attribute__((packed)) {
     uint8_t* mar;
     uint16_t mtc;
 } SSXfrInf;
+
+#if UINTPTR_MAX == UINT32_MAX
+_Static_assert(offsetof(SSXfrInf, mar) == 0, "DMA descriptor MAR offset changed");
+_Static_assert(offsetof(SSXfrInf, mtc) == 4, "DMA descriptor MTC offset changed");
+_Static_assert(sizeof(SSXfrInf) == 6, "DMA descriptor must be 6 bytes");
+#endif
 
 extern volatile uint16_t* ss_draw_page;
 extern volatile uint16_t* ss_display_page;

@@ -1,18 +1,15 @@
-# ctx_switch.s - QEMU-port of the SSOS cooperative context switch.
-#
-# This is a direct port of ssos/os/kernel/cooperative/interrupts.s lines
-# 17-23 (irq disable/enable) and 280-344 (ss_task_yield / .resume_task /
-# .start_task), with every X68000-MFP / Human68K-TRAP dependency removed.
-# What remains is pure 68000: stack switching via movem.l. It runs unchanged
-# on qemu-system-m68k -M virt.
-#
-# SSTask layout (m68k ABI, no packing needed — matches scheduler.h):
-#   +0   context     (saved SP)
-#   +12  stack_base
-#   +20  entry
-#   +31  resume_type (1 = yielded, 0 = interrupted)
-#   +32  sleep_next  (not used by the context switch)
-#   +38  arg
+| ctx_switch.s - QEMU-port of the SSOS cooperative context switch.
+|
+| This is a direct port of ssos/os/kernel/cooperative/interrupts.s lines
+| 17-23 (irq disable/enable) and 280-344 (ss_task_yield / .resume_task /
+| .start_task), with every X68000-MFP / Human68K-TRAP dependency removed.
+| What remains is pure 68000: stack switching via movem.l. It runs unchanged
+| on qemu-system-m68k -M virt.
+
+#include "scheduler_abi.h"
+|
+| SSTask offsets used here come from scheduler_abi.h and are asserted against
+| the C layout by scheduler.h.
 
         .section .text
         .align  2
@@ -22,9 +19,9 @@
         .globl  ss_task_yield, ss_do_context_switch
         .globl  ss_curr_task, ss_scheduled_task
 
-# ----------------------------------------------------------------------------
-# _start: QEMU entry. Set up a master stack, call C main, then halt.
-# ----------------------------------------------------------------------------
+| ----------------------------------------------------------------------------
+| _start: QEMU entry. Set up a master stack, call C main, then halt.
+| ----------------------------------------------------------------------------
 _start:
         move.l  #0x10000, %sp
         move.w  #0x2000, %sr        | interrupts on (harmless on QEMU virt)
@@ -32,9 +29,9 @@ _start:
         | main returned — park forever
 1:      bra     1b
 
-# ----------------------------------------------------------------------------
-# Interrupt enable/disable (real SR manipulation; QEMU handles SR correctly).
-# ----------------------------------------------------------------------------
+| ----------------------------------------------------------------------------
+| Interrupt enable/disable (real SR manipulation; QEMU handles SR correctly).
+| ----------------------------------------------------------------------------
 ss_irq_save:
         move.w  %sr, %d0
         ori.w   #0x0700, %sr
@@ -45,12 +42,12 @@ ss_irq_restore:
         move.w  %d0, %sr
         rts
 
-# ----------------------------------------------------------------------------
-# ss_task_yield - voluntary context switch (callable from C).
-# Build a manual resume frame (return PC + SR), save all registers, mark the
-# current task as yielded, save its SP, let the C scheduler pick the next task,
-# then resume whatever it chose.
-# ----------------------------------------------------------------------------
+| ----------------------------------------------------------------------------
+| ss_task_yield - voluntary context switch (callable from C).
+| Build a manual resume frame (return PC + SR), save all registers, mark the
+| current task as yielded, save its SP, let the C scheduler pick the next task,
+| then resume whatever it chose.
+| ----------------------------------------------------------------------------
         .globl  ss_task_yield
 ss_task_yield:
         pea     .yield_resume        | return PC for when we come back
@@ -58,8 +55,8 @@ ss_task_yield:
         movem.l d0-d7/a0-a6, -(sp)   | save ALL regs (resume in another context)
 
         move.l  ss_curr_task, a1
-        move.b  #1, 31(a1)           | resume_type = 1 (yielded)
-        move.l  sp, (a1)             | curr_task->context = SP
+        move.b  #1, SS_TCB_RESUME_TYPE_OFFSET(a1) | resume_type = 1 (yielded)
+        move.l  sp, SS_TCB_CONTEXT_OFFSET(a1) | curr_task->context = SP
 
         bsr     ss_do_context_switch | C scheduler picks ss_scheduled_task
         bra     .resume_task
@@ -67,28 +64,28 @@ ss_task_yield:
 .yield_resume:
         rts
 
-# ----------------------------------------------------------------------------
-# .resume_task - switch to ss_scheduled_task's saved stack and resume it.
-# Three cases:
-#   * new task      (context == stack_base && entry != NULL) -> jump to entry
-#   * yielded       (resume_type == 1)      -> pop regs/SR/PC, jmp (no rte)
-#   * interrupted   (resume_type == 0)      -> pop regs, rte  [unused here]
-# ----------------------------------------------------------------------------
+| ----------------------------------------------------------------------------
+| .resume_task - switch to ss_scheduled_task's saved stack and resume it.
+| Three cases:
+|   * new task      (context == stack_base && entry != NULL) -> jump to entry
+|   * yielded       (resume_type == 1)      -> pop regs/SR/PC, jmp (no rte)
+|   * interrupted   (resume_type == 0)      -> pop regs, rte  [unused here]
+| ----------------------------------------------------------------------------
 .resume_task:
         move.l  ss_scheduled_task, a1
-        move.l  (a1), sp             | adopt the target task's stack
+        move.l  SS_TCB_CONTEXT_OFFSET(a1), sp | adopt the target task's stack
 
         | new-task test: context == stack_base and entry is valid?
-        move.l  (a1), a0
-        move.l  12(a1), d0
+        move.l  SS_TCB_CONTEXT_OFFSET(a1), a0
+        move.l  SS_TCB_STACK_BASE_OFFSET(a1), d0
         cmp.l   a0, d0
         bne.s   .resume_existing
-        tst.l   20(a1)
+        tst.l   SS_TCB_ENTRY_OFFSET(a1)
         bne.w   .start_task
 .resume_existing:
 
-        | resume_type at offset 31
-        cmpi.b  #0, 31(a1)
+| resume_type offset comes from scheduler_abi.h.
+        cmpi.b  #0, SS_TCB_RESUME_TYPE_OFFSET(a1)
         beq.s   .resume_interrupted
 
         | yielded: manual SR/PC restore
@@ -104,8 +101,8 @@ ss_task_yield:
 
 .start_task:
         | first run of a task: call entry(arg), then terminate on return
-        move.l  20(a1), a0           | a0 = task entry function
-        move.l  38(a1), -(sp)
+        move.l  SS_TCB_ENTRY_OFFSET(a1), a0 | a0 = task entry function
+        move.l  SS_TCB_ARG_OFFSET(a1), -(sp)
         move.w  #0x2000, %sr
         jsr     (%a0)
         addq.l  #4, sp

@@ -5,7 +5,7 @@
 # the `.resume_interrupted`/`rte` path.
 
 CC      = m68k-elf-gcc
-ASFLAGS = -m68000 -Wa,--register-prefix-optional
+ASFLAGS = -m68000 -Wa,--register-prefix-optional -I../../../ssos/os/kernel
 CFLAGS  = -m68000 -O2 -g -ffreestanding -nostdlib -fno-builtin \
           -Wall -Wextra -Wno-unused-parameter \
           -I../common -I../common/include -I../../../ssos/os/kernel -I../../../ssos/os/ipc
@@ -37,10 +37,10 @@ t06_ipc_blocking.o: ../common/t_ipc_blocking.c
 	$(CC) $(CFLAGS) -c $< -o $@
 t07_task_return.o: ../common/t_task_return.c
 	$(CC) $(CFLAGS) -c $< -o $@
-preempt_ctx_switch.o: preempt_ctx_switch.s
-	$(CC) $(ASFLAGS) -c $< -o $@
-preempt_ctx_switch_10.o: preempt_ctx_switch.s
-	$(CC) $(ASFLAGS) -Wa,--defsym,SS_TIMERD_SWITCH_TICKS=10 -c $< -o $@
+preempt_ctx_switch.o: preempt_ctx_switch.s $(SSOS)/kernel/scheduler_abi.h
+	$(CC) $(ASFLAGS) -x assembler-with-cpp -c $< -o $@
+preempt_ctx_switch_10.o: preempt_ctx_switch.s $(SSOS)/kernel/scheduler_abi.h
+	$(CC) $(ASFLAGS) -Wa,--defsym,SS_TIMERD_SWITCH_TICKS=10 -x assembler-with-cpp -c $< -o $@
 
 COMMON_OBJS = stub.o sched.o wakeups.o main_task.o ipc.o preempt_ctx_switch.o
 

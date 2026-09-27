@@ -2,6 +2,7 @@
 #define SS_SCHEDULER_H
 
 #include "kernel.h"
+#include "scheduler_abi.h"
 
 #define SS_MAX_SLEEP_TICKS 0x7FFFFFFFUL
 
@@ -24,12 +25,20 @@ struct SSTask {
 };
 
 #if UINTPTR_MAX == UINT32_MAX
-_Static_assert(offsetof(SSTask, context) == 0, "SSTask.context ABI changed");
-_Static_assert(offsetof(SSTask, stack_base) == 12, "SSTask.stack_base ABI changed");
-_Static_assert(offsetof(SSTask, entry) == 20, "SSTask.entry ABI changed");
-_Static_assert(offsetof(SSTask, resume_type) == 31, "SSTask.resume_type ABI changed");
-_Static_assert(offsetof(SSTask, sleep_next) == 32, "SSTask.sleep_next ABI changed");
-_Static_assert(offsetof(SSTask, arg) == 38, "SSTask.arg ABI changed");
+_Static_assert(offsetof(SSTask, context) == SS_TCB_CONTEXT_OFFSET_VALUE,
+               "SSTask.context ABI changed");
+_Static_assert(offsetof(SSTask, stack_base) == SS_TCB_STACK_BASE_OFFSET_VALUE,
+               "SSTask.stack_base ABI changed");
+_Static_assert(offsetof(SSTask, entry) == SS_TCB_ENTRY_OFFSET_VALUE,
+               "SSTask.entry ABI changed");
+_Static_assert(offsetof(SSTask, resume_type) == SS_TCB_RESUME_TYPE_OFFSET_VALUE,
+               "SSTask.resume_type ABI changed");
+_Static_assert(offsetof(SSTask, sleep_next) == SS_TCB_SLEEP_NEXT_OFFSET_VALUE,
+               "SSTask.sleep_next ABI changed");
+_Static_assert(offsetof(SSTask, arg) == SS_TCB_ARG_OFFSET_VALUE,
+               "SSTask.arg ABI changed");
+_Static_assert(sizeof(SSTask) == SS_TCB_SIZE_VALUE,
+               "SSTask size ABI changed");
 #endif
 
 typedef struct {

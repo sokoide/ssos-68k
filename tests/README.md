@@ -72,7 +72,8 @@ links against a QEMU port of the context switch.
   - `t02_round_robin` — two workers round-robin (`1212...`)
   - `t03_register_save` — distinct d2-d7 patterns survive each yield
   - `t05_ipc_blocking` — high-priority receiver leaves the ready queue until
-    a lower-priority sender posts a message; nested SR masks are restored
+    a lower-priority sender posts each of 32 messages; IPL 0–7 and nested SR
+    masks are restored
   - `t06_task_return` — entry receives `arg`; returning terminates the task
   - `t07_scheduler_wakeup` — a sleeping main task wakes without scene polling
 - **`pre/`** — preemptive path (ISR driven by `trap #0`; resume via
@@ -83,8 +84,8 @@ links against a QEMU port of the context switch.
   - `t02_register_save` — distinct d2-d7 patterns survive each `rte`
   - `t03_sleep_wakeup` — `ss_task_sleep(N)` blocks, ticks advance in the ISR,
     task resumes after N ticks
-  - `t06_ipc_blocking` — same receiver/sender and SR checks on the preemptive
-    context-switch port
+  - `t06_ipc_blocking` — same 32-message receiver/sender and IPL 0–7 SR checks
+    on the preemptive context-switch port
   - `t07_task_return` — entry argument and return-to-termination contract
   - `t05_timerd_cadence` — production-equivalent 10-Timer-D-tick switch
     cadence: 9 ticks retain the current task; tick 10 switches via the

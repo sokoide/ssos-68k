@@ -78,6 +78,11 @@ $(BUILD_DIR)/%.o: %.s
 	@mkdir -p $(dir $@)
 	$(AS) --strip-local-absolute $< -o $@ $(ASFLAGS)
 
+$(BUILD_DIR)/kernel/$(SCHED)/interrupts.o: kernel/$(SCHED)/interrupts.s kernel/scheduler_abi.h
+	@mkdir -p $(dir $@)
+	$(CC) -x assembler-with-cpp -c $< -o $@ $(CCFLAGS) -I../include -I./kernel -I./$(KDIR) \
+		-Wa,--traditional-format,--register-prefix-optional,-I../include,-I./kernel
+
 $(BUILD_DIR)/%.o: %.c
 	@mkdir -p $(dir $@)
 	$(CC) -c $< -o $@ $(CCFLAGS)

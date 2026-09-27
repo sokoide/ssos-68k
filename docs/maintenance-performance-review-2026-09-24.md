@@ -284,9 +284,9 @@ P1は `80a5318` でコミットした。以下はその後に着手したP2の�
 
 自動検証: Native各109件、QEMU cooperative 7件・preemptive 7件、asm 5件がPASS。両方式の `.x` / `.xdf` はクロスビルド・リンク済み。これはMFP実割り込み、Human68K abort、実画面・DMAを検証したことを意味しない。
 
-## 4形式の動作確認後の残課題（2026-09-26）
+## 4形式の動作確認後の残課題（2026-09-27更新）
 
-利用者から `ssos_cop.x`、`ssos_pre.x`、および両 `.xdf` のdisk bootがいずれもOKとの報告を受けた。4形式の通常起動確認として記録する。機種・画面モード・操作範囲・ログは未提示なので、異常終了後の復元、DMAの正常転送・停止失敗、性能改善まで確認済みとは扱わない。上の「実機未確認」は調査当時の記述であり、現在の通常起動状況は本節を正とする。
+利用者から `ssos_cop.x`、`ssos_pre.x`、および両 `.xdf` の実機通常起動確認が完了したとの報告を受けた（2026-09-27）。これは通常起動の確認であり、異常終了後の復元、DMAの正常転送・停止失敗、性能改善まで確認済みとは扱わない。上の「実機未確認」は調査当時の記述であり、現在の通常起動状況は本節を正とする。
 
 残作業は安全性を性能より先に扱う。下表の優先度は現在の実装状況によるもので、R11〜R13の調査時点の区分を変更する。
 
@@ -297,7 +297,31 @@ P1は `80a5318` でコミットした。以下はその後に着手したP2の�
 | 3・文字描画 | R12 dirty text | 共有`draw_content_dirty()`は先頭と末尾の差分を求め、その区間だけ描く。Nativeの通常UIでは重なり・遮蔽、4桁から1桁への変化、右画面端でのclipを含め全面再描画との画素一致を確認した。`text-update`ベンチはこの処理を測らない。 | 通常UIのglyph数・GVRAM write・実時間を同一入力列で測る。 |
 | 4・実測採否 | R13 DMA閾値 | 現条件は幅`>64`、幅`<=512`、高さ`>4`。profile版`.x`に`-dma-bench`を追加し、同一矩形のCPU強制/DMA強制を24条件で比較できる。 | 実機の両モード・両方式で成功率、fallback、Timer D tick、画素一致を測る。停止未確認が0である構成だけで閾値を決める。値64の変更は測定後。 |
 
-別途残る検証・保守作業: R06のTRAP #14/abort故障注入と復元後の入力・割り込み確認、R10のwatchdogがIMRA/IMRBを固定値へ書き換える経路とVSync busy wait、R13のtarget ABI上でのDMAC構造体offset/size assert、R14のTCB offsetとQEMU移植差分の共通管理。XORの`^=`によるread-modify-writeと矛盾したコメントは訂正済み。R01の32 stack境界・枯渇結合テスト、R02のIPL/ネスト検証、R04のIPC競合テストも自動検証の残りである。これらを通常起動OKだけで完了扱いしない。
+手動検証として残る項目はR06のTRAP #14/abort故障注入と復元後の入力・割り込み確認、R10のwatchdog復旧動作とVSync busy waitの時間特性、R11/R12の通常UI描画量・実時間測定、R13のDMAハードウェア挙動・閾値測定である。XORの`^=`によるread-modify-writeと矛盾したコメントは訂正済み。R01/R02/R04/R13 ABI/R14の自動検証は次節に記録する。
+
+### 自動検証で完了した残項目（2026-09-27）
+
+通常起動確認後、実機操作を要しない残項目を自動検証へ追加し、完了した。
+
+| 対象 | 完了内容 | 根拠 |
+| --- | --- | --- |
+| R01 stack pool | Nativeで32 slotの開始・終了境界、隙間・重複のない連続配置、各stack両端のcanary、32個作成後の枯渇を検証 | `tests/unit/test_scheduler.c` の `task_create_exhaustion` |
+| R02 SR復元 | QEMUでIPL 0〜7それぞれについてsave/restoreと二重ネスト後のmaskを検証 | `tests/qemu/common/t_ipc_blocking.c`、両方式でPASS |
+| R04 IPC待機・起床 | 高優先度receiverと低優先度sender間で32回の空queue待機・送信・起床・FIFO受信を検証 | 同QEMUテスト、両方式でPASS |
+| R13 target ABI | 32-bit target限定でDMAC channel registerのoffset/sizeと、6-byte転送descriptorのoffset/sizeを静的assert | `ssos/os/gfx/gfx.h`、cooperative/preemptive target build成功 |
+| R14 TCB offset | Cの`SSTask` assert、production ISR、両QEMU context-switch portで同じ`scheduler_abi.h`のoffset定義を共有 | target buildとQEMU両方式が成功 |
+
+Native通常・ASan/UBSan各方式113件PASS、QEMU cooperative 7件・preemptive 7件PASS、cooperative/preemptiveのtarget `.x` build成功。両target ELFの`.ssos` NOBITS領域は`0xAB0000` byteで、stack poolと残りのSSOSRAMがlinker領域を占めることを確認した。`git diff --check`も成功した。R01のNative検証はscheduler allocatorのslot計算を対象にし、実機リンカ上のstack領域へタスクが実際に書き込む動作までは実行していない。
+
+### 手動確認が必要な残項目
+
+通常起動は実機で確認済みだが、次の故障経路・時間特性は未確認である。
+
+- R02: 実MFP Timer Dとtask側wakeupsの非同期競合、およびTimer D/V-DISP最大遅延。
+- R06: Human68K `.x` のTRAP #14/abort故障注入、復帰後のMFP・割り込み・入力状態。
+- R10: V-DISP/Timer D停止時のwatchdog復旧動作、MFP mask・vectorの実機状態、およびbusy-wait停止条件の時間特性。
+- R11/R12: 通常UIの実描画量と実時間の測定。
+- R13: DMA正常転送・異常・停止未確認のハードウェア挙動と、各画面モード/方式での閾値測定。
 
 DMAの詳細レジスタ値は資料間に不一致がある。ここでは既存設定を変更せず、`x68k-master/resources/02_DMA.md` と本書H4で指摘した差異を要原典確認として維持する。性能測定とログ条件は[gfx-performance.md](gfx-performance.md)を参照する。
 

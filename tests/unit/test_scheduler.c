@@ -139,8 +139,20 @@ TEST(task_create_returns_ascending_ids) {
 
 TEST(task_create_exhaustion) {
     ss_sched_init();
+    uintptr_t arena_start = (uintptr_t)ss_task_stack_base;
+    uintptr_t arena_end = arena_start + SS_MAX_TASKS * SS_TASK_STACK;
     for (int i = 0; i < SS_MAX_TASKS; i++) {
-        ASSERT_EQ(make_task(1), (uint16_t)(i + 1));
+        uint16_t id = make_task(1);
+        ASSERT_EQ(id, (uint16_t)(i + 1));
+
+        SSTask* tcb = &tcb_table[id - 1];
+        uintptr_t stack_end = (uintptr_t)tcb->stack_base + 4;
+        uintptr_t stack_start = stack_end - tcb->stack_size;
+        ASSERT_EQ(stack_start, arena_start + i * SS_TASK_STACK);
+        ASSERT_EQ(stack_end, arena_start + (i + 1) * SS_TASK_STACK);
+        ASSERT_TRUE(stack_start >= arena_start && stack_end <= arena_end);
+        ASSERT_EQ(*(uint32_t*)stack_start, 0xDEADCAFEu);
+        ASSERT_EQ(*(uint32_t*)(stack_end - 4), 0xDEADCAFEu);
     }
     /* Table full -> SS_ERR_LIMIT. */
     ASSERT_EQ(make_task(1), (uint16_t)SS_ERR_LIMIT);
