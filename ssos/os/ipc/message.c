@@ -23,8 +23,16 @@ int16_t ss_send(uint16_t target, SSMessage* msg) {
     if (msg == NULL) return SS_ERR_PARAM;
 
     SSMsgQueue* q = &msg_queues[target - 1];
+    SSTask* receiver = &tcb_table[target - 1];
 
     uint16_t saved_sr = ss_irq_save();
+    /* Pre-seeding a not-yet-started slot is legal, but a returned task can
+     * never drain its queue — reject instead of silently filling it to the
+     * limit. */
+    if (receiver->state == SS_TS_TERMINATED) {
+        ss_irq_restore(saved_sr);
+        return SS_ERR_STATE;
+    }
     if (q->count >= SS_MSG_MAX) {
         ss_irq_restore(saved_sr);
         return SS_ERR_LIMIT;
@@ -36,7 +44,6 @@ int16_t ss_send(uint16_t target, SSMessage* msg) {
 
     q->tail = (q->tail + 1) % SS_MSG_MAX;
     q->count++;
-    SSTask* receiver = &tcb_table[target - 1];
     if (receiver->state == SS_TS_WAIT && receiver->ipc_waiting) {
         receiver->ipc_waiting = 0;
         receiver->state = SS_TS_READY;

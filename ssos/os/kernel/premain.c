@@ -126,7 +126,18 @@ void premain(void) {
     *(volatile uint8_t*)0xE88003 = 0x06; /* AER */
     /* IMRA/IMRB are left at the $FF/$7F set by ss_set_interrupts(). */
 
-    ss_init();
+    /* The linker script sizes the fixed slot pool independently of the C
+     * constants ss_task_create slices it with; a mismatch would hand tasks
+     * overlapping or out-of-arena stacks. Halt rather than boot on it. */
+    if ((uintptr_t)&__ssosstack_size !=
+        (uintptr_t)SS_MAX_TASKS * SS_TASK_STACK) {
+        (void)ss_irq_save();
+        for (;;);
+    }
+    if (ss_init() != SS_OK) {
+        (void)ss_irq_save();
+        for (;;);
+    }
     /* MFP interrupts are active after the final setup above. */
     uint16_t saved_sr = ss_irq_save();
     static SSTask main_tcb;

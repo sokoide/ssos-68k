@@ -336,3 +336,37 @@ DMAの詳細レジスタ値は資料間に不一致がある。ここでは既�
 その後、共有sceneをNative RAM framebuffer上で決定的に駆動し、3回のdrag drop（非重複・部分重複・Mouseの全面遮蔽）、通常文字更新、および252回の再前面化でz値を再番号付けした後の表示を全面再描画と画素比較するテストを追加した。両方式でPASS。ドラッグ中は本文更新を意図的に保留するため、全面再描画との比較点から除外する。profile版`.x`には`-dma-bench`を追加し、幅32/64/65/128×高さ4/5/16×CPU/DMAの24条件でTimer D tick・VSync・DMA結果・画素一致を記録する。実機測定値は未取得で、閾値は不変。使用法と採否条件は[gfx-performance.md](gfx-performance.md)に記す。
 
 続くNativeテストでは、z再番号付け後にMouse窓をテスト側から右画面端へ一部はみ出す位置へ配置し、X表示を1000から9へ縮めた。UIのdrag自体は窓を画面内へclampするため、この配置はclip経路の故障注入である。各通常フレームの画素を全面再描画と比較し、両方式で一致した。これは実画面の性能測定ではない。
+
+## 監査で指摘された残項目の実装（2026-09-27）
+
+4形式の実機通常起動確認後、本書の実装状況を現行コードと照合する監査を行い、プランにありながら残作業リストから漏れていた項目と実装・文書の不整合を指摘した。この節はその対応記録であり、上の各節の記述を本節が優先する。
+
+実装したもの:
+
+- **R01 初期化検査**: `ss_mem_healthy()` を追加し、`ss_init()` はallocator初期化失敗で `SS_ERR_MEMORY` を返す。`premain()` は `(uintptr_t)&__ssosstack_size == SS_MAX_TASKS * SS_TASK_STACK` の実行時検査と `ss_init()` の失敗を割り込み禁止の停止ループで扱う。linkerの `32 * 16384` と kernel.h 定数の不一致が起きても破損したstackで起動しない。
+- **R02 canary短縮**: `ss_task_create()` のcanary書き込みを割り込み禁止区間の外へ移動した。slotはこの時点で `DORMANT` 予約済みかつスケジューラから不可視のため、16 KiB書き込みをマスク内に置く必要がない。
+- **IPC 宛先状態検査**: `ss_send()` は `SS_TS_TERMINATED` の宛先を `SS_ERR_STATE` で拒否する。未開始slotへの事前送信（既存テストが契約とする使い方）は維持する。
+- **standalone bench の差分ロジック一致**: ベンチ側 `draw_content_dirty` に共有 `scene.c` と同じ先頭・末尾差分を移植した。`text-update` ベンチが新旧どちらの文字更新経路を測るかが一致した。
+- **デッドコード削除**: `standalone/main.c` cleanup後の `ss_trapbuf_flag` 分岐は `trap14.s` が例外を終端処理するため到達不能であり、削除した。
+- **cooperative yield の不変条件**: maskせずに `resume_type`/`context` を書く前提（coop Timer D ISRはコンテキスト切替しない）をassemblyコメントに明記した。
+- **R14 README整合**: IMRを両方式 `$FF/$7F` として統一（`$21/$10` は `.x` watchdog復旧時のみと明記）、boot手順・MFP表・IMR節・制限表の4箇所を修正。yield/Timer D ISR サンプルを現行実装（実SR保存、`a1` ロード、SR mask）へ更新。ベンチ数値に `4e31dd4`（2026-07-18、primitiveベンチ、profile 1 `.x`、機種記録なし・再計測要）の出典を付記。
+- **R05 asm期待出力**: `run_test.sh` に `EXPECT` 環境変数による追加断片照合を導入し、asm 5サンプルに固有の期待出力を定義した。断片不在で非0終了を確認。
+- **R07 テスト依存**: `tests/qemu/{coop,pre}` のMakefileへ `-MMD -MP` と `.d` 読込みを追加した（`scheduler.h` 変更で `sched.o` が再構築される）。asmは純assemblyでC header依存が存在しないため対象外。
+- **standalone Makefileの組込みバグ修正**: `standalone/Makefile` の `%.o: %.s` 汎用ルールはcppを通さず、`interrupts.s` の `#include "scheduler_abi.h"` がas側でコメントとして無視され、`SS_TCB_*` が未解決のままリンクが失敗する。`os/Makefile` と同じ `interrupts.o` 専用の `-x assembler-with-cpp` ルールを追加した。この不具合は `scheduler_abi.h` 共通化のコミット以降、新規に `.s` が変更されない限り古い `.o` で隠れていた。今回のコメント追加による再ビルドで顕在化した。
+
+追加した自動検証:
+
+- **Native** `test_gfx.c`: `dma_stop_unconfirmed` 成立後、`ss_gfx_clear`/`rect`/`fill_stipple`/`char`/`char_fast`/`xor_rect`/`draw_text_region`/`char_clip` の全GVRAM書き込み経路が停止することを画素不変で検証。
+- **Native** `test_ipc.c`: TERMINATED 宛 `ss_send` の拒否と、未開始slot事前送信・生存宛先への影響なしを検証。
+- **QEMU** `t_sleep_sr`（両方式）: IPL 0/3/5/7 の各設定で `ss_task_sleep` 復帰後に呼び出し前のIPLへ戻ることを検証（`scheduler.c` のSR契約）。
+- **QEMU** `t_ipc_samepri`（両方式）: 同優先度receiver/sender間のblocking往復32回（R04の残組合せ）。
+- **QEMU** `t_alloc_stress`（両方式）: 2 taskがIRQ mask下の割当て・解放を交互に繰り返し、内容pattern検証・canary・総空き容量の不変を確認（R09の検証項目）。
+
+意図的に後回しとするもの（未実施の記録）:
+
+- **R12 glyph triage**: `ss_gfx_draw_text_region` のglyph単位振り分け（clip外skip・完全包含fast・端のみclip）は、通常UIの実測で効果を確認してから採否を決める。本書R12節の「残り」に測定のみ記載していたのは不備であった。
+- **R07 共通make include**: `os/Makefile`・`standalone/Makefile`・`tests/Makefile.native` の3ソースリストは現時点で一致している。次回のソース追加時に共通化を検討する。
+- **R05 per-case log永続化**: `run_test.sh` の出力は一時ファイルで廃棄される。失敗時のCIログ保持は必要になった時に追加する。
+- **R08 task API戻り値表現**: `uint16_t` + 負エラー定数の現状は `scheduler.h` に文書化済み。`int16_t` 化はABI更新の際にまとめて行う。
+
+検証結果（本節の実装後）: Native通常・SANITIZE=1 とも両方式 115件PASS、QEMU cooperative/preemptive 各10件PASS、asm 5件PASS（期待断片照合込み）。`make test-qemu QEMU=false`・`make test-asm QEMU=false` は非0終了。

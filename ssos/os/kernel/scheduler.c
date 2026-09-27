@@ -162,9 +162,14 @@ uint16_t ss_task_create(SSTaskInfo* info) {
 
     tcb->context = tcb->stack_base;
 
+    ss_irq_restore(saved_sr);
+
+    /* Fill the 16 KiB canary pattern with interrupts re-enabled: the slot is
+     * already reserved as DORMANT and invisible to the scheduler and ISRs,
+     * so keeping this multi-millisecond write inside the masked window would
+     * only stretch Timer D / V-DISP latency. */
     ss_stack_canary_init(i + 1);
 
-    ss_irq_restore(saved_sr);
     return i + 1; /* 1-based ID */
 }
 

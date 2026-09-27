@@ -1,5 +1,8 @@
 #!/bin/sh
 # QEMU tests park after printing their verdict, so timeout (124) is expected.
+# Optional environment: EXPECT — a substring the output must additionally
+# contain, for suites whose per-case expected output is stronger than the
+# generic final-OK check (tests/asm uses this).
 set -u
 seconds=$1
 shift
@@ -18,5 +21,9 @@ if [ "$status" -ne 0 ] && [ "$status" -ne 124 ]; then
 fi
 if grep -q 'FAIL' "$output" || ! grep -Eq '(^|[[:space:]])OK([[:space:]]|$)' "$output"; then
     echo "QEMU test did not report a clean OK" >&2
+    exit 1
+fi
+if [ -n "${EXPECT:-}" ] && ! grep -q "$EXPECT" "$output"; then
+    echo "Expected output fragment not found: $EXPECT" >&2
     exit 1
 fi

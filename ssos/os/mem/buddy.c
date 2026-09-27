@@ -210,6 +210,10 @@ void ss_free_aligned(void* ptr) {
 
 uint32_t ss_mem_total(void) { return buddy.total_size; }
 
+/* ss_mem_init fails silently on a bad base/size; callers that must not
+ * continue boot on a broken allocator check this instead. */
+int ss_mem_healthy(void) { return buddy.base != NULL; }
+
 uint32_t ss_mem_free_bytes(void) {
     uint32_t total = 0;
     for (int i = 0; i < SS_BUDDY_ORDERS; i++) {

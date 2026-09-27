@@ -89,10 +89,6 @@ extern void ss_nop_handler(void);
 
 extern void ss_init_trap14(void);
 extern void ss_restore_trap14(void);
-extern uint16_t ss_trapbuf_flag;
-extern uint16_t ss_trapbuf_sr;
-extern uint32_t ss_trapbuf_pc;
-extern char* ss_trapbuf_msg;
 
 static SSTask main_tcb;
 
@@ -230,15 +226,21 @@ static int draw_content_dirty(SSWindow* w) {
 
         if (memcmp(current, w->content_prev[i], sizeof(current)) != 0) {
             changed = 1;
-            /* Redraw only the changed suffix. Content is space-padded by
-             * ss_win_set_content_line, so the first differing column marks
-             * the visible change and the padded tail erases any shrink. */
+            /* Draw only the smallest changed span, matching the shared
+             * scene.c policy.  Padded spaces in the new line still erase
+             * characters removed from the old line. */
             int j = 0;
             while (j < LINE_LEN && current[j] == w->content_prev[i][j]) j++;
+            int end = LINE_LEN;
+            while (end > j && current[end - 1] == w->content_prev[i][end - 1])
+                end--;
+            char span[LINE_LEN + 1];
+            memcpy(span, current + j, (size_t)(end - j));
+            span[end - j] = '\0';
 
             int x = w->x + 4 + j * SS_FONT_ADV;
             int y = w->y + CONTENT_Y + i * LINE_H;
-            int text_w = (LINE_LEN - j - 1) * SS_FONT_ADV + SS_FONT_W;
+            int text_w = (end - j - 1) * SS_FONT_ADV + SS_FONT_W;
             int needs_clip = 0;
             for (int k = target_pos + 1; k < nclip; k++) {
                 int* upper = &clip_wins[k * 4];
@@ -250,11 +252,10 @@ static int draw_content_dirty(SSWindow* w) {
             }
 
             if (target_pos >= 0 && needs_clip) {
-                ss_gfx_draw_text_clip(w->x + 4 + j * SS_FONT_ADV,
-                                      y, current + j, C_BLACK, C_WHITE,
+                ss_gfx_draw_text_clip(x, y, span, C_BLACK, C_WHITE,
                                       clip_wins, nclip, target_pos);
             } else {
-                ss_gfx_draw_text_fast(x, y, current + j, C_BLACK, C_WHITE);
+                ss_gfx_draw_text_fast(x, y, span, C_BLACK, C_WHITE);
             }
 
             /* Do not acknowledge a value that changed while it was drawn.
@@ -954,22 +955,10 @@ int main(int argc, char** argv) {
     ss_scene_run(&scene_hooks, &runtime_stats);
 
 cleanup:
+    /* Real exceptions terminate inside trap14.s (ss_trap14_abort prints the
+     * diagnostics and exits via _ABORTRST); execution never returns here with
+     * ss_trapbuf_flag set, so cleanup only handles the normal path. */
     ss_abort_cleanup();
-    if (ss_trapbuf_flag != 0) {
-        char buf[128];
-        _iocs_b_print("\r\n=== EXCEPTION CAUGHT (TRAP #14) ===\r\n");
-        sprintf(buf, "Type: %s (code=%d)\r\n", ss_trapbuf_msg, ss_trapbuf_flag);
-        _iocs_b_print(buf);
-        sprintf(buf, "PC: 0x%08X\r\n", ss_trapbuf_pc);
-        _iocs_b_print(buf);
-        sprintf(buf, "SR: 0x%04X\r\n", ss_trapbuf_sr);
-        _iocs_b_print(buf);
-        _iocs_b_print("====================================\r\n");
-        /* Return to user mode. _iocs_b_super sets a1 = MD internally, so the
-         * a1 scratch left by the _iocs_b_print calls above is harmless. */
-        _iocs_b_super(old_usp);
-        _exit(1);
-    }
 
 #if SS_PROFILE_GFX
     /* CRTMOD restoration clears the graphics page.  Emit retained benchmark

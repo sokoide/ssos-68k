@@ -69,6 +69,20 @@ TEST(send_invalid_id) {
     ASSERT_EQ(ss_send(SS_MAX_TASKS + 1, &in), (int16_t)SS_ERR_ID);
 }
 
+TEST(send_rejects_dead_target_state) {
+    /* Pre-seeding a slot whose task has not started stays legal; a task that
+     * returned can never drain its queue, so ss_send must reject it. */
+    ss_sched_init();
+    ss_ipc_init();
+    SSMessage in = make_msg(1, 0, "x");
+    ASSERT_EQ(ss_send(2, &in), (int16_t)SS_OK);          /* unstarted slot */
+    tcb_table[1].state = SS_TS_TERMINATED;
+    ASSERT_EQ(ss_send(2, &in), (int16_t)SS_ERR_STATE);   /* returned task */
+    /* A live receiver is unaffected. */
+    tcb_table[0].state = SS_TS_READY;
+    ASSERT_EQ(ss_send(1, &in), (int16_t)SS_OK);
+}
+
 TEST(send_null_msg) {
     ss_ipc_init();
     ASSERT_EQ(ss_send(1, NULL), (int16_t)SS_ERR_PARAM);
@@ -196,6 +210,7 @@ void run_ipc_tests(void) {
     RUN_TEST(ipc_init_empty);
     RUN_TEST(send_then_recv_nb);
     RUN_TEST(send_invalid_id);
+    RUN_TEST(send_rejects_dead_target_state);
     RUN_TEST(send_null_msg);
     RUN_TEST(recv_nb_null);
     RUN_TEST(recv_nb_no_current_task);

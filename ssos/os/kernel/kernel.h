@@ -54,7 +54,7 @@ extern volatile uint32_t ss_timerd_fire_count;
 
 /* Entry points */
 void premain(void);
-void ss_init(void);
+int16_t ss_init(void);
 void ss_run(void);
 
 /* Interrupt setup (defined in interrupts.s) */
@@ -68,7 +68,7 @@ extern uint8_t __text_start, __text_end, __text_size;
 extern uint8_t __data_start, __data_end, __data_size;
 extern uint8_t __bss_start, __bss_end, __bss_size;
 extern uint8_t __ssosram_start, __ssosram_size;
-extern uint8_t __ssosstack_start, __ssosstack_end;
+extern uint8_t __ssosstack_start, __ssosstack_end, __ssosstack_size;
 
 /* MFP register addresses */
 #define SS_MFP_IERA  (*(volatile uint8_t*)0xE88007)

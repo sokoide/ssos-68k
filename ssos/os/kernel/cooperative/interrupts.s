@@ -215,7 +215,13 @@ ss_context_switch:
 		| ss_task_yield - Voluntary context switch (callable from C)
 		| ============================================================
 ss_task_yield:
-		| Build manual resume frame: SR + return PC
+		| Build manual resume frame: SR + return PC.
+		| Unlike the preemptive yield, no IPL7 mask is needed before writing
+		| resume_type/context: the cooperative Timer D ISR never switches
+		| context (it only sets the ss_wakeups_needed flag byte), and queue
+		| manipulation below runs inside ss_do_context_switch's own mask.
+		| Revisit this invariant before adding any queue access to the
+		| cooperative ISR.
 		pea		.yield_resume
 		move.w	%sr, -(sp)
 		| Save all registers (must save ALL — cooperative switch resumes

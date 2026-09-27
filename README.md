@@ -132,6 +132,8 @@ z-order、論理パレット、main task登録は共有である。
 
 現在の256色DMA成功時の基準値は次の通りである。`drag-region` は重なったWindowの固定ドラッグ経路である。
 
+**測定出典**: `4e31dd4` 時点（2026-07-18）の primitive ベンチ（profile 1 版 `.x`、`bench_rounds` 固定シーン）。X68000エミュレータ上で採取。機種・クロック・エミュレータ種別の個別記録はなく、現行コードでの再計測を推奨する（保守レビュー R14 の注記要件）。
+
 | phase | vsync | DMA状態 |
 | :--- | ---: | :--- |
 | full | 1019 | `ok=13500 error=0 timeout=0` |
@@ -257,9 +259,8 @@ SSOSRAM 領域は **Buddy + Slab ハイブリッド**アロケータで管理す
   │ 9. ss_set_interrupts()        ← IOCS が書き換えた MFP を再初期化
   │ 10. IOCS _MS_INIT / _MS_CURON   ← クリーンの MFP=$FF/$7F 状態で再登録
   │ 11. AER = $06                  ← GPIP4 を 1→0 エッジ検出に設定
-  │ 12. IMRA / IMRB 設定:
-  │     • cooperative:  $FF / $7F   (Human68K 互換)
-  │     • preemptive:   $21 / $10   (Timer A + Key RXF + Timer D のみ)
+  │ 12. IMRA / IMRB = $FF / $7F (両方式共通、Human68K 互換)
+  │     ※ $21/$10 を書く現行箇所は .x watchdog 復旧経路のみ (R10 残課題)
   │ 13. ss_gfx_set_mode(CRTMOD_16)  ← SSGfxMode 初期化
   │ 14. ss_init()                    ← モジュール初期化
   │ ▼
@@ -426,7 +427,7 @@ graph TD
 ```text
 ss_task_yield:
   pea   .yield_resume      ; 復帰先 PC を積む
-  move.w #0x2000, -(sp)    ; 復帰時 SR (IPL=0) を積む
+  move.w %sr, -(sp)        ; 復帰時 SR（呼び出し時の SR をそのまま保存）
   movem.l d0-d7/a0-a6, -(sp) ; 全レジスタ保存
   ; resume_type = 1 (yielded) を TCB に記録
   move.l ss_curr_task, a1
@@ -444,7 +445,8 @@ C のスケジューラは `ready_queue` から最高優先度タスクを選び
 
 ```asm
 ss_timerd_handler:
-  movem.l d0/a0, -(sp)        ; 最小保存
+  move.w #0x2700, %sr          ; 割り込みのネストを防止
+  movem.l d0/a0, -(sp)         ; 最小保存
   addq.l  #1, ss_tick_counter
   lea     ss_switch_tick, a0
   addq.b  #1, (a0)
@@ -453,6 +455,7 @@ ss_timerd_handler:
 
   movem.l (sp)+, d0/a0         ; 最小保存を戻す
   movem.l d0-d7/a0-a6, -(sp)   ; 全保存
+  move.l ss_curr_task, a1      ; TCB を取得してから
   move.b  #0, 31(a1)           ; resume_type = 0 (timer-interrupted)
   bra.w   ss_context_switch
 ```
@@ -522,8 +525,8 @@ s30 以前は `.x` は独自の `Win` 構造体 / `zmap[3]` / `bring_to_front` /
 | :---         | :---      | :---                                     | :---                                     |
 | IERA         | `$E88007` | `$FF`                                    | 全ソース有効（IOCS 互換性）              |
 | IERB         | `$E88009` | `$7F`                                    | 全ソース有効（IOCS 互換性）              |
-| IMRA         | `$E88013` | `$FF` (cooperative) / `$21` (preemptive) | マスク設定（下記参照）                   |
-| IMRB         | `$E88015` | `$7F` (cooperative) / `$10` (preemptive) | マスク設定（下記参照）                   |
+| IMRA         | `$E88013` | `$FF` (両方式共通)                       | マスク設定（下記参照）                   |
+| IMRB         | `$E88015` | `$7F` (両方式共通)                       | マスク設定（下記参照）                   |
 | VR           | `$E88017` | `$41`                                    | Auto-EOI、ベクタベース 0x40              |
 | TACR         | `$E88019` | `$08`                                    | イベントカウントモード（Human68k 互換）  |
 | TCDCR        | `$E8801D` | `$77`                                    | Timer C/D プリスケーラ /200              |
@@ -532,20 +535,19 @@ s30 以前は `.x` は独自の `Win` 構造体 / `zmap[3]` / `bring_to_front` /
 | Vector 0x110 | —         | `ss_timerd_handler`                      | Timer D ISR                              |
 | Vector 0x134 | —         | `ss_vdisp_handler`                       | V-DISP / Timer A ISR                     |
 
-### IMR の協調 / プリエンプティブ差
+### IMR 設定
 
 | 設定 | cooperative             | preemptive                     | 理由                                                                                                                                                                  |
 | :--- | :---                    | :---                           | :---                                                                                                                                                                  |
-| IMRA | `$FF` (全許可)          | `$21` (Timer A + Key RXF のみ) | s23 の教訓。cooperative は Human68K 全 ISR を動作させて IOCS キーボード/マウスを有効化。preemptive は未使用ソース発火で未定義ベクタへ飛ぶのを防ぐため最小セットに絞る |
-| IMRB | `$7F` (bit7 除く全許可) | `$10` (Timer D のみ)           | 同上                                                                                                                                                                  |
+| IMRA | `$FF` (全許可)          | `$FF` (全許可)                 | s23 の教訓。Human68K 全 ISR を動作させて IOCS キーボード/マウスを有効化する。両方式とも `ss_set_interrupts()` が同じ `$FF/$7F` を書く                                                                            |
+| IMRB | `$7F` (bit7 除く全許可) | `$7F` (bit7 除く全許可)        | 同上                                                                                                                                                                  |
 
-この不一致は s23〜s26 の歴史的経緯による。**協調版は s23 修正済み（`$FF/$7F`）、プリエンプティブ版は s23 以前の値（`$21/$10`）のまま**で残されている。プリエンプティブ版でキーボード/マウスが応答しない症状が出た場合は `$FF/$7F` への変更が必要。
+s23〜s26 の期間は preemptive 版のみ旧値 `$21/$10` (Timer A + Key RXF + Timer D の最小セット) が残っていたが、のちに両方式とも `$FF/$7F` へ統一された。現在 `$21/$10` を書く箇所は `.x` の watchdog 復旧経路 (`standalone/main.c` の `wait_vsync`) のみで、これは復旧後にキーボード/マウス入力が止まる既知の残課題である (保守レビュー R10)。
 
 ### 設計根拠
 
 - **IER は `$FF/$7F` のまま**: IOCS 関数は対応する IER ビットがセットされている必要がある。IER を変更するとキーボード USART やタイマのボーレートジェネレータが動作しなくなる
-- **cooperative IMR 全マスク解除（`$FF/$7F`）**: Human68K のキーボード、マウス、CRTC の ISR は動作し続ける必要がある。当コードはベクタ 0x134（V-DISP）と 0x110（Timer D）のみ上書きし、その他のベクタはすべて Human68K のハンドラを指したまま。IMR ビットをマスクすると IOCS のキーボード/マウス入力が動作しなくなる
-- **preemptive IMR 最小セット（`$21/$10`）**: 逆に、baremetal では Human68K 標準ベクタのいくつかが空（IPL ROM ハンドラ未登録）のため、未使用ソースが発火すると未定義ベクタへ飛んでハングする。Timer A / Timer D / Key RXF のみに絞る
+- **IMR 全マスク解除（`$FF/$7F`、両方式共通）**: Human68K のキーボード、マウス、CRTC の ISR は動作し続ける必要がある。当コードはベクタ 0x134（V-DISP）と 0x110（Timer D）のみ上書きし、その他のベクタはすべて Human68K のハンドラを指したまま。IMR ビットをマスクすると IOCS のキーボード/マウス入力が動作しなくなる。かつての preemptive の最小セット (`$21/$10`) は、IPL ROM ハンドラ未登録ベクタへの誤発火を避ける意図だったが、マウス受信ワークが更新されなくなる症状の原因になったため廃止された
 - **`ss_set_interrupts()` は全 IOCS 初期化の後に呼び出すこと**（CRTMOD、MS_INIT 等）。IOCS 呼び出しが MFP を再プログラムするため。`premain()` では **2 回呼ぶ** ことで対応
 
 ### ISR 設計
@@ -811,12 +813,11 @@ s26 当時の standalone ビルドは `obj/interrupts.o main.o scheduler.o buddy
 
 | 項目                                                                             | 内容                                                                                                                                                                                             |
 | :---                                                                             | :---                                                                                                                                                                                             | :--- |
-| **プリエンプティブ版 IMR が `$21/$10` のまま**                                   | s23 の協調版修正（`$FF/$7F`）が反映されていない。キーボード/マウスが応答しない症状が出る場合は `$FF/$7F` へ変更が必要                                                                            |
-| **プリエンプティブ版に `ss_vdisp_fire_count` / `ss_timerd_fire_count` が未実装** | cooperative のみ。デバッグ用途（[デバッグ > MFP レジスタ追跡](#デバッグ)）が preemptive では使用不可                                                                                             |
+| **`.x` watchdog 復旧が IMR を `$21/$10` に変える**                              | `wait_vsync` の復旧経路が IMRA/IMRB を最小セットへ書き換えるため、復旧後にキーボード/マウス入力が止まる。初期値 `$FF/$7F` との不整合は保守レビュー R10 の残課題                                                                   |
 | **プリエンプティブ版に `mfp_debug.c` の実装が未提供**                            | `kernel.h` で extern 宣言はあるが、`stubs.o` で未実装。実機検証時に要対応                                                                                                                        |
 | **OS 版で非アクティブタイトルが「白」に見えない**（s27 残）                      | コードとパレットはスタンドアロンと同一だが視覚的に差がある。要エミュレータ/実機検証。仮説: (1) IOCS 0x94 経由のパレット設定が baremetal で反映されない、(2) CRTMOD 16 のパレットレジスタ挙動の差 |
-| **メモリ確保失敗時のフォールバックなし**                                         | `ss_alloc()` が NULL を返した時、`ss_init()` 内で落ちる。`__ssosram_size` を増やして対応                                                                                                         |
-| **Z-order の 255 到達後折り返し**                                                | 長いセッションで `next_z=255 → 4` に戻り、初回ドラッグと類似の z 衝突が起きる可能性（起動時 z=1..3 とは衝突しないが、過去にドラッグしたウィンドウの z と衝突する可能性）。要リファクタリング案: z=255 ではなく hid の最低 z を探し再採番                                              |
+| **メモリ確保失敗時のフォールバックなし**                                         | `ss_init()` は allocator 初期化失敗で `SS_ERR_MEMORY` を返し、`premain()` は割り込み禁止の停止ループに入る（続行しない）。実行を継続する復旧手段は将来課題                    |
+| **Z-order の再採番**                                                             | `drag_begin` は `next_z` が 255 に達した時点で可視ウィンドウに 1..N の再採番を行い折り返し衝突を防ぐ。Nativeテストで 252 回の前面化を全面再描画と画素比較済み。再採番直後の表示の一貫性は実機でも確認済み                    |
 
 ### IOCS マウスルーチン番号（参考）
 

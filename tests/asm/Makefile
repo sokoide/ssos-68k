@@ -8,6 +8,15 @@
 
 SOURCES = t01_hello t02_subroutines t03_ctx_save_restore t04_stack_frame t05_trap_exception
 
+# Per-sample expected output fragments, checked in addition to the generic
+# final-OK verdict in run_test.sh (EXPECT env). Pure-assembly samples have no
+# C headers, so no -MMD dependency tracking is needed here.
+expect_t01_hello            := Hello, m68k!
+expect_t02_subroutines      := subroutines:
+expect_t03_ctx_save_restore := t03: OK
+expect_t04_stack_frame      := t04: OK
+expect_t05_trap_exception   := before ISR after
+
 AS      = m68k-elf-as
 LD      = m68k-elf-ld
 OD      = m68k-elf-objdump
@@ -31,19 +40,27 @@ all:
 		echo "  OK"; \
 	done
 
-# Run: make run S=t01_ctx_save_restore
+# Run: make run S=t01_hello
 run:
 	$(AS) $(ASFLAGS) -al=$(S).lst -o $(S).o $(S).s
 	$(LD) $(LDFLAGS) -o $(S).elf $(S).o
 	rm -f $(S).o
-	sh ../qemu/common/run_test.sh $(TIMEOUT_SECS) $(QEMU) $(QFLAGS) -kernel $(S).elf
+	EXPECT='$(expect_$(S))' sh ../qemu/common/run_test.sh $(TIMEOUT_SECS) $(QEMU) $(QFLAGS) -kernel $(S).elf
 
 # Run all samples (m68k halt is an infinite loop, so timeout is required).
 runall: all
 	@set -e; for name in $(SOURCES); do \
+		expect=""; \
+		case $$name in \
+			t01_hello) expect='Hello, m68k!';; \
+			t02_subroutines) expect='subroutines:';; \
+			t03_ctx_save_restore) expect='t03: OK';; \
+			t04_stack_frame) expect='t04: OK';; \
+			t05_trap_exception) expect='before ISR after';; \
+		esac; \
 		echo ""; \
 		echo "=== $$name ==="; \
-		sh ../qemu/common/run_test.sh $(TIMEOUT_SECS) $(QEMU) $(QFLAGS) -kernel $$name.elf; \
+		EXPECT="$$expect" sh ../qemu/common/run_test.sh $(TIMEOUT_SECS) $(QEMU) $(QFLAGS) -kernel $$name.elf; \
 		echo ""; \
 	done
 

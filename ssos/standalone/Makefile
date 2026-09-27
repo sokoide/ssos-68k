@@ -94,6 +94,13 @@ $(OBJDIR)/%.o: %.c | $(OBJDIR)
 $(OBJDIR)/trap14.o: trap14.s | $(OBJDIR)
 	$(AS) --strip-local-absolute $< -o $@ -m68000 --register-prefix-optional --traditional-format -I../include
 
+# interrupts.s #includes scheduler_abi.h, so it must run through the C
+# preprocessor; plain as would treat the #include line as a comment and emit
+# unresolved SS_TCB_* symbols.
+$(OBJDIR)/interrupts.o: $(KDIR)/interrupts.s ../os/kernel/scheduler_abi.h | $(OBJDIR)
+	$(CC) -x assembler-with-cpp -c $< -o $@ -I../include -I../os/kernel -I$(KDIR) \
+		-Wa,--traditional-format,--register-prefix-optional,-I../include,-I../os/kernel
+
 $(OBJDIR)/%.o: %.s | $(OBJDIR)
 	$(AS) --strip-local-absolute $< -o $@ -m68000 --register-prefix-optional --traditional-format -I../include -I../os/kernel -I$(KDIR)
 

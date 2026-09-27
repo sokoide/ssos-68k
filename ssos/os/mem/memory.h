@@ -48,6 +48,8 @@ extern SSSlabCache ss_slab_msg;
 extern SSSlabCache ss_slab_rect;
 
 void     ss_mem_init(void* base, uint32_t size);
+/* ss_mem_init fails silently on a bad base/size; check before first use. */
+int      ss_mem_healthy(void);
 /* Allocator and slab free lists are not internally locked. Initialize before
  * scheduling; later calls belong to one task, or the caller masks IRQs around
  * the complete operation. Never use these APIs from an ISR. */

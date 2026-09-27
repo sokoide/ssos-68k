@@ -144,6 +144,34 @@ TEST(gfx_dma_abort_unconfirmed_freezes_writes_and_source) {
     ASSERT_EQ(pixel(10, 10), 0x1111);
 }
 
+TEST(gfx_dma_stop_unconfirmed_freezes_every_write_path) {
+    reset_gfx(SS_CRTMOD_16, 0x1111);
+    ss_gfx_test_dma_status_mode(2);
+    ss_gfx_rect(10, 10, 80, 5, 0x2222);
+    ASSERT_EQ(ss_gfx_dma_stop_unconfirmed(), 1);
+
+    /* Every GVRAM-writing API must refuse to touch the page while the
+     * channel's stop is unconfirmed, so a late DMA write cannot race the
+     * CPU on any primitive. */
+    ss_gfx_clear(0x3333);
+    ss_gfx_rect(10, 10, 2, 2, 0x3333);
+    ss_gfx_fill_stipple(10, 10, 8, 4, 0x4444, 0x5555);
+    ss_gfx_char(10, 10, 'A', 0x4444, 0x5555);
+    ss_gfx_char_fast(20, 10, 'B', 0x4444, 0x5555);
+    ss_gfx_xor_rect(30, 10, 4, 4);
+    SSGfxRect clip = { 0, 30, 64, 16 };
+    ss_gfx_draw_text_region(10, 30, "XY", 0x4444, 0x5555, &clip);
+    int clip_wins[4] = { 0, 30, 64, 16 };
+    ss_gfx_char_clip(50, 30, 'Z', 0x4444, 0x5555, clip_wins, 1, 1);
+
+    ASSERT_EQ(pixel(0, 0), 0x1111);
+    ASSERT_EQ(pixel(10, 10), 0x1111);
+    ASSERT_EQ(pixel(20, 10), 0x1111);
+    ASSERT_EQ(pixel(30, 10), 0x1111);
+    ASSERT_EQ(pixel(10, 30), 0x1111);
+    ASSERT_EQ(pixel(50, 30), 0x1111);
+}
+
 void run_gfx_tests(void) {
     RUN_TEST(gfx_set_mode_rejects_unimplemented_values);
     RUN_TEST(gfx_rect_clips_and_preserves_outside);
@@ -156,4 +184,5 @@ void run_gfx_tests(void) {
     RUN_TEST(gfx_dma_abort_confirmed_allows_cpu_fallback);
     RUN_TEST(gfx_dma_bench_policy_forces_each_path);
     RUN_TEST(gfx_dma_abort_unconfirmed_freezes_writes_and_source);
+    RUN_TEST(gfx_dma_stop_unconfirmed_freezes_every_write_path);
 }
