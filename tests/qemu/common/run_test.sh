@@ -23,7 +23,7 @@ if grep -q 'FAIL' "$output" || ! grep -Eq '(^|[[:space:]])OK([[:space:]]|$)' "$o
     echo "QEMU test did not report a clean OK" >&2
     exit 1
 fi
-if [ -n "${EXPECT:-}" ] && ! grep -q "$EXPECT" "$output"; then
+if [ -n "${EXPECT:-}" ] && ! grep -Fq -- "$EXPECT" "$output"; then
     echo "Expected output fragment not found: $EXPECT" >&2
     exit 1
 fi

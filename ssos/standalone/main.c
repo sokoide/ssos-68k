@@ -224,7 +224,7 @@ static int draw_content_dirty(SSWindow* w) {
         memcpy(current, w->content[i], sizeof(current));
         ss_irq_restore(saved_sr);
 
-        if (memcmp(current, w->content_prev[i], sizeof(current)) != 0) {
+        if (memcmp(current, w->content_prev[i], LINE_LEN) != 0) {
             changed = 1;
             /* Draw only the smallest changed span, matching the shared
              * scene.c policy.  Padded spaces in the new line still erase
