@@ -12,8 +12,7 @@ OBJDUMP=objdump
 #READELF=objdump -p
 READELF=otool -hfal
 
-.PHONY:
-	all run clean dump readelf compiledb
+.PHONY: all run clean dump readelf compiledb FORCE
 
 all: $(TARGET)
 
@@ -38,3 +37,9 @@ readelf: $(TARGET)
 
 compiledb: $(SRCS)
 	compiledb make
+
+FORCE:
+build/config: FORCE
+	@python3 ../build-config.py $@ $(CC) $(CCFLAGS) $(LDFLAGS)
+$(OBJS): Makefile build/config
+$(TARGET): Makefile build/config

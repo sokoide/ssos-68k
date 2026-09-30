@@ -172,7 +172,55 @@ TEST(gfx_dma_stop_unconfirmed_freezes_every_write_path) {
     ASSERT_EQ(pixel(50, 30), 0x1111);
 }
 
+TEST(gfx_cleanup_quiesce_confirms_or_latches_stop) {
+    ss_gfx_test_dma_status_mode(-1);
+    ASSERT_EQ(ss_gfx_dma_quiesce(), 0);
+    ss_gfx_test_dma_in_flight(1);
+    ASSERT_EQ(ss_gfx_dma_quiesce(), 0);
+    ss_gfx_test_dma_in_flight(2);
+    ASSERT_EQ(ss_gfx_dma_quiesce(), -3);
+    ASSERT_EQ(ss_gfx_dma_stop_unconfirmed(), 1);
+    ss_gfx_test_dma_status_mode(-1);
+}
+TEST(gfx_dma_failure_preserves_mode_and_page_ownership) {
+    ss_gfx_test_dma_status_mode(-1); ss_gfx_set_mode(SS_CRTMOD_8); ss_gfx_init();
+    const SSGfxMode* mode = ss_current_mode;
+    volatile uint16_t* page = ss_draw_page;
+    ss_gfx_test_dma_in_flight(2);
+    ASSERT_EQ(ss_gfx_dma_quiesce(), -3);
+    ss_gfx_set_mode(SS_CRTMOD_16); ss_gfx_flip(); ss_gfx_init();
+    ASSERT_TRUE(ss_current_mode == mode);
+    ASSERT_TRUE(ss_draw_page == page);
+    ss_gfx_test_dma_status_mode(-1);
+}
+TEST(gfx_dma_invalid_row_does_not_start) {
+    ss_gfx_test_dma_status_mode(-1);
+    ASSERT_EQ(ss_dma_fill_row(NULL, 1), -1);
+    ASSERT_EQ(ss_dma_fill_row(ss_draw_page, 0), -1);
+    ASSERT_EQ(ss_dma_fill_row(ss_draw_page, 513), -1);
+    ASSERT_EQ(ss_gfx_dma_stop_unconfirmed(), 0);
+}
+TEST(gfx_dma_policy_clips_before_threshold) {
+    struct {int x, w, h, expected;} cases[] = {
+        {0, 64, 5, 0}, {0, 65, 4, 0}, {0, 65, 5, 1},
+        {0, 512, 128, 1}, {0, 513, 128, 0}, {-10, 75, 5, 1},
+        {760, 65, 5, 0}, {0, 0, 5, 0}, {0, 65, 0, 0}
+    };
+    ss_gfx_set_mode(SS_CRTMOD_16); ss_gfx_init();
+    for (unsigned i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+        ss_gfx_test_dma_status_mode(1);
+        ss_gfx_set_dma_bench_mode(0); ss_gfx_profile_reset();
+        ss_gfx_rect(cases[i].x, 10, cases[i].w, cases[i].h, 0x1234);
+        ASSERT_EQ(ss_gfx_profile.dma_attempts, (uint32_t)cases[i].expected);
+        ASSERT_EQ(ss_gfx_dma_stop_unconfirmed(), 0);
+    }
+    ss_gfx_test_dma_status_mode(-1);
+}
 void run_gfx_tests(void) {
+    RUN_TEST(gfx_dma_invalid_row_does_not_start);
+    RUN_TEST(gfx_dma_failure_preserves_mode_and_page_ownership);
+    RUN_TEST(gfx_dma_policy_clips_before_threshold);
+    RUN_TEST(gfx_cleanup_quiesce_confirms_or_latches_stop);
     RUN_TEST(gfx_set_mode_rejects_unimplemented_values);
     RUN_TEST(gfx_rect_clips_and_preserves_outside);
     RUN_TEST(gfx_rect_handles_odd_alignment);

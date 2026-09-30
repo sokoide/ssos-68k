@@ -7,6 +7,7 @@
 #include "ssos_test.h"
 
 /* Per-suite entry points (defined in unit/test_*.c) */
+void run_runtime_guard_tests(void);
 void run_numfmt_tests(void);
 void run_mem_tests(void);
 void run_scheduler_tests(void);
@@ -38,6 +39,7 @@ int test_framework_exit_code(void) {
 int main(void) {
     test_framework_init();
 
+    run_runtime_guard_tests();
     run_numfmt_tests();
     run_mem_tests();
     run_scheduler_tests();

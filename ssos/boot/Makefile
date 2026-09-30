@@ -39,3 +39,9 @@ $(BUILD_DIR)/main.o: main.s
 clean:
 	rm -rf build
 	rm -f $(TARGET) $(TARGET).bin $(TARGET).elf main.o
+
+.PHONY: FORCE
+FORCE:
+$(BUILD_DIR)/.config: FORCE
+	@python3 ../../tools/build-config.py $@ $(AS) $(ASFLAGS)
+$(BUILD_DIR)/main.o: $(BUILD_DIR)/.config Makefile ../common-sources.mk $(wildcard ../include/*.mac)

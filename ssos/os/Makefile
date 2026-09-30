@@ -17,22 +17,8 @@ SS_PROFILE_GFX ?= 0
 KDIR=kernel/$(SCHED)
 
 TARGET=SSOS.X
-SRCS= \
-	kernel/premain.c \
-	kernel/main_task.c \
-	kernel/scheduler.c \
-	$(KDIR)/wakeups.c \
-	kernel/work_queue.c \
-	util/numfmt.c \
-	mem/buddy.c \
-	mem/slab.c \
-	gfx/profile.c \
-	gfx/palette.c \
-	gfx/vram.c \
-	win/window.c \
-	ipc/message.c \
-	app/main.c \
-	app/scene.c
+include ../common-sources.mk
+SRCS = $(SS_CORE_SRCS) $(SS_TARGET_SRCS) $(SS_XDF_SRCS) kernel/premain.c app/main.c
 ASRCS= \
 	kernel/entry.s \
 	kernel/mfp_state.s \
@@ -54,6 +40,7 @@ INCLUDE=-I$(XELF_BASE)/m68k-elf/include -I../include -I./kernel -I./$(KDIR) -I./
 LIB=-L$(XELF_BASE)/m68k-elf/lib -L$(shell dirname $(shell m68k-xelf-gcc -print-libgcc-file-name))
 
 CCFLAGS=$(INCLUDE) -g -O2 -MMD -MP -DSS_PROFILE_GFX=$(SS_PROFILE_GFX)
+CCFLAGS += $(EXTRA_CFLAGS)
 LDFLAGS=$(LIB) -lx68kiocs -Tkernel/linker.ld -nostdlib -lc -lm -lgcc -lnosys
 ASFLAGS=-m68000 --register-prefix-optional --traditional-format -I../include -I./kernel
 
@@ -78,7 +65,7 @@ $(BUILD_DIR)/%.o: %.s
 	@mkdir -p $(dir $@)
 	$(AS) --strip-local-absolute $< -o $@ $(ASFLAGS)
 
-$(BUILD_DIR)/kernel/$(SCHED)/interrupts.o: kernel/$(SCHED)/interrupts.s kernel/scheduler_abi.h
+$(BUILD_DIR)/kernel/$(SCHED)/interrupts.o: kernel/$(SCHED)/interrupts.s kernel/scheduler_abi.h kernel/context_frame.h
 	@mkdir -p $(dir $@)
 	$(CC) -x assembler-with-cpp -c $< -o $@ $(CCFLAGS) -I../include -I./kernel -I./$(KDIR) \
 		-Wa,--traditional-format,--register-prefix-optional,-I../include,-I./kernel
@@ -93,3 +80,10 @@ clean:
 	rm -rf build
 	rm -f $(TARGET) $(TARGET).bin $(TARGET).elf $(ASRCS:.s=.o) $(SRCS:.c=.o)
 	rm -f kernel/*.o kernel/*.lst kernel/cooperative/*.o kernel/preemptive/*.o
+
+.PHONY: FORCE
+FORCE:
+$(BUILD_DIR)/.config: FORCE
+	@python3 ../../tools/build-config.py $@ $(CC) $(CCFLAGS) $(ASFLAGS) $(LDFLAGS)
+$(OBJS): $(BUILD_DIR)/.config Makefile ../common-sources.mk $(wildcard ../include/*.mac)
+$(TARGET_ELF): $(BUILD_DIR)/.config Makefile

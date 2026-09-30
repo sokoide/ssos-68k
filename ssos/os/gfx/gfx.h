@@ -156,6 +156,8 @@ void ss_dma_fill_setup(uint16_t value, int count);
  * -3 = stop unconfirmed; -3 permanently blocks graphics writes. */
 int  ss_dma_fill_row(volatile uint16_t* dst, int count);
 int  ss_gfx_dma_stop_unconfirmed(void);
+/* Supervisor, IRQ mask held: finite stop confirmation before host cleanup. */
+int  ss_gfx_dma_quiesce(void);
 #if SS_PROFILE_GFX
 /* Profiling only: 0 = normal threshold, 1 = CPU, 2 = DMA (eligible width). */
 void ss_gfx_set_dma_bench_mode(int mode);
@@ -164,6 +166,7 @@ void ss_gfx_set_dma_bench_mode(int mode);
 #ifdef SS_HOST_TEST
 /* Fault injection: -1 = CPU only, 1 = abort confirmed, 2 = ACT stuck. */
 void ss_gfx_test_dma_status_mode(int mode);
+void ss_gfx_test_dma_in_flight(int mode);
 uint16_t ss_gfx_test_dma_source_first(void);
 #endif
 

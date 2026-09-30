@@ -60,7 +60,7 @@ runall: all
 		esac; \
 		echo ""; \
 		echo "=== $$name ==="; \
-		EXPECT="$$expect" sh ../qemu/common/run_test.sh $(TIMEOUT_SECS) $(QEMU) $(QFLAGS) -kernel $$name.elf; \
+		SS_TEST_CASE=asm-$$name EXPECT="$$expect" sh ../qemu/common/run_test.sh $(TIMEOUT_SECS) $(QEMU) $(QFLAGS) -kernel $$name.elf; \
 		echo ""; \
 	done
 

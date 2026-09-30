@@ -6,8 +6,10 @@
 set -u
 seconds=$1
 shift
-output=$(mktemp) || exit 1
-trap 'rm -f "$output"' EXIT HUP INT TERM
+log_dir=${SS_TEST_LOG_DIR:-../../build/test-logs}
+mkdir -p "$log_dir" || exit 1
+output=$(mktemp "$log_dir/${SS_TEST_CASE:-case}.XXXXXX") || exit 1
+echo "QEMU log: $output"
 
 if timeout --foreground "$seconds" "$@" >"$output" 2>&1; then
     status=0

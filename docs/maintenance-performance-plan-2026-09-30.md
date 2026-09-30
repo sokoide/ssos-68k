@@ -152,3 +152,30 @@ READMEと`ssos/README_ja.md`、tests README、所有権文書、gfx手順の契�
 まずN01とN02の終了状態・SR契約を設計し、N03を小さな独立修正として実装する。次にN04/N05を整え、N06の測定入口とN07の故障注入ケースを追加する。実装時は関連Native/sanitizer/QEMU、両形式のクロスbuildを実施し、対象が揃った段階で`make verify`を行う。`.x`/`.xdf`の故障・実時間はN07/N08で別途確認する。
 
 今回の成果物はこの計画書と旧レビューからの導線のみ。改善の実装と計測は未着手である。
+
+## 自動部分の実施結果（2026-09-30）
+
+本節が上の「未着手」を更新する。検証対象は`3b728cc`からの実装作業ツリーで、source hash・diff・成果物hash/size・tool版は`build/verification/20260930T141453015499/manifest.json`に保存した。検証後の本節追記は文書のみ。実装commitは本節を追加したcommitを`git log --follow`で確認できる。
+
+| ID | 実装・自動検証 | 状態 / 残る条件 / 次の一手 |
+| --- | --- | --- |
+| N01 | runtime_guardの部分初期化16組合せ/再入、tick/spin有限待機、snapshotを保存した一度のMFP復旧、TRAP補助のcaller SR復元、緊急stackへの再入をassembly入口で停止。production restoreをQEMUでIPL0〜7/ネスト検証 | 自動部分完了。IOCSを含むabort/再入、MFP復旧と入力は手動確認待ち。N07の注入位置で試す |
+| N02 | 所有するin-flight DMAをcleanup入口で有限停止確認。未確認ならIRQ mask下で保持し、表示/プロセスを解放しない。描画だけでなくmode/flip/initも凍結。NativeのACT故障注入とcleanup順序を確認 | 自動部分完了。実DMACの正常/異常/停止確認は手動待ち。reset手順は推測で追加していない |
+| N03 | INITIALIZING予約→canary→短いmask下でDORMANT公開。Native/QEMUで途中のstart拒否、entry/return/canaryを確認 | 実装・自動検証完了。実Timer Dとの非同期交差はN07で確認 |
+| N04 | 初期batch/budgetによるdrain、NULL要求拒否、high_water/rejected/delay、payload/ISR/consumer契約。再投入をNativeで、worker→UIの永続payload・満杯・budgetを両QEMUで確認 | 自動部分完了。main IPC、join/reuse、戻り値ABI変更は具体的要件が出るまで保留 |
+| N05 | 安全側verify-checkと無効REF/未追跡/削除/disk tool fixture、case log保持、逐次verify、hash/size/source snapshot/逆アセンブル保存。共通source includeとflags/config/assembly include依存。clean/profile切替/依存/診断build/2回no-op検証 | 自動部分完了。成果物に対応する実機確認の記録を次に追加する |
+| N06 | 両方式/profile/modeのhost測定、時計分解能/最小step、warm-up＋5run、scheduler/allocator/workの100操作batch、容量回復、最大payload、stack残量。任意のruntime profileでdeadline→READY/READY→実行を分離しNativeで検証 | 自動部分完了。実IRQ mask/ISR/switch時間、実worker進捗と待機時間は独立clock/traceで手動測定待ち。host nsをtarget値へ転用しない |
+| N07 | 1/2/8/32task、1/5/10tick sleepのQEMU負荷。targetと共通の32worker stack/sleep/return診断をQEMUで実行し、`.xdf`用IPC ringも確認。両形式の診断buildを生成 | 自動部分完了、手動ケースは全て未確認。通常起動/非同期/abort/watchdog/DMAを成果物hash付きで実行する |
+| N08 | targetにも共有517frame replay入口、frame tick/入力・画素checksum、profile0/1比較入口。Nativeで両modeのdrag外frameが全面再描画と一致し、host反復checksumも一致。DMAを48条件へ拡張、invalid count/clip/閾値policyをNative確認 | 自動部分完了。実機のR11/R12採否とDMA閾値は未実測。glyph triage・閾値変更は測定後に採否を決める |
+| N09 | [API契約](task-api-contract.md)、[frame/QEMU対応表](context-switch-contract.md)、共有frame定義/静的assertと共通instruction比較、README/所有権/測定/tests文書更新、本表へ進捗集約 | 自動部分完了。手動結果を本表と証拠へ追記し、過去節との暗黙上書きを避ける |
+
+検証結果:
+
+- `make verify`成功。Native通常・ASan/UBSanともcooperative/preemptive各133件PASS。
+- QEMU cooperative/preemptive各15件、asm 5件PASS。検証tool fixture 5件PASS。
+- 両方式・両形式のprofile0/1、`SS_DIAG_TASKS=32`＋runtime profileのbuild成功。header/ABI/assembly macro/linker/makedisk変更、flags変更、連続2回no-opを確認。
+- `QEMU=false`を指定した`test-qemu`と`test-asm`はそれぞれ非0終了。失敗logを保持する。
+- host測定runは`build/native-performance/20260930T141611139916/`。modeごとに両方式/両profileの5runで517frameの入力・画素checksum一致。性能改善率やX68000の閾値は主張しない。
+- build検証runは`build/build-check/20260930T141614891882/`。最終の通常/診断公開コピーのhashは同verification runの`published-artifacts.json`。
+
+手動確認用の通常4形式とprofile1は`build/published/`、32worker＋runtime profile診断4形式は`build/published/diagnostic/`に保存した。sandbox内へ出力先を切り替えて検証したため、`~/tmp`の旧成果物は今回の成果物として扱わない。次はこのhash付き成果物でN07を実施し、N06/N08の実時間と採否を記録する。

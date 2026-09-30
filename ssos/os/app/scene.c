@@ -7,6 +7,7 @@
 #include "../ipc/ipc.h"
 #include "../util/numfmt.h"
 #include "scene.h"
+#include "../kernel/runtime_guard.h"
 #include <stdint.h>
 #include <string.h>
 #ifndef SS_HOST_TEST
@@ -65,9 +66,14 @@ static int wait_vsync(void) {
     /* Baremetal has no watchdog hook. premain must install V-DISP before
      * entering this scene; a stopped V-DISP is a hard failure here rather
      * than an attempt at host-specific MFP recovery. */
-    uint32_t last = ss_vsync_counter;
-    while (ss_vsync_counter == last);
-    return 0;
+    SSWaitGuard guard;
+    ss_wait_guard_init(&guard, ss_vsync_counter, ss_tick_counter);
+    for (;;) {
+        int status = ss_wait_guard_poll(&guard, ss_vsync_counter, ss_tick_counter);
+        if (status == 1) return 0;
+        /* Baremetal does not attempt host-specific MFP recovery. */
+        if (status < 0) return 1;
+    }
 }
 
 static int cur_mx = 0, cur_my = 0, cur_btn = 0;
@@ -412,10 +418,16 @@ static int handle_drag(int mx, int my, int left) {
 }
 
 void ss_scene_run(const SSSceneHooks *hooks, SSSceneStats *stats) {
+    drag_id = -1; drag_prev_x = -1; prev_active_valid = 0;
+    next_z = 4; frame = 0; cur_prev_x = cur_prev_y = -1; last_key = -1;
+    memset(win_content, 0, sizeof(win_content));
+    uint32_t checksum = 2166136261u, max_ticks = 0;
+    if (stats != NULL) memset(stats, 0, sizeof(*stats));
     uint16_t ids[SS_SCENE_WINDOW_COUNT];
     for (int i = 0; i < SS_SCENE_WINDOW_COUNT; i++) {
         const SSSceneWindowSpec* spec = &ss_scene_default_windows[i];
         ids[i] = ss_win_create(spec->x, spec->y, spec->w, spec->h, spec->z);
+        if (ids[i] == 0 || ids[i] > SS_SCENE_WINDOW_COUNT) return;
         strcpy(win_content[ids[i] - 1].title, spec->title);
         ss_win_set_render(ids[i], render_win);
     }
@@ -426,15 +438,28 @@ void ss_scene_run(const SSSceneHooks *hooks, SSSceneStats *stats) {
     ss_win_render_all();
 
     uint32_t start_vsync = ss_vsync_counter;
-    while (1) {
+    uint32_t start_tick = ss_tick_counter;
+    while (!ss_gfx_dma_stop_unconfirmed()) {
         int stopped = hooks != NULL && hooks->wait_vsync != NULL
                           ? hooks->wait_vsync(hooks->ctx) : wait_vsync();
         if (stopped || (hooks != NULL && hooks->should_stop != NULL &&
                         hooks->should_stop(hooks->ctx)))
             break;
+        uint32_t frame_tick = ss_tick_counter;
+        if (hooks != NULL && hooks->read_input != NULL) {
+            if (hooks->read_input(hooks->ctx, frame + 1, &cur_mx, &cur_my,
+                                  &cur_btn, &last_key)) break;
+        } else {
+            update_mouse();
+            update_keyboard();
+        }
         frame++;
-        update_mouse();
-        update_keyboard();
+        if (hooks != NULL && hooks->read_input != NULL) {
+            checksum = (checksum ^ (uint32_t)cur_mx) * 16777619u;
+            checksum = (checksum ^ (uint32_t)cur_my) * 16777619u;
+            checksum = (checksum ^ (uint32_t)cur_btn) * 16777619u;
+            checksum = (checksum ^ (uint32_t)last_key) * 16777619u;
+        }
         int mx = cur_mx, my = cur_my, btn = cur_btn;
         int left = (btn & 0x0200) != 0;
         int right = (btn & 0x0001) != 0;
@@ -462,12 +487,24 @@ void ss_scene_run(const SSSceneHooks *hooks, SSSceneStats *stats) {
          * host intentionally does not link work_queue.c or this queue. */
         ss_work_drain(&ss_main_work_queue);
 #endif
+        if (hooks != NULL && hooks->after_frame != NULL)
+            hooks->after_frame(hooks->ctx, frame, dragging);
         ss_task_yield();
+        uint32_t elapsed = ss_tick_counter - frame_tick;
+        if (elapsed > max_ticks) max_ticks = elapsed;
         (void)right;
     }
     if (stats != NULL) {
         stats->frames = frame;
         stats->vsyncs = ss_vsync_counter - start_vsync;
+        stats->ticks = ss_tick_counter - start_tick;
+        stats->max_frame_ticks = max_ticks;
+        stats->input_checksum = checksum;
+        uint32_t pixels = 2166136261u;
+        for (int y = 0; y < ss_current_mode->display_h; y++)
+            for (int x = 0; x < ss_current_mode->display_w; x++)
+                pixels = (pixels ^ ss_draw_page[y * (ss_current_mode->bytes_per_line / 2) + x]) * 16777619u;
+        stats->pixel_checksum = pixels;
     }
 }
 

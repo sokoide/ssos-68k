@@ -41,8 +41,8 @@ X68000 の 256 色モードは「パレット形式」ですが、メモリ上�
 - **GVRAM アドレス**: `$C00000`
 - **1画素**: 16 ビット（下位 8 ビットにパレットインデックスを格納）。
 - **物理アライメント**: 1 ドットが 2 バイトを占有するため、`uint16_t*` ポインタによるアクセスが最適です。
-- **ライン幅 (Stride)**: 512 ワード (1024 バイト)。**色モード・解像度に関わらず常に 512 ワード**。
-- **座標計算**: `GVRAM + (y * 512) + x`
+- **ライン幅 (Stride)**: 512 ワード (1024 バイト)。**mode8は512ワード、現行mode16は1024ワード**。
+- **座標計算**: `GVRAM + (y * (bytes_per_line / 2)) + x`
 
 ## パレットと UI カラー (MacOS 7 スタイル)
 
@@ -240,3 +240,12 @@ Timer D 割り込み (200Hz) はティック加算と起床要求フラグの設
 - マウス SCC 割り込みハンドラによる IOCS 呼び出し削減。
 - `draw_char8_clip` の z-order 最適化 (重なりなし時の fast path)。
 - ウィンドウリサイズ・スクロール対応。
+
+
+## 現行の契約と検証（2026-09-30）
+
+TCB/stack/frameの正本は`os/kernel/scheduler.h`、`scheduler_abi.h`、`context_frame.h`。taskはINITIALIZING中にstartできず、canary初期化後にDORMANTへ公開する。entry(arg)のreturnはTERMINATEDで、slotを再利用しない。mainのIPCは非対応。制限とUI要求のpayload寿命は[API契約](../docs/task-api-contract.md)を参照する。
+
+VSync停止は無期限spinを続けず、`.x`では一度のsnapshot復旧後に脱出、`.xdf`では有限待機後にIPL7下で停止する。DMA停止未確認では`.x`も表示・プロセス領域を返さず停止する。実機復旧・IOCS/DMAC動作の確認は残る。
+
+検証入口はrootの`make verify`。ホスト/RAM、QEMU移植版、実機の範囲は[context契約](../docs/context-switch-contract.md)と[追加計画](../docs/maintenance-performance-plan-2026-09-30.md)へ集約する。mode8は512word stride、mode16は1024word strideで、同じ固定値を全modeへ適用しない。

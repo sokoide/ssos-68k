@@ -1,4 +1,5 @@
 #include "scheduler.h"
+#include "sched_profile.h"
 #include <stdint.h>
 #include <string.h>
 
@@ -50,6 +51,7 @@ void ss_stack_canary_init(uint16_t id) {
 }
 
 void ss_sched_init(void) {
+    ss_sched_profile_reset();
     memset(tcb_table, 0, sizeof(tcb_table));
     memset(&ready_queue, 0, sizeof(ready_queue));
     ss_curr_task = NULL;
@@ -73,6 +75,7 @@ void ss_sched_enqueue(SSTask* tcb) {
         ready_queue.tails[pri] = tcb;
     }
     ready_queue.pri_bitmap |= (1 << (15 - pri));
+    ss_sched_profile_ready(tcb);
 }
 
 void ss_sched_dequeue(SSTask* tcb) {
@@ -144,7 +147,7 @@ uint16_t ss_task_create(SSTaskInfo* info) {
 
     SSTask* tcb = &tcb_table[i];
     memset(tcb, 0, sizeof(SSTask));
-    tcb->state = SS_TS_DORMANT;
+    tcb->state = SS_TS_INITIALIZING;
     tcb->entry = info->entry;
     tcb->arg = info->arg;
     tcb->pri = info->pri;
@@ -165,10 +168,17 @@ uint16_t ss_task_create(SSTaskInfo* info) {
     ss_irq_restore(saved_sr);
 
     /* Fill the 16 KiB canary pattern with interrupts re-enabled: the slot is
-     * already reserved as DORMANT and invisible to the scheduler and ISRs,
+     * reserved as INITIALIZING and rejected by ss_task_start,
      * so keeping this multi-millisecond write inside the masked window would
      * only stretch Timer D / V-DISP latency. */
+#ifdef SS_TASK_CREATE_PROBE
+    extern void ss_task_create_probe(uint16_t id);
+    ss_task_create_probe(i + 1);
+#endif
     ss_stack_canary_init(i + 1);
+    saved_sr = ss_irq_save();
+    tcb->state = SS_TS_DORMANT;
+    ss_irq_restore(saved_sr);
 
     return i + 1; /* 1-based ID */
 }
@@ -229,6 +239,7 @@ void ss_do_context_switch(void) {
 
     ss_scheduled_task = next;
     ss_curr_task = next;
+    ss_sched_profile_run(next);
 }
 
 uint16_t ss_task_sleep(uint32_t ticks) {
@@ -268,6 +279,7 @@ void ss_do_wakeups(void) {
     while (*link != NULL) {
         SSTask* tcb = *link;
         if (deadline_reached(now, tcb->wait_until)) {
+            ss_sched_profile_wake(now - tcb->wait_until);
             *link = tcb->sleep_next;
             tcb->sleep_next = NULL;
             tcb->state = SS_TS_READY;

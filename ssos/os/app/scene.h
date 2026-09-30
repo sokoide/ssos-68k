@@ -10,11 +10,15 @@ typedef struct {
     int (*wait_vsync)(void *ctx); /* 0 = frame ready, nonzero = stop */
     int (*should_stop)(void *ctx);
     void *ctx;
+    int (*read_input)(void* ctx, uint32_t frame, int* mx, int* my,
+                      int* buttons, int* key);
+    void (*after_frame)(void* ctx, uint32_t frame, int dragging);
 } SSSceneHooks;
 
 typedef struct {
     uint32_t frames;
     uint32_t vsyncs;
+    uint32_t ticks, max_frame_ticks, input_checksum, pixel_checksum;
 } SSSceneStats;
 
 #define SS_SCENE_WINDOW_COUNT 3

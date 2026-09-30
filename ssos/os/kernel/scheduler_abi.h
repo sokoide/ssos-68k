@@ -1,5 +1,6 @@
 #ifndef SS_SCHEDULER_ABI_H
 #define SS_SCHEDULER_ABI_H
+#include "context_frame.h"
 
 /* Fields read directly by the context-switch assembly. Keep this as the
  * single layout definition for C assertions and both production/QEMU ports. */

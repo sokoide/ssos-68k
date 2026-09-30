@@ -176,6 +176,10 @@ ss_trap14_handler:
 		| Must NOT return — _ABORTRST or exit() is required.
 		| ----------------------------------------------------------
 ss_trap14_abort:
+        ori.w #0x0700, %sr
+        tst.b ss_abort_entered
+        bne.w .abort_halt
+        st ss_abort_entered
 		| The interrupted task stack may be corrupt. Use an emergency stack
 		| before calling C or IOCS and never return to the interrupted task.
 		lea		ss_abort_stack_end, sp
@@ -207,12 +211,16 @@ ss_trap14_abort:
 
 		| Exit — _ABORTRST (IOCS 0xFD) terminates the process
 		IOCS	_ABORTRST
+.abort_halt:
+        ori.w #0x0700, %sr
+        bra.s .abort_halt
 
 		| ----------------------------------------------------------
 		| ss_init_trap14 — install TRAP #14 handler + abort vectors
 		| ----------------------------------------------------------
 ss_init_trap14:
-		move.w	#0x2700, %sr
+		move.w	%sr, -(sp)
+		ori.w	#0x0700, %sr
 
 		| Save original TRAP #14 vector (0xB8 = vector 0x2e * 4)
 		move.l	0xB8, ss_old_trap14
@@ -235,24 +243,28 @@ ss_init_trap14:
 		move.w	#0xFFF1, d1
 		IOCS	_B_INTVCS
 
-		move.w	#0x2000, %sr
+		move.w	(sp)+, %sr
 		rts
 
 		| ----------------------------------------------------------
 		| ss_restore_trap14 — restore original TRAP #14 handler
 		| ----------------------------------------------------------
 ss_restore_trap14:
-		move.w	#0x2700, %sr
+		move.w	%sr, -(sp)
+		ori.w	#0x0700, %sr
 
 		| Restore original TRAP #14 vector
 		move.l	ss_old_trap14, d0
 		move.l	d0, 0xB8
 
-		move.w	#0x2000, %sr
+		move.w	(sp)+, %sr
 		rts
 
 		.section .bss
 		.even
+ss_abort_entered:
+        .ds.b 1
+        .even
 ss_abort_stack:
 		.ds.b	8192
 ss_abort_stack_end:

@@ -225,3 +225,10 @@ uint32_t ss_mem_free_bytes(void) {
     }
     return total;
 }
+
+uint32_t ss_mem_largest_free(void) {
+    for (int order = SS_BUDDY_MAX_ORDER; order >= SS_BUDDY_MIN_ORDER; order--)
+        if (buddy.free_lists[order_to_index((uint8_t)order)] != NULL)
+            return order_size((uint8_t)order) - sizeof(SSBuddyBlock);
+    return 0;
+}

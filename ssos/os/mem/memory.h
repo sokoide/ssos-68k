@@ -64,5 +64,6 @@ void     ss_slab_free(SSSlabCache* cache, void* obj);
 
 uint32_t ss_mem_total(void);
 uint32_t ss_mem_free_bytes(void);
+uint32_t ss_mem_largest_free(void); /* largest single payload, excluding header */
 
 #endif /* SS_MEMORY_H */

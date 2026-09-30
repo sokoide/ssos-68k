@@ -12,6 +12,7 @@
 
 #include "ssos_test.h"
 #include "scheduler.h"
+#include "sched_profile.h"
 #include "kernel.h"
 
 /* ss_tick_counter is defined in test_mocks.c; bump it to simulate ticks. */
@@ -265,7 +266,31 @@ TEST(task_sleep_wakes_across_tick_wrap) {
     ASSERT_EQ(sleeper->state, SS_TS_READY);
 }
 
+TEST(task_initializing_cannot_start) {
+    ss_sched_init();
+    uint16_t id = make_task(1);
+    extern uint16_t ss_test_create_probe_result(void);
+    ASSERT_EQ(ss_test_create_probe_result(), (uint16_t)SS_ERR_STATE);
+    ASSERT_EQ(tcb_table[id - 1].state, SS_TS_DORMANT);
+    ASSERT_EQ(ss_task_start(id), SS_OK);
+}
+
+TEST(scheduler_latency_separates_ready_from_execution) {
+    reset_test_state(); ss_sched_init();
+    uint16_t a = make_task(1), b = make_task(8);
+    ss_task_start(a); ss_task_start(b);
+    ASSERT_EQ(ss_task_sleep(5), SS_OK);
+    ss_tick_counter = 8; ss_do_wakeups();
+    ss_tick_counter = 10; ss_do_context_switch();
+    SSSchedProfile p;
+    ss_sched_profile_snapshot(&p);
+    ASSERT_EQ(p.max_deadline_to_ready_ticks, 3u);
+    ASSERT_EQ(p.max_ready_to_run_ticks, 2u);
+    ASSERT_EQ(p.wakeups, 1u);
+}
 void run_scheduler_tests(void) {
+    RUN_TEST(scheduler_latency_separates_ready_from_execution);
+    RUN_TEST(task_initializing_cannot_start);
     RUN_TEST(sched_init_clears_state);
     RUN_TEST(pick_empty_returns_null);
     RUN_TEST(enqueue_dequeue_single_pri);

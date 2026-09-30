@@ -77,3 +77,8 @@ yarn.lock
 *.log
 *.tmp
 *.bak
+
+/tests/**/build/
+__pycache__/
+
+/tools/makedisk/build/

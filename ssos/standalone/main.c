@@ -16,6 +16,10 @@
 #include "../os/gfx/gfx.h"
 #include "../os/gfx/palette.h"
 #include "../os/gfx/profile.h"
+#include "../os/kernel/runtime_guard.h"
+#include "../os/kernel/task_probe.h"
+#include "../os/kernel/sched_profile.h"
+#include "../os/app/scene_replay.h"
 #include "../os/win/win.h"
 #include "../os/kernel/main_task.h"
 #include "../os/app/scene.h"
@@ -77,51 +81,49 @@ static int highest_active_z = -1;
 
 #endif /* SS_PROFILE_GFX */
 
-static uint32_t saved_copy_vec;
-static uint32_t saved_nmi_vec;
-static int saved_crt_mode;
-static uint8_t trap14_active;
-static uint8_t interrupts_active;
-static uint8_t abort_vectors_active;
-static uint8_t display_active;
-static uint8_t abort_cleanup_started;
+static volatile uint32_t saved_copy_vec;
+static volatile uint32_t saved_nmi_vec;
+static volatile int saved_crt_mode;
+static volatile SSCleanupState cleanup_state;
 extern void ss_nop_handler(void);
-
 extern void ss_init_trap14(void);
 extern void ss_restore_trap14(void);
-
 static SSTask main_tcb;
 
-/* Called on trap14.s's emergency stack after Human68K starts an abort. */
-void ss_abort_cleanup(void) {
-    uint16_t saved_sr = ss_irq_save();
-    if (abort_cleanup_started) {
-        ss_irq_restore(saved_sr);
-        return;
-    }
-    abort_cleanup_started = 1;
-    if (interrupts_active) {
-        interrupts_active = 0;
-        ss_restore_interrupts();
-    }
-    if (abort_vectors_active) {
-        abort_vectors_active = 0;
+static void fail_stop(void) __attribute__((noreturn));
+static void fail_stop(void) {
+    /* Preserve source/descriptor and display ownership. Do not call IOCS/DOS
+     * or reset a channel whose stop has not been confirmed. */
+    (void)ss_irq_save();
+    for (;;) {}
+}
+
+static int cleanup_dma_stopped(void* ctx) {
+    (void)ctx;
+    return ss_gfx_dma_quiesce() == 0;
+}
+
+static void cleanup_restore(void* ctx, uint8_t stage) {
+    if (stage == SS_CLEAN_INTERRUPTS) ss_restore_interrupts();
+    else if (stage == SS_CLEAN_VECTORS) {
         *(volatile uint32_t*)0xB0 = saved_copy_vec;
         *(volatile uint32_t*)0x7C = saved_nmi_vec;
-    }
-    if (trap14_active) {
-        trap14_active = 0;
-        ss_restore_trap14();
-    }
-    ss_irq_restore(saved_sr);
-
-    if (display_active) {
-        display_active = 0;
+    } else if (stage == SS_CLEAN_TRAP) ss_restore_trap14();
+    else if (stage == SS_CLEAN_DISPLAY) {
+        /* Host IOCS may need its restored interrupt sources. */
+        ss_irq_restore(*(uint16_t*)ctx & (uint16_t)~0x0700u);
         _iocs_ms_curof();
         _iocs_skey_mod(-1, 0, 0);
         _iocs_crtmod(saved_crt_mode);
         _iocs_b_curon();
     }
+}
+
+void ss_abort_cleanup(void) {
+    uint16_t saved_sr = ss_irq_save();
+    const SSCleanupOps ops = {cleanup_dma_stopped, cleanup_restore, &saved_sr};
+    if (ss_cleanup_run(&cleanup_state, &ops) != 0) fail_stop();
+    ss_irq_restore(saved_sr);
 }
 
 #if SS_PROFILE_GFX
@@ -414,60 +416,49 @@ static void redraw_title_region(const SSWindow* w) {
 
 /* ---- V-sync with watchdog ---- */
 
-static void wait_vsync(void) {
-    uint32_t last = ss_vsync_counter;
-    uint32_t last_vdisp = ss_vdisp_fire_count;
-    uint32_t spin = 0;
+/* Keep a second snapshot of the running configuration, never the original
+ * Human68K snapshot used by ss_restore_interrupts. */
+static int runtime_wait_failed;
+static uint8_t runtime_imra, runtime_imrb, runtime_tacr, runtime_tadr;
+static uint8_t runtime_tcdcr, runtime_tddr;
+static void capture_runtime_mfp(void) {
+    uint16_t sr = ss_irq_save();
+    runtime_imra = SS_MFP_IMRA; runtime_imrb = SS_MFP_IMRB;
+    runtime_tacr = SS_MFP_TACR; runtime_tadr = SS_MFP_TADR;
+    runtime_tcdcr = SS_MFP_TCDCR; runtime_tddr = SS_MFP_TDDR;
+    ss_irq_restore(sr);
+}
 
-    while (ss_vsync_counter == last) {
-        spin++;
-        /* Watchdog: ~55M spins at 10MHz ≈ 5s timeout.
-         * If V-DISP ISR stops, break and try to recover. */
-        if (spin > 5000000) {
-            uint32_t vdisp_now = ss_vdisp_fire_count;
-            uint32_t tick_now = ss_timerd_fire_count;
-            _iocs_b_print("\r\n[WD] V-DISP stopped! "
-                          "vdisp_fire=");
-            /* Simple hex print via IOCS */
-            {
-                char buf[64];
-                snprintf(buf, sizeof(buf),
-                         "%lu tick_fire=%lu IMRA=%02X TACR=%02X "
-                         "TCDCR=%02X IMRB=%02X ISRB=%02X\r\n",
-                         vdisp_now, tick_now,
-                         (unsigned)SS_MFP_IMRA, (unsigned)SS_MFP_TACR,
-                         (unsigned)SS_MFP_TCDCR, (unsigned)SS_MFP_IMRB,
-                         (unsigned)SS_MFP_ISRB);
-                _iocs_b_print(buf);
-            }
-            _iocs_b_print("[WD] Attempting MFP re-init...\r\n");
-            /* Re-enable V-DISP and Timer D */
-            SS_MFP_IMRA = 0x21;
-            SS_MFP_TACR = 0x08;
-            SS_MFP_IMRB = 0x10;
-            /* Reinstall V-DISP handler (vector may be corrupted) */
-            extern void ss_vdisp_handler(void);
-            *(volatile uint32_t*)0x134 = (uint32_t)ss_vdisp_handler;
-            extern void ss_timerd_handler(void);
-            *(volatile uint32_t*)0x110 = (uint32_t)ss_timerd_handler;
-            /* Reset pending */
-            SS_MFP_ISRA = 0x00;
-            SS_MFP_ISRB = 0x00;
-            spin = 0;
-            last = ss_vsync_counter;
-        }
-    }
+static void recover_runtime_mfp(void) {
+    uint16_t sr = ss_irq_save();
+    extern void ss_vdisp_handler(void), ss_timerd_handler(void);
+    SS_MFP_IMRA = 0; SS_MFP_IMRB = 0;
+    *(volatile uint32_t*)SS_VEC_VDISP = (uint32_t)ss_vdisp_handler;
+    *(volatile uint32_t*)SS_VEC_TIMERD = (uint32_t)ss_timerd_handler;
+    SS_MFP_TADR = runtime_tadr; SS_MFP_TACR = runtime_tacr;
+    SS_MFP_TDDR = runtime_tddr; SS_MFP_TCDCR = runtime_tcdcr;
+    /* Same targeted EOI bits as the production Timer A/D handlers. */
+    SS_MFP_ISRA &= 0xdf; SS_MFP_ISRB &= 0xef;
+    SS_MFP_IMRA = runtime_imra; SS_MFP_IMRB = runtime_imrb;
+    ss_irq_restore(sr);
 }
 
 static int scene_wait_vsync(void* ctx) {
     (void)ctx;
-    wait_vsync();
-    return 0;
+    SSWaitGuard guard;
+    ss_wait_guard_init(&guard, ss_vsync_counter, ss_tick_counter);
+    for (;;) {
+        int status = ss_wait_guard_poll(&guard, ss_vsync_counter, ss_tick_counter);
+        if (status == 1) return 0;
+        if (status == -1) recover_runtime_mfp();
+        if (status == -2) { runtime_wait_failed = 1; return 1; }
+    }
 }
 
 static int scene_should_stop(void* ctx) {
     (void)ctx;
-    return (ss_scene_last_key() & 0xFF) == 0x1B;
+    return ss_gfx_dma_stop_unconfirmed() ||
+           (ss_scene_last_key() & 0xFF) == 0x1B;
 }
 
 #if SS_PROFILE_GFX
@@ -531,8 +522,8 @@ static uint32_t bench_result_count;
 static const SSGfxMode* bench_mode;
 static FILE* bench_log_file;
 
-#define SS_DMA_BENCH_WIDTHS  4
-#define SS_DMA_BENCH_HEIGHTS 3
+#define SS_DMA_BENCH_WIDTHS  6
+#define SS_DMA_BENCH_HEIGHTS 4
 #define SS_DMA_BENCH_CASES (SS_DMA_BENCH_WIDTHS * SS_DMA_BENCH_HEIGHTS * 2)
 typedef struct {
     uint16_t w, h;
@@ -771,9 +762,9 @@ static void print_bench_results(void) {
 }
 
 static void run_dma_benchmark(uint32_t rounds) {
-    static const int widths[SS_DMA_BENCH_WIDTHS] = {32, 64, 65, 128};
-    static const int heights[SS_DMA_BENCH_HEIGHTS] = {4, 5, 16};
-    const int x = 20, y = 20;
+    static const int widths[SS_DMA_BENCH_WIDTHS] = {32, 64, 65, 128, 256, 512};
+    static const int heights[SS_DMA_BENCH_HEIGHTS] = {4, 5, 16, 128};
+    const int x = 0, y = 20;
     dma_bench_result_count = 0;
     bench_mode = ss_current_mode;
 
@@ -846,6 +837,12 @@ static void print_dma_benchmark(void) {
  * ================================================================ */
 
 int main(int argc, char** argv) {
+    int run_scene_bench = 0, run_task_check = 0;
+    for (int i = 1; i < argc; i++)
+        if (strcmp(argv[i], "-scene-bench") == 0) run_scene_bench = 1;
+    for (int i = 1; i < argc; i++)
+        if (strcmp(argv[i], "-task-check") == 0) run_task_check = 1;
+    if (run_task_check && (!SS_DIAG_TASKS || run_scene_bench)) return 1;
     /* Parse command line arguments for graphics mode */
     int requested_mode = SS_CRTMOD_16;  /* Default: mode 16 */
 #if SS_PROFILE_GFX
@@ -853,6 +850,7 @@ int main(int argc, char** argv) {
     int run_dma_bench = find_bench_option(argc, argv, "-dma-bench", &bench_rounds);
     int run_bench = run_dma_bench ||
                     find_bench_option(argc, argv, "-bench", &bench_rounds);
+    if ((run_scene_bench || run_task_check) && run_bench) return 1;
 #endif
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-8") == 0) {
@@ -878,7 +876,7 @@ int main(int argc, char** argv) {
     int old_usp = _iocs_b_super(0);
 
     ss_init_trap14();
-    trap14_active = 1;
+    cleanup_state.active |= SS_CLEAN_TRAP;
 
     ss_mem_init(local_memory, sizeof(local_memory));
     ss_sched_init();
@@ -891,7 +889,7 @@ int main(int argc, char** argv) {
 
     int old_mode = _iocs_crtmod(-1);
     saved_crt_mode = old_mode;
-    display_active = 1;
+    cleanup_state.active |= SS_CLEAN_DISPLAY;
     _iocs_crtmod(ss_current_mode->crtmod);
     _iocs_g_clr_on();
     set_palette();
@@ -917,13 +915,18 @@ int main(int argc, char** argv) {
      * ss_set_interrupts() before them.
      */
     ss_set_interrupts();
-    interrupts_active = 1;
+    capture_runtime_mfp();
+    cleanup_state.active |= SS_CLEAN_INTERRUPTS;
 
     saved_copy_vec = *(volatile uint32_t*)0xB0;
     saved_nmi_vec = *(volatile uint32_t*)0x7C;
-    abort_vectors_active = 1;
+    cleanup_state.active |= SS_CLEAN_VECTORS;
     *(volatile uint32_t*)0xB0 = (uint32_t)ss_nop_handler;
     *(volatile uint32_t*)0x7C = (uint32_t)ss_nop_handler;
+    if (run_task_check) {
+        ss_task_probe_result.status = ss_task_probe_run(NULL);
+        goto cleanup;
+    }
 
 #if SS_PROFILE_GFX
     if (run_dma_bench) {
@@ -952,6 +955,7 @@ int main(int argc, char** argv) {
         .should_stop = scene_should_stop,
         .ctx = NULL,
     };
+    if (run_scene_bench) scene_hooks.read_input = ss_scene_replay_input;
     ss_scene_run(&scene_hooks, &runtime_stats);
 
 cleanup:
@@ -959,6 +963,30 @@ cleanup:
      * diagnostics and exits via _ABORTRST); execution never returns here with
      * ss_trapbuf_flag set, so cleanup only handles the normal path. */
     ss_abort_cleanup();
+    if (run_task_check) {
+        SSSchedProfile timing; ss_sched_profile_snapshot(&timing);
+        char summary[256];
+        snprintf(summary, sizeof(summary),
+                 "SSPROBE status=%d completed=%lu stack_free=%lu max_late_ticks=%lu deadline_to_ready=%lu ready_to_run=%lu runtime_profile=%d\r\n",
+                 ss_task_probe_result.status, (unsigned long)ss_task_probe_result.completed,
+                 (unsigned long)ss_task_probe_result.min_stack_free,
+                 (unsigned long)ss_task_probe_result.max_late_ticks,
+                 (unsigned long)timing.max_deadline_to_ready_ticks,
+                 (unsigned long)timing.max_ready_to_run_ticks, SS_PROFILE_RUNTIME);
+        _iocs_b_print(summary);
+    }
+    if (run_scene_bench) {
+        char summary[256];
+        snprintf(summary, sizeof(summary),
+                 "SSPERF scene frames=%lu ticks=%lu max_frame_ticks=%lu input=%08lX pixels=%08lX profile=%d\r\n",
+                 (unsigned long)runtime_stats.frames, (unsigned long)runtime_stats.ticks,
+                 (unsigned long)runtime_stats.max_frame_ticks,
+                 (unsigned long)runtime_stats.input_checksum,
+                 (unsigned long)runtime_stats.pixel_checksum, SS_PROFILE_GFX);
+        _iocs_b_print(summary);
+        FILE* file = fopen("scene.txt", "w");
+        if (file != NULL) { fputs(summary, file); fclose(file); }
+    }
 
 #if SS_PROFILE_GFX
     /* CRTMOD restoration clears the graphics page.  Emit retained benchmark
@@ -980,7 +1008,7 @@ cleanup:
             else
                 _iocs_b_print("SSPERF file=bench.txt\r\n");
         }
-    } else {
+    } else if (!run_task_check) {
         ss_gfx_profile_snapshot(&runtime_profile);
         bench_log_file = fopen("runtime.txt", "w");
         if (bench_log_file == NULL) {
@@ -1009,7 +1037,7 @@ cleanup:
     _iocs_b_print("SSOS-Cooperative terminated.\r\n");
 #endif
     _iocs_b_super(old_usp);
-    _exit(0);
+    _exit(runtime_wait_failed || (run_task_check && ss_task_probe_result.status != SS_OK) ? 1 : 0);
 }
 
 #endif /* LOCAL_MODE */

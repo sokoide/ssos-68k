@@ -19,7 +19,7 @@ else
 endif
 
 CC      = cc
-CFLAGS  = -O2 -g -Wall -Wextra -Werror -std=c11 $(BUILD_DEF) -DSS_HOST_TEST -DSS_PROFILE_GFX=1 \
+CFLAGS  = -O2 -g -Wall -Wextra -Werror -std=c11 $(BUILD_DEF) -DSS_HOST_TEST -DSS_PROFILE_RUNTIME=1 -DSS_TASK_CREATE_PROBE -DSS_PROFILE_GFX=1 \
           -Iframework -I../ssos/os/util -I../ssos/os/mem \
           -I../ssos/os/kernel -I../ssos/os/win -I../ssos/os/gfx \
           -I../ssos/os/ipc -I../ssos/os/app
@@ -36,24 +36,15 @@ endif
 
 # Pure-logic + host-seamed graphics + stubbed-HW sources. premain.c/main.c
 # and the asm objects (entry.s, interrupts.s) remain excluded.
-OS_SRCS = \
-	$(SSOS)/util/numfmt.c \
-	$(SSOS)/mem/buddy.c \
-	$(SSOS)/mem/slab.c \
-	$(SSOS)/kernel/scheduler.c \
-	$(SCHED_DIR)/wakeups.c \
-	$(SSOS)/kernel/work_queue.c \
-	$(SSOS)/gfx/vram.c \
-	$(SSOS)/gfx/profile.c \
-	$(SSOS)/win/window.c \
-	$(SSOS)/ipc/message.c \
-	$(SSOS)/app/scene.c
+include ../ssos/common-sources.mk
+OS_SRCS = $(addprefix $(SSOS)/,$(SS_CORE_SRCS) $(SS_XDF_SRCS))
 
 FRAMEWORK_SRCS = \
 	framework/test_runner.c \
 	framework/test_mocks.c
 
 UNIT_SRCS = \
+	unit/test_runtime_guard.c \
 	unit/test_numfmt.c \
 	unit/test_mem.c \
 	unit/test_scheduler.c \
@@ -78,9 +69,24 @@ test: $(TARGET)
 	@echo "=== SSOS Native Tests (SCHED=$(SCHED)) ==="
 	./$(TARGET)
 
-$(TARGET): $(ALL_SRCS) $(HEADERS) Makefile.native
+$(TARGET): $(ALL_SRCS) $(HEADERS) Makefile.native ../ssos/common-sources.mk
 	$(CC) $(CFLAGS) $(ALL_SRCS) -o $(TARGET)
 
 clean:
 	rm -f test_runner_native_cooperative test_runner_native_preemptive
 	rm -f test_runner_native_cooperative_sanitize test_runner_native_preemptive_sanitize
+
+.PHONY: FORCE
+FORCE:
+build/native-$(SCHED)-$(SANITIZE).config: FORCE
+	@python3 ../tools/build-config.py $@ $(CC) $(CFLAGS)
+$(TARGET): build/native-$(SCHED)-$(SANITIZE).config
+
+BENCH_PROFILE ?= 1
+BENCH_TARGET = build/native-bench-$(SCHED)-profile$(BENCH_PROFILE)
+.PHONY: bench
+bench: $(BENCH_TARGET)
+	./$(BENCH_TARGET)
+$(BENCH_TARGET): bench/native_bench.c framework/test_mocks.c $(OS_SRCS) $(HEADERS) Makefile.native ../ssos/common-sources.mk
+	@mkdir -p build
+	$(CC) $(subst -DSS_PROFILE_RUNTIME=1,-DSS_PROFILE_RUNTIME=$(BENCH_PROFILE),$(subst -DSS_PROFILE_GFX=1,-DSS_PROFILE_GFX=$(BENCH_PROFILE),$(CFLAGS))) bench/native_bench.c framework/test_mocks.c $(OS_SRCS) -o $@

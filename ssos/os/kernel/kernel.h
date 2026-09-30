@@ -45,6 +45,7 @@
 #define SS_TS_READY    2
 #define SS_TS_WAIT     3
 #define SS_TS_TERMINATED 4
+#define SS_TS_INITIALIZING 5
 
 /* Global counters (defined in interrupts.s) */
 extern volatile uint32_t ss_tick_counter;

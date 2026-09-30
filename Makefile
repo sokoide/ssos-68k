@@ -48,4 +48,13 @@ verify-check:
 
 # One-shot: run all automated tests, confirm both SCHED variants build, then
 # report any targets that still need a manual hardware check.
-verify: test test-qemu test-asm all verify-check
+verify:
+	python3 tools/verify-auto.py
+
+test-tools:
+	python3 -m unittest discover -s tests/tools -v
+
+.PHONY: test-tools bench-native
+bench-native:
+	$(MAKE) -C tests -f Makefile.native bench SCHED=cooperative
+	$(MAKE) -C tests -f Makefile.native bench SCHED=preemptive

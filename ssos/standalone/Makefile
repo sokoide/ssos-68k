@@ -1,3 +1,4 @@
+SS_EXPORT_DIR ?= $(HOME)/tmp
 ifeq ($(shell which m68k-xelf-gcc),)
 $(error Cross-compilation toolchain not found. Please run: . ~/.elf2x68k)
 endif
@@ -29,18 +30,8 @@ endif
 
 KDIR=../os/kernel/$(SCHED)
 
-SRCS=	main.c \
-		../os/app/scene.c \
-		../os/kernel/main_task.c \
-		../os/kernel/scheduler.c \
-		$(KDIR)/wakeups.c \
-		../os/mem/buddy.c \
-		../os/mem/slab.c \
-		../os/gfx/profile.c \
-		../os/gfx/palette.c \
-		../os/gfx/vram.c \
-		../os/win/window.c \
-		../os/util/numfmt.c
+include ../common-sources.mk
+SRCS = main.c $(addprefix ../os/,$(SS_CORE_SRCS) $(SS_TARGET_SRCS))
 ASRCS=	$(KDIR)/interrupts.s ../os/kernel/mfp_state.s trap14.s
 
 OBJDIR=build/$(SCHED)/profile-$(SS_PROFILE_GFX)
@@ -60,6 +51,7 @@ INCLUDE=-I$(XELF_BASE)/m68k-elf/include -I../include -I../os/kernel -I$(KDIR) -I
 LIB=-L$(XELF_BASE)/m68k-elf/lib
 
 CCFLAGS=$(INCLUDE) -O2 -g -MMD -MP -DLOCAL_MODE $(CDEFINES) -DSS_PROFILE_GFX=$(SS_PROFILE_GFX)
+CCFLAGS += $(EXTRA_CFLAGS)
 LDFLAGS=$(LIB) -lx68kiocs -nostdlib -lc -lm -lgcc
 
 .PHONY: all clean install dump readelf
@@ -67,10 +59,11 @@ LDFLAGS=$(LIB) -lx68kiocs -nostdlib -lc -lm -lgcc
 all: standalone
 
 standalone: $(TARGET_FILE)
-	cp $(TARGET_FILE) $(HOME)/tmp/$(TARGET)
+	@mkdir -p $(SS_EXPORT_DIR)
+	cp $(TARGET_FILE) $(SS_EXPORT_DIR)/$(TARGET)
 
 $(TARGET_FILE): $(OBJS)
-	$(CC) $^ -o $@ -Xlinker "$(LDFLAGS)"
+	$(CC) $(OBJS) -o $@ -Xlinker "$(LDFLAGS)"
 
 dump: $(TARGET_FILE)
 	$(OBJDUMP) -d -S -C $(TARGET_FILE)
@@ -109,3 +102,10 @@ $(OBJDIR)/%.o: %.s | $(OBJDIR)
 clean:
 	rm -rf build
 	rm -rf $(TARGET) obj-cooperative obj-preemptive *.elf *.o *.lst
+
+.PHONY: FORCE
+FORCE:
+$(OBJDIR)/.config: FORCE
+	@python3 ../../tools/build-config.py $@ $(CC) $(CCFLAGS) $(LDFLAGS)
+$(OBJS): $(OBJDIR)/.config Makefile ../common-sources.mk $(wildcard ../include/*.mac)
+$(TARGET_FILE): $(OBJDIR)/.config Makefile

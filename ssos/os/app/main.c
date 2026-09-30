@@ -6,6 +6,7 @@
 #include "../win/win.h"
 #include "../ipc/ipc.h"
 #include "scene.h"
+#include "../kernel/task_probe.h"
 
 #include <stdint.h>
 
@@ -27,5 +28,14 @@ int16_t ss_init(void) {
 }
 
 void ss_run(void) {
+#if SS_DIAG_TASKS
+    if (ss_task_probe_run(NULL) != SS_OK) {
+        (void)ss_irq_save();
+        for (;;) {}
+    }
+#endif
     ss_scene_run(NULL, NULL);
+    /* Baremetal cannot return DMA/display ownership to Human68K. */
+    (void)ss_irq_save();
+    for (;;) {}
 }

@@ -260,7 +260,7 @@ SSOSRAM 領域は **Buddy + Slab ハイブリッド**アロケータで管理す
   │ 10. IOCS _MS_INIT / _MS_CURON   ← クリーンの MFP=$FF/$7F 状態で再登録
   │ 11. AER = $06                  ← GPIP4 を 1→0 エッジ検出に設定
   │ 12. IMRA / IMRB = $FF / $7F (両方式共通、Human68K 互換)
-  │     ※ $21/$10 を書く現行箇所は .x watchdog 復旧経路のみ (R10 残課題)
+  │     ※ .x watchdog は起動後snapshotをIPL7下で一度再適用。復旧失敗は有限停止
   │ 13. ss_gfx_set_mode(CRTMOD_16)  ← SSGfxMode 初期化
   │ 14. ss_init()                    ← モジュール初期化
   │ ▼
@@ -361,11 +361,13 @@ struct SSTask {
     uint32_t stack_size;
     void*    (*entry)(void*);
     uint32_t wait_until;    /* ss_task_sleep 用起床時刻 */
-    uint8_t  state;         /* SS_TS_NONE/DORMANT/READY/WAIT */
+    uint8_t  state;         /* NONE/INITIALIZING/DORMANT/READY/WAIT/TERMINATED */
     uint8_t  pri;           /* 0 = 最高優先度 */
     uint8_t  ctx_level;
     uint8_t  resume_type;   /* yield=1, timer-int=0 */
     SSTask*  sleep_next;    /* WAIT中タスクだけを結ぶリスト */
+    uint8_t  ipc_waiting;
+    void*    arg;
 };
 
 uint16_t ss_task_create(SSTaskInfo* info);  /* DORMANT で作成 */
@@ -379,7 +381,7 @@ sleep中のタスクは専用リストで管理するため、起床処理は全
 
 ## モジュール依存
 
-各モジュールは明確に分離され、依存方向は **内側（kernel）→ 外側（app）** のみ。
+appはwindow/gfx/kernelのAPIを利用する。scheduler coreはUIへ依存せず、premain/standaloneの初期化hostが各subsystemを組み立てる。
 
 ```mermaid
 graph TD
@@ -485,7 +487,7 @@ s30 以前は `.x` は独自の `Win` 構造体 / `zmap[3]` / `bring_to_front` /
 **`.x` ホスト側に残る固有処理**（通常UIの独自実装ではない）:
 
 - グラフィックスモードとパレットの選択（`-8`: 256色、`-16`: 16色）
-- `wait_vsync` の5秒 watchdog と MFP 再初期化
+- `scene_wait_vsync` のtick/spin上限と、一度だけのMFP再設定。spin上限は5秒保証ではない
 - `SS_PROFILE_GFX=1` 時のベンチ（`-bench N`）。`draw_frame`、`redraw_*`、`bench_drag_region` などのプリミティブ描画はベンチ専用であり、通常UIでは使わない
 - `bench.txt` / `runtime.txt` の出力と Human68K ファイル I/O
 - TRAP #14 とベクタの設定・復元、`_exit` による DOS への復帰
@@ -542,7 +544,7 @@ s30 以前は `.x` は独自の `Win` 構造体 / `zmap[3]` / `bring_to_front` /
 | IMRA | `$FF` (全許可)          | `$FF` (全許可)                 | s23 の教訓。Human68K 全 ISR を動作させて IOCS キーボード/マウスを有効化する。両方式とも `ss_set_interrupts()` が同じ `$FF/$7F` を書く                                                                            |
 | IMRB | `$7F` (bit7 除く全許可) | `$7F` (bit7 除く全許可)        | 同上                                                                                                                                                                  |
 
-s23〜s26 の期間は preemptive 版のみ旧値 `$21/$10` (Timer A + Key RXF + Timer D の最小セット) が残っていたが、のちに両方式とも `$FF/$7F` へ統一された。現在 `$21/$10` を書く箇所は `.x` の watchdog 復旧経路 (`standalone/main.c` の `wait_vsync`) のみで、これは復旧後にキーボード/マウス入力が止まる既知の残課題である (保守レビュー R10)。
+s23〜s26 の期間は preemptive 版のみ旧値 `$21/$10` (Timer A + Key RXF + Timer D の最小セット) が残っていたが、のちに両方式とも `$FF/$7F` へ統一された。2026-09-30の変更では、`.x` watchdogも起動後snapshotのIMR/timerをIPL7下で再適用する。元のHuman68K復元snapshotは上書きしない。実機での復旧・入力状態は確認待ち。
 
 ### 設計根拠
 
@@ -806,14 +808,14 @@ s26 当時の standalone ビルドは `obj/interrupts.o main.o scheduler.o buddy
   - preemptive 版の `ss_win_set_content_line` を `ss_disable_interrupts()` / `ss_enable_interrupts()` で割り込み保護（メインスレッドの `memcmp` + 描画中の競合を回避）
 - **ビルド**: 4 ターゲット (cooperative OS, preemptive OS, cooperative `.x`, preemptive `.x`) 全て exit 0
 - **メモリ**: `.bss` 63.6KB → 68.3KB、RAM 80KB に 11.7KB 余裕
-- **`.x` ホスト側に残る固有処理**: 256 色パレット、`wait_vsync` 5 秒 watchdog、ベンチの bitmap save/restore、marching-ants outline など。通常UIの実装自体は後続の統合で `os/app/scene.c` に共有化された
+- **`.x` ホスト側に残る固有処理**: 256 色パレット、`scene_wait_vsync` の有限watchdog、ベンチの bitmap save/restore、marching-ants outline など。通常UIの実装自体は後続の統合で `os/app/scene.c` に共有化された
 - **当時の残課題（解消済み）**: `os/app/main.c` の `WinContent` 配列と `SSWindow.title`/`content` の重複は、後続の `scene.c` 統合で整理された。現在のUI taskは単一であり、旧 `data_thread` は存在しない
 
 ### 現在の制限事項
 
 | 項目                                                                             | 内容                                                                                                                                                                                             |
 | :---                                                                             | :---                                                                                                                                                                                             | :--- |
-| **`.x` watchdog 復旧が IMR を `$21/$10` に変える**                              | `wait_vsync` の復旧経路が IMRA/IMRB を最小セットへ書き換えるため、復旧後にキーボード/マウス入力が止まる。初期値 `$FF/$7F` との不整合は保守レビュー R10 の残課題                                                                   |
+| **`.x` watchdogの実機確認待ち**                              | snapshot再適用・有限な脱出は実装済み。V-DISP/Timer D停止時の復旧と入力状態は実機確認待ち                                                                   |
 | **プリエンプティブ版に `mfp_debug.c` の実装が未提供**                            | `kernel.h` で extern 宣言はあるが、`stubs.o` で未実装。実機検証時に要対応                                                                                                                        |
 | **OS 版で非アクティブタイトルが「白」に見えない**（s27 残）                      | コードとパレットはスタンドアロンと同一だが視覚的に差がある。要エミュレータ/実機検証。仮説: (1) IOCS 0x94 経由のパレット設定が baremetal で反映されない、(2) CRTMOD 16 のパレットレジスタ挙動の差 |
 | **メモリ確保失敗時のフォールバックなし**                                         | `ss_init()` は allocator 初期化失敗で `SS_ERR_MEMORY` を返し、`premain()` は割り込み禁止の停止ループに入る（続行しない）。実行を継続する復旧手段は将来課題                    |
@@ -934,49 +936,22 @@ C ロジックのみを対象とし、以下は意図的に**テストしない*
 
 ### 変更の検証フローと `make verify-check`
 
-「この変更で実機確認がどこまで必要か」を `make verify-check` が自動判定する。`ssos/` 配下の変更ソースだけを分類対象にし（`tools/`, `tests/`, CI, ドキュメント等は実行バイナリに無関係なので無視）、各ファイルを3つのカバー状況のいずれかに分類:
+`make verify`はNative、ASan/UBSan、検証tool fixture、QEMU、asm、context共通instruction比較、ホスト性能ログ、clean build/profile切替/依存/flags/no-opを順に実行する。各stepとQEMU caseのlog、対象commit/dirty状態、tool版、成果物hash/sizeを`build/verification/<run>/`に保存する。自動検証中の公開コピー先は`build/published/`。通常makeの既定は`~/tmp`で、`SS_EXPORT_DIR`で変更できる。
 
-| カバー | ソース例 | 意味 |
-| :--- | :--- | :--- |
-| **covered** | `numfmt.c`, `buddy.c`, `slab.c`, `scheduler.c`, `cooperative|preemptive/wakeups.c` | `make test` / `make test-qemu` で完全カバー。**実機確認不要** |
-| **partial** | `window.c`（gfx は stub）, `interrupts.s`（ctx switch は qemu カバー、MFP 経路は未）, `scheduler.h`/`kernel.h`（構造体レイアウト） | 部分カバー。変更内容に応じて実機確認 |
-| **uncovered** | `gfx/vram.c`, `premain.c`, `entry.s`, `boot/*`, `standalone/main.c`, `app/main.c`, `ipc/*` | テスト未カバー。**実機確認必須** |
-
-```bash
-make verify-check                # ワーキングツリーを解析
-make verify-check REF=HEAD~1     # 直前のコミットを解析
-make verify-check REF=main..HEAD # ブランチ全体を解析
-make verify                      # make test + test-qemu + ビルド + verify-check を一括
+```sh
+. ~/.elf2x68k
+make verify
+make verify-check
+make verify-check REF=HEAD~1
+make verify-check REF=main
+python3 tools/bench-native.py
 ```
 
-出力例（covered のみ）:
-```
-❯ make verify-check REF=HEAD~7
-...
-→ 実機確認は不要です。
-  変更は全て make test / make test-qemu でカバーされています。
-```
+`verify-check`は差分と未追跡sourceを安全側に分類する。disk生成toolは`.xdf`へ影響し、無効REFは非0終了する。QEMU移植版の成功はproduction assemblyや実MFPの非同期タイミングを完全カバーしない。純粋数値変換以外のtarget変更は該当形式の手動確認を示す。情報コマンドの終了コード0を実機確認完了として扱わない。
 
-出力例（実機確認が必要。ターゲットごとに起因ファイルを表示）:
-```
-❯ make verify-check REF=HEAD~8
-...
-■ 実機確認が必要なターゲット:
-  ssos_cop.xdf   ← ssos/os/app/main.c ssos/os/kernel/premain.c
-  ssos_pre.xdf   ← ssos/os/app/main.c ssos/os/kernel/premain.c
-  （cooperative/preemptive は影響なし、等）
+Task/APIの制限は[契約表](docs/task-api-contract.md)、frameとQEMU差分は[context契約](docs/context-switch-contract.md)、未完了項目は[追加改善計画](docs/maintenance-performance-plan-2026-09-30.md)を参照する。
 
-理由:
-  - IOCS/HW 初期化。.x(standalone)は独自経路
-  - アプリ本体（.xdf 専用）
-```
-
-判定の軸:
-- **coop か pre か**: `cooperative/` 以下の変更は `ssos_cop.*` のみ、`preemptive/` 以下は `ssos_pre.*` のみ、共通ソースは両方
-- **.x か .xdf か**: `standalone/main.c` は `.x` 専用、`boot/`・`entry.s`・`premain.c`・`app/main.c` は `.xdf` 側の初期化・入口、`app/scene.c` と共有サブシステムは両方
-- **`interrupts.s` の関数コンテキスト**: 変更行がどの関数にあるかを `git diff` の hunk から特定し、純粋 ctx switch 関数（`ss_task_yield` / `.resume_task` / `.resume_interrupted` / `.start_task` / `ss_context_switch`）なら **`covered`**（実機不要）、ISR エントリ（`ss_timerd_handler` 等）は `partial`、MFP 初期化・保存復元（`ss_set_interrupts` 等）は `uncovered`（実機必要）。変更関数名を理由に表示。
-
-注意: `covered` でも `SSTask` 構造体レイアウト変更など asm と整合が必要な場合は実機リスク。`scheduler.h`/`kernel.h` は `partial` で注意書きを出す。`ssos/` 配下のパターン外ファイルは安全のため `uncovered` 扱い（実機確認推奨）。
+固定sceneは両profileの`.x`で`-scene-bench`を指定する。診断buildは`EXTRA_CFLAGS='-DSS_DIAG_TASKS=32 -DSS_PROFILE_RUNTIME=1'`（1/2/8/32も可）を付ける。`.x`では`-task-check`が独立workerのstack/sleep/returnを確認して終了し、`.xdf`ではUI起動前に同じ診断を行う。診断はworker slotを消費するため、新しいプロセス/起動画像で実行する。標準buildでは診断を実行しない。詳細は[測定手順](docs/gfx-performance.md)を参照する。
 
 ## 参考
 

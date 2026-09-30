@@ -48,6 +48,7 @@ const SSGfxMode* ss_current_mode = &mode_table[SS_CRTMOD_16];
 
 /* Mode Selection Function */
 void ss_gfx_set_mode(int mode) {
+    if (ss_gfx_dma_stop_unconfirmed()) return;
     if (mode == SS_CRTMOD_8 || mode == SS_CRTMOD_16) {
         ss_current_mode = &mode_table[mode];
     }
@@ -83,7 +84,8 @@ static uint8_t dma_disabled_after_timeout;
 #endif
 /* If SAB did not clear ACT, the transfer may still write GVRAM or read the
  * shared source/descriptor.  This state is sticky until process exit. */
-static uint8_t dma_stop_unconfirmed;
+static volatile uint8_t dma_stop_unconfirmed;
+static volatile uint8_t dma_transfer_owned;
 
 #if SS_PROFILE_GFX
 static int dma_bench_mode;
@@ -105,6 +107,12 @@ void ss_gfx_test_dma_status_mode(int mode) {
     dma_test_status_mode = mode;
     dma_disabled_after_timeout = mode < 0;
     dma_stop_unconfirmed = 0;
+    dma_transfer_owned = 0;
+}
+
+void ss_gfx_test_dma_in_flight(int mode) {
+    ss_gfx_test_dma_status_mode(mode);
+    dma_transfer_owned = 1;
 }
 
 uint16_t ss_gfx_test_dma_source_first(void) {
@@ -266,10 +274,25 @@ static int dma_abort_and_confirm(void) {
     }
     dma_ch2->ccr = 0x00;
     dma_ch2->csr = 0xFF;
+    dma_transfer_owned = 0;
     return -2;
 }
 
+int ss_gfx_dma_quiesce(void) {
+    if (dma_stop_unconfirmed) return -3;
+    if (!dma_transfer_owned) return 0;
+#ifdef SS_HOST_TEST
+    if (dma_test_status_mode < 0) return 0;
+#endif
+    if (!(dma_read_status(0) & DMA_CSR_ACT)) {
+        dma_transfer_owned = 0;
+        return 0;
+    }
+    return dma_abort_and_confirm() == -3 ? -3 : 0;
+}
+
 int ss_dma_fill_row(volatile uint16_t* dst, int count) {
+    if (dst == NULL || count <= 0 || count > 512) return -1;
     if (dma_stop_unconfirmed) return -3;
     int timeout = 10000;
     xfr_table.mar = (uint8_t*)dma_fill_buf;
@@ -278,6 +301,7 @@ int ss_dma_fill_row(volatile uint16_t* dst, int count) {
     dma_ch2->dar = (uint8_t*)dst;
     dma_ch2->bar = (uint8_t*)&xfr_table;
     dma_ch2->btc = 1;
+    dma_transfer_owned = 1;
     dma_ch2->ccr = 0x80;
 
     while (timeout-- > 0) {
@@ -289,10 +313,12 @@ int ss_dma_fill_row(volatile uint16_t* dst, int count) {
                 return stop == -3 ? -3 : -1;
             }
             dma_ch2->csr = 0xFF;
+            dma_transfer_owned = 0;
             return -1;
         }
         if ((csr & DMA_CSR_COC) && !(csr & DMA_CSR_ACT)) {
             dma_ch2->csr = 0xFF;
+            dma_transfer_owned = 0;
             return 0;
         }
     }
@@ -302,6 +328,7 @@ int ss_dma_fill_row(volatile uint16_t* dst, int count) {
 }
 
 void ss_gfx_init(void) {
+    if (dma_stop_unconfirmed) return;
     ss_draw_page = ss_current_mode->page0;
     ss_display_page = ss_current_mode->page0;
     ss_draw_idx = 0;
@@ -310,6 +337,7 @@ void ss_gfx_init(void) {
 }
 
 void ss_gfx_flip(void) {
+    if (dma_stop_unconfirmed) return;
     if (ss_current_mode->page_count < 2) {
         /* Single page mode: no page flip */
         return;

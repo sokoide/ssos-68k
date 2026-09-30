@@ -1,5 +1,7 @@
 #include "ssos_test.h"
 #include "scene.h"
+#include "scene_replay.h"
+#include "work_queue.h"
 #include "gfx.h"
 #include "kernel.h"
 #include "scheduler.h"
@@ -56,19 +58,19 @@ typedef struct {
     uint16_t full;
 } SceneTestState;
 
-static uint16_t incremental_frame[SCENE_TEST_W * SCENE_TEST_H];
+static uint16_t incremental_frame[1024 * SCENE_TEST_H];
 
 static void compare_with_full_repaint(SceneTestState* state, int frame_index) {
     SceneInput input = input_for_step(frame_index);
     volatile uint16_t* page = ss_draw_page;
-    for (int i = 0; i < SCENE_TEST_W * SCENE_TEST_H; i++)
+    for (uint32_t i = 0; i < (uint32_t)ss_current_mode->page_size / 2; i++)
         incremental_frame[i] = page[i];
 
     ss_win_render_all();
     ss_gfx_xor_rect(input.mx, input.my, 6, 6);
-    for (int y = 0; y < SCENE_TEST_H; y++) {
-        for (int x = 0; x < SCENE_TEST_W; x++) {
-            int i = y * SCENE_TEST_W + x;
+    for (int y = 0; y < ss_current_mode->display_h; y++) {
+        for (int x = 0; x < ss_current_mode->display_w; x++) {
+            int i = y * (ss_current_mode->bytes_per_line / 2) + x;
             if (page[i] != incremental_frame[i]) {
                 state->mismatch_step = frame_index + 1;
                 state->mismatch_x = x;
@@ -117,7 +119,7 @@ TEST(scene_drag_and_dirty_text_match_full_repaint) {
     ss_gfx_init();
     ss_win_init();
     SceneTestState state = {0};
-    SSSceneHooks hooks = {scene_test_wait, NULL, &state};
+    SSSceneHooks hooks = {.wait_vsync = scene_test_wait, .ctx = &state};
     ss_scene_run(&hooks, NULL);
     if (state.mismatch_step != 0) {
         printf("FAIL\n  frame %d pixel (%d,%d): incremental=%04x full=%04x\n",
@@ -131,6 +133,81 @@ TEST(scene_drag_and_dirty_text_match_full_repaint) {
     ASSERT_EQ(ss_win_get_x(3), 490);    /* dirty text crosses screen edge */
 }
 
+static int replay_wait(void* ctx) {
+    (void)ctx;
+    ss_vsync_counter++;
+    return 0;
+}
+static void replay_compare(void* ctx, uint32_t frame, int dragging) {
+    SceneTestState* state = ctx;
+    if (!dragging && !state->mismatch_step) compare_with_full_repaint(state, frame - 1);
+}
+TEST(scene_target_replay_is_repeatable) {
+    SSSceneStats first = {0}, second = {0};
+    SceneTestState state = {0};
+    SSSceneHooks hooks = {.wait_vsync = replay_wait, .read_input = ss_scene_replay_input,
+                          .after_frame = replay_compare, .ctx = &state};
+    for (int run = 0; run < 2; run++) {
+        reset_test_state(); ss_sched_init();
+        ss_gfx_test_dma_status_mode(-1); ss_gfx_set_mode(SS_CRTMOD_8);
+        ss_gfx_init(); ss_win_init();
+        ss_scene_run(&hooks, run ? &second : &first);
+        ASSERT_TRUE(ss_win_get_z(2) < 10);
+    }
+    ASSERT_EQ(state.mismatch_step, 0);
+    ASSERT_EQ(first.frames, SS_SCENE_REPLAY_FRAMES);
+    ASSERT_EQ(first.frames, second.frames);
+    ASSERT_EQ(first.input_checksum, second.input_checksum);
+    ASSERT_EQ(first.pixel_checksum, second.pixel_checksum);
+}
+TEST(scene_target_replay_mode16_matches_full_repaint) {
+    reset_test_state(); ss_sched_init();
+    ss_gfx_test_dma_status_mode(-1); ss_gfx_set_mode(SS_CRTMOD_16);
+    ss_gfx_init(); ss_win_init();
+    SceneTestState state = {0};
+    SSSceneStats stats;
+    SSSceneHooks hooks = {.wait_vsync = replay_wait, .read_input = ss_scene_replay_input,
+                          .after_frame = replay_compare, .ctx = &state};
+    ss_scene_run(&hooks, &stats);
+    ASSERT_EQ(state.mismatch_step, 0);
+    ASSERT_EQ(stats.frames, SS_SCENE_REPLAY_FRAMES);
+}
+static int request_applied;
+static void ui_request(void* arg) {
+    request_applied += *(int*)arg;
+    ss_win_move(1, 42, 42);
+    ss_win_render_all();
+}
+TEST(scene_worker_request_keeps_payload_until_ui_consumes) {
+    reset_test_state(); ss_sched_init();
+    ss_gfx_test_dma_status_mode(-1); ss_gfx_set_mode(SS_CRTMOD_8);
+    ss_gfx_init(); ss_win_init(); ss_work_init(&ss_main_work_queue);
+    static int persistent_payload = 7;
+    request_applied = 0;
+    ASSERT_EQ(ss_work_enqueue(&ss_main_work_queue, ui_request, &persistent_payload), SS_OK);
+    /* Native scene suppresses ISR transport; consume at the UI wait hook. */
+    SSSceneHooks hooks = {.wait_vsync = replay_wait, .read_input = ss_scene_replay_input};
+    ss_scene_run(&hooks, NULL);
+    ss_work_drain(&ss_main_work_queue);
+    ASSERT_EQ(request_applied, 7);
+    ASSERT_EQ(ss_win_get_x(1), 42);
+    ASSERT_EQ(ss_main_work_queue.count, 0);
+}
+TEST(scene_dma_failure_stops_before_input_or_writes) {
+    reset_test_state(); ss_sched_init();
+    ss_gfx_test_dma_status_mode(2); ss_gfx_set_mode(SS_CRTMOD_8);
+    ss_dma_fill_row(ss_draw_page, 80);
+    ss_win_init();
+    SSSceneStats stats;
+    SSSceneHooks hooks = {.wait_vsync = replay_wait, .read_input = ss_scene_replay_input};
+    ss_scene_run(&hooks, &stats);
+    ASSERT_EQ(stats.frames, 0);
+    ASSERT_EQ(ss_gfx_dma_quiesce(), -3);
+}
 void run_scene_tests(void) {
+    RUN_TEST(scene_target_replay_is_repeatable);
+    RUN_TEST(scene_target_replay_mode16_matches_full_repaint);
+    RUN_TEST(scene_worker_request_keeps_payload_until_ui_consumes);
+    RUN_TEST(scene_dma_failure_stops_before_input_or_writes);
     RUN_TEST(scene_drag_and_dirty_text_match_full_repaint);
 }

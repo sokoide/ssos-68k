@@ -299,7 +299,19 @@ TEST(slab_init_rejects_count_overflow_and_null_cache_ops) {
     ss_slab_free(NULL, arena);
 }
 
+TEST(mem_largest_payload_tracks_fragmentation_and_recovery) {
+    ss_mem_init(arena, sizeof(arena));
+    uint32_t largest = ss_mem_largest_free();
+    ASSERT_EQ(largest, (1u << SS_BUDDY_MAX_ORDER) - sizeof(SSBuddyBlock));
+    void* ptrs[128];
+    unsigned count = 0;
+    while (count < 128 && (ptrs[count] = ss_alloc(largest)) != NULL) count++;
+    ASSERT_TRUE(ss_mem_largest_free() < largest);
+    for (unsigned i = 0; i < count; i++) ss_free(ptrs[i]);
+    ASSERT_EQ(ss_mem_largest_free(), largest);
+}
 void run_mem_tests(void) {
+    RUN_TEST(mem_largest_payload_tracks_fragmentation_and_recovery);
     RUN_TEST(mem_init_reports_total);
     RUN_TEST(mem_init_has_free_space);
     RUN_TEST(mem_init_preserves_all_usable_blocks);

@@ -208,7 +208,7 @@ ss_context_switch:
 		move.l	SS_TCB_ARG_OFFSET(a1), -(sp)		| entry(arg)
 		move.w	#0x2000, %sr		| enable interrupts
 		jsr		(%a0)
-		addq.l	#4, sp
+		addq.l	#SS_FRAME_ARG_BYTES, sp
 		jmp		ss_task_exit
 
 		| ============================================================

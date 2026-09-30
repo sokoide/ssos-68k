@@ -126,7 +126,7 @@ core and tests; only the small wakeup-dispatch policy differs.
 
 These tests cover **C logic and RAM-backed pixels only**. The scene test feeds
 fixed mouse positions through the normal frame loop and compares incremental
-output after two drops with a full repaint. They deliberately do **not** exercise:
+output after three drops and z renumbering with a full repaint. They deliberately do **not** exercise:
 
 - **Physical VRAM / CRTC / DMA / IOCS / MFP** — graphics algorithms and final
   pixels are covered using RAM, but actual MMIO, bus timing, DMA transfer, and
@@ -156,3 +156,14 @@ specific and cannot run on QEMU virt.
    and reset its state in `reset_test_state()`.
 3. Add the suite source to `UNIT_SRCS` (and the module source to `OS_SRCS`) in
    `Makefile.native`.
+
+
+## 追加自動検証と証拠（2026-09-30）
+
+Nativeはruntime_guardの部分初期化16組合せ・再入・DMA停止未確認、有限waitとtick周回、INITIALIZING/start交差、work再投入/budget/満杯/遅延、共有target入力517frameの画素一致と反復を確認する。IRQ stubは引き続きno-op。
+
+QEMUは両方式で初期化中start拒否、1/2/8/32taskと1/5/10tick sleep、production `trap14.s`のrestore関数のIPL0〜7/ネスト、worker→UI queue、targetと共有する32worker診断を追加した。TRAP初期化/abort/IOCSはここでは実行しない。実MFPの非同期preemptionは未検証。
+
+`make test-tools`は判定scriptのfixtureと期待断片/log保持を確認する。`make verify`はsanitizerを含む自動検証を逐次実行し、QEMU case log、version、commit、dirty状態、hash/sizeを保存する。`SS_TEST_LOG_DIR`でcase logの保存先を指定できる。単独QEMUの既定は`tests/build/test-logs/`、asmはrootの`build/test-logs/`。失敗runを上書きしない。
+
+`python3 tools/check-build.py`はsource bytesを変えずmtimeだけを一時変更し、最後に復元する。clean build、両方式profile0/1、診断build、依存、flags、2回no-opを検証する。`python3 tools/check-context.py`は共通assembly instruction列を比較し、リンク後のopcode/relocation比較や実機検証の代用にはしない。詳細は[frame契約](../docs/context-switch-contract.md)。

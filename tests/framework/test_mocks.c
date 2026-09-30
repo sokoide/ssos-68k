@@ -27,6 +27,13 @@
 uint16_t ss_irq_save(void) { return 0x2000; }
 void ss_irq_restore(uint16_t saved_sr) { (void)saved_sr; }
 
+/* Deterministic start attempt at the reservation/publication boundary. */
+static uint16_t initializing_probe_result;
+void ss_task_create_probe(uint16_t id) {
+    initializing_probe_result = ss_task_start(id);
+}
+uint16_t ss_test_create_probe_result(void) { return initializing_probe_result; }
+
 /* ---- 2. Tick/vsync counters (defined in interrupts.s on real HW) ------ */
 volatile uint32_t ss_tick_counter      = 0;
 volatile uint32_t ss_vsync_counter     = 0;

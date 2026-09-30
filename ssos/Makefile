@@ -1,3 +1,4 @@
+SS_EXPORT_DIR ?= $(HOME)/tmp
 ifeq ($(shell which m68k-xelf-gcc),)
 $(error Cross-compilation toolchain not found. Please run: . ~/.elf2x68k)
 endif
@@ -49,12 +50,13 @@ $(SUBDIRS):
 $(DISK_FILE): $(BOOT_BIN) $(OS_BIN) $(MAKEDISK)
 	@mkdir -p $(DISK_DIR)
 	$(MAKEDISK) $(BOOT_BIN) $(OS_BIN) $@
-	cp $@ $(HOME)/tmp/$(DISK)
+	@mkdir -p $(SS_EXPORT_DIR)
+	cp $@ $(SS_EXPORT_DIR)/$(DISK)
 
-$(BOOT_BIN): boot/main.s boot/linker.ld boot/Makefile
+$(BOOT_BIN): FORCE boot/main.s boot/linker.ld boot/Makefile
 	$(MAKE) -C boot all SCHED=$(SCHED)
 
-$(OS_BIN): $(OS_INPUTS)
+$(OS_BIN): FORCE $(OS_INPUTS) common-sources.mk $(wildcard include/*.mac)
 	$(MAKE) -C os all SCHED=$(SCHED) SS_PROFILE_GFX=$(SS_PROFILE_GFX)
 
 $(MAKEDISK): ../tools/makedisk/main.c ../tools/makedisk/Makefile
@@ -64,3 +66,6 @@ clean:
 	for dir in $(SUBDIRS) standalone; do $(MAKE) -C $$dir clean SCHED=$(SCHED); done
 	rm -rf build
 	rm -f $(DISK)
+
+.PHONY: FORCE
+FORCE:
