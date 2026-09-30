@@ -266,7 +266,7 @@ DMA閾値の比較では、現行の`SSPERF`は`vsync`が整数でwall-clock時�
 
 両profileの`.x`で`-8 -scene-bench`または`-16 -scene-bench`を指定する。`-bench`/`-dma-bench`との併用は拒否する。共有`ss_scene_run()`を517frameの固定Mouse/Key入力で駆動し、drag/drop・z再採番・1000→9・画面端の配置注入を通す。通常のIOCS入力サンプリングを迂回する以外の描画処理は共有である。Timer表示も処理frameから生成する。
 
-`scene.txt`にframes、Timer D ticks、frame処理（yield込み）の観測最大tick、入力/最終画素checksum、profile設定を出す。画素checksumは終了前の表示領域から取得するが、時間集計の後で計算する。tickは5ms単位であり、0や僅差を速度差として扱わない。profile 1では`runtime.txt`も処理量を記録する。profile 0とprofile 1の同一checksumを先に確認する。
+`scene.txt`にframes、Timer D ticks、frame処理（yield込み）の観測最大tick、入力/最終画素checksum、profile設定を出す。画素checksumは`-scene-bench`で明示的に指定した場合だけ、時間集計の後で終了前の表示領域から取得する。通常UIのESC終了では高コストな全画面VRAM走査を行わない。未指定またはDMA停止未確認時の`pixel_checksum`は0。tickは5ms単位であり、0や僅差を速度差として扱わない。profile 1では`runtime.txt`も処理量を記録する。profile 0とprofile 1の同一checksumを先に確認する。
 
 自動ホスト測定は`python3 tools/bench-native.py`。両方式・両profile・mode8/16でwarm-up＋5runを保存し、517frameのchecksum一致を判定する。frame bodyのmedian/p95/max、scheduler C logic（実context switchなし）、fragmented allocatorと容量回復、work処理を測る。scene以外は100操作batchのns値で、単一操作のnsと混同しない。時計の報告分解能と観測最小stepを残す。ホストRAMの時間からDMA閾値や実MFPの遅延を決めない。
 

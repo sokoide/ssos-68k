@@ -179,3 +179,14 @@ READMEと`ssos/README_ja.md`、tests README、所有権文書、gfx手順の契�
 - build検証runは`build/build-check/20260930T141614891882/`。最終の通常/診断公開コピーのhashは同verification runの`published-artifacts.json`。
 
 手動確認用の通常4形式とprofile1は`build/published/`、32worker＋runtime profile診断4形式は`build/published/diagnostic/`に保存した。sandbox内へ出力先を切り替えて検証したため、`~/tmp`の旧成果物は今回の成果物として扱わない。次はこのhash付き成果物でN07を実施し、N06/N08の実時間と採否を記録する。
+
+
+### ESC終了遅延への修正（2026-09-30）
+
+- 利用者報告: 両方式の`.x`は通常UIに問題がないが、ESCから終了まで約5秒停止する。報告時点の`~/tmp`の両`.x`は公開成果物とhash一致。`.xdf`はhash不一致のため、その起動報告を今回の成果物の検証へ転用しない。
+- 調査: 通常UIでも`SSSceneStats`を渡すため、scene終了直後に全画面VRAMを読み、各画素でFNVの32bit乗算を行っていた。target逆アセンブルで`__mulsi3`呼出しを確認。意図した終了待機ではなく、新しいchecksum計測が通常終了にも適用された実装不備。利用者の修正版再確認で遅延解消を確認（下記）。
+- 修正: `collect_pixel_checksum`を明示指定するscene bench/host benchだけで画素checksumを計算する。通常終了およびDMA停止未確認時は走査せず、`pixel_checksum=0`。安価なframe/tick統計は維持する。
+- 回帰検査: 通常stop後のVRAMをNULLにして統計収集が読み出さないことを確認。DMA停止未確認でもchecksum指定を無視すること、mode8/16のbenchmark checksumが引き続き得られることを確認。
+- 手動確認結果: 修正版の両`.x`を配置後、利用者から「直りました」と報告。ESC後の約5秒遅延は解消済みとして扱う。終了時間の数値・機種・clockは未記録。この確認はabort/watchdog/DMA故障経路の検証を兼ねない。
+- 修正後の`make verify`成功（`build/verification/20260930T174143735837/manifest.json`）。Native通常・ASan/UBSan両方式各134件、QEMU両方式各15件、asm5件、tool fixture5件、host checksum反復・build matrix/依存/no-op確認を通過。検証後の変更は本書への追記のみ。
+- 再確認用の両`.x`を`~/tmp/ssos_cop.x`/`ssos_pre.x`へ配置し、`build/published/`とのbyte/hash一致を確認。旧版は`build/esc-exit/previous/`、新旧hashは上記runの`esc-exit-artifacts.json`。`.xdf`の`~/tmp`コピーは今回更新していない。

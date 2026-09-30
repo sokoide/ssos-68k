@@ -13,12 +13,14 @@ typedef struct {
     int (*read_input)(void* ctx, uint32_t frame, int* mx, int* my,
                       int* buttons, int* key);
     void (*after_frame)(void* ctx, uint32_t frame, int dragging);
+    uint8_t collect_pixel_checksum; /* opt-in VRAM scan after timing; benchmarks only */
 } SSSceneHooks;
 
 typedef struct {
     uint32_t frames;
     uint32_t vsyncs;
     uint32_t ticks, max_frame_ticks, input_checksum, pixel_checksum;
+    /* pixel_checksum is 0 when not requested or DMA stop is unconfirmed. */
 } SSSceneStats;
 
 #define SS_SCENE_WINDOW_COUNT 3

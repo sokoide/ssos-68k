@@ -500,11 +500,17 @@ void ss_scene_run(const SSSceneHooks *hooks, SSSceneStats *stats) {
         stats->ticks = ss_tick_counter - start_tick;
         stats->max_frame_ticks = max_ticks;
         stats->input_checksum = checksum;
-        uint32_t pixels = 2166136261u;
-        for (int y = 0; y < ss_current_mode->display_h; y++)
-            for (int x = 0; x < ss_current_mode->display_w; x++)
-                pixels = (pixels ^ ss_draw_page[y * (ss_current_mode->bytes_per_line / 2) + x]) * 16777619u;
-        stats->pixel_checksum = pixels;
+        stats->pixel_checksum = 0;
+        /* A full VRAM readback with per-pixel 32-bit multiplication is costly
+         * on 68000. Normal ESC exit only needs the cheap frame/tick stats. */
+        if (hooks != NULL && hooks->collect_pixel_checksum &&
+            !ss_gfx_dma_stop_unconfirmed()) {
+            uint32_t pixels = 2166136261u;
+            for (int y = 0; y < ss_current_mode->display_h; y++)
+                for (int x = 0; x < ss_current_mode->display_w; x++)
+                    pixels = (pixels ^ ss_draw_page[y * (ss_current_mode->bytes_per_line / 2) + x]) * 16777619u;
+            stats->pixel_checksum = pixels;
+        }
     }
 }
 

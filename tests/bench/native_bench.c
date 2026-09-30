@@ -61,7 +61,7 @@ int main(int argc, char** argv) {
     for (int run = 0; run < 6; run++) {
         ss_sched_init(); ss_gfx_test_dma_status_mode(-1);
         ss_gfx_set_mode(mode); ss_gfx_init(); ss_win_init();
-        SSSceneHooks hooks = {.wait_vsync = wait_frame, .read_input = input, .after_frame = after};
+        SSSceneHooks hooks = {.wait_vsync = wait_frame, .read_input = input, .after_frame = after, .collect_pixel_checksum = 1};
         SSSceneStats stats;
         ss_gfx_profile_reset();
         ss_scene_run(&hooks, &stats);

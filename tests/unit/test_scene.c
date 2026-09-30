@@ -146,7 +146,7 @@ TEST(scene_target_replay_is_repeatable) {
     SSSceneStats first = {0}, second = {0};
     SceneTestState state = {0};
     SSSceneHooks hooks = {.wait_vsync = replay_wait, .read_input = ss_scene_replay_input,
-                          .after_frame = replay_compare, .ctx = &state};
+                          .after_frame = replay_compare, .ctx = &state, .collect_pixel_checksum = 1};
     for (int run = 0; run < 2; run++) {
         reset_test_state(); ss_sched_init();
         ss_gfx_test_dma_status_mode(-1); ss_gfx_set_mode(SS_CRTMOD_8);
@@ -158,6 +158,7 @@ TEST(scene_target_replay_is_repeatable) {
     ASSERT_EQ(first.frames, SS_SCENE_REPLAY_FRAMES);
     ASSERT_EQ(first.frames, second.frames);
     ASSERT_EQ(first.input_checksum, second.input_checksum);
+    ASSERT_TRUE(first.pixel_checksum != 0);
     ASSERT_EQ(first.pixel_checksum, second.pixel_checksum);
 }
 TEST(scene_target_replay_mode16_matches_full_repaint) {
@@ -167,10 +168,11 @@ TEST(scene_target_replay_mode16_matches_full_repaint) {
     SceneTestState state = {0};
     SSSceneStats stats;
     SSSceneHooks hooks = {.wait_vsync = replay_wait, .read_input = ss_scene_replay_input,
-                          .after_frame = replay_compare, .ctx = &state};
+                          .after_frame = replay_compare, .ctx = &state, .collect_pixel_checksum = 1};
     ss_scene_run(&hooks, &stats);
     ASSERT_EQ(state.mismatch_step, 0);
     ASSERT_EQ(stats.frames, SS_SCENE_REPLAY_FRAMES);
+    ASSERT_TRUE(stats.pixel_checksum != 0);
 }
 static int request_applied;
 static void ui_request(void* arg) {
@@ -193,18 +195,41 @@ TEST(scene_worker_request_keeps_payload_until_ui_consumes) {
     ASSERT_EQ(ss_win_get_x(1), 42);
     ASSERT_EQ(ss_main_work_queue.count, 0);
 }
+static int stop_without_readback(void* ctx) {
+    *(volatile uint16_t**)ctx = ss_draw_page;
+    ss_draw_page = NULL; /* Any readback after this stop must fail under ASan. */
+    return 1;
+}
+TEST(scene_normal_exit_does_not_read_vram_for_stats) {
+    reset_test_state(); ss_sched_init();
+    ss_gfx_test_dma_status_mode(-1); ss_gfx_set_mode(SS_CRTMOD_8);
+    ss_gfx_init(); ss_win_init();
+    volatile uint16_t* saved_page = NULL;
+    SSSceneStats stats;
+    SSSceneHooks hooks = {.wait_vsync = stop_without_readback, .ctx = &saved_page};
+    ss_scene_run(&hooks, &stats);
+    ss_draw_page = saved_page;
+    ASSERT_EQ(stats.frames, 0);
+    ASSERT_EQ(stats.pixel_checksum, 0);
+}
 TEST(scene_dma_failure_stops_before_input_or_writes) {
     reset_test_state(); ss_sched_init();
     ss_gfx_test_dma_status_mode(2); ss_gfx_set_mode(SS_CRTMOD_8);
     ss_dma_fill_row(ss_draw_page, 80);
     ss_win_init();
+    volatile uint16_t* saved_page = ss_draw_page;
+    ss_draw_page = NULL;
     SSSceneStats stats;
     SSSceneHooks hooks = {.wait_vsync = replay_wait, .read_input = ss_scene_replay_input};
+    hooks.collect_pixel_checksum = 1;
     ss_scene_run(&hooks, &stats);
+    ss_draw_page = saved_page;
+    ASSERT_EQ(stats.pixel_checksum, 0);
     ASSERT_EQ(stats.frames, 0);
     ASSERT_EQ(ss_gfx_dma_quiesce(), -3);
 }
 void run_scene_tests(void) {
+    RUN_TEST(scene_normal_exit_does_not_read_vram_for_stats);
     RUN_TEST(scene_target_replay_is_repeatable);
     RUN_TEST(scene_target_replay_mode16_matches_full_repaint);
     RUN_TEST(scene_worker_request_keeps_payload_until_ui_consumes);

@@ -955,7 +955,10 @@ int main(int argc, char** argv) {
         .should_stop = scene_should_stop,
         .ctx = NULL,
     };
-    if (run_scene_bench) scene_hooks.read_input = ss_scene_replay_input;
+    if (run_scene_bench) {
+        scene_hooks.read_input = ss_scene_replay_input;
+        scene_hooks.collect_pixel_checksum = 1;
+    }
     ss_scene_run(&scene_hooks, &runtime_stats);
 
 cleanup:
