@@ -59,12 +59,12 @@ done:
 	move.l	#0x010000, a2
 
 | Human68K と同じ初期化: IPL ROM 経由のマウス初期化を OS ロード直後、
-| OS エントリへジャンプする前に実施。これにより IPL ROM が SCC Ch.B
-| 受信ハンドラを IPL ベクタ ($50-$5E, IPL レベル5 = 0x140-0x15C) に
-| 登録する。SCC のマウス受信が有効化される。
+| OS エントリへジャンプする前に実施。SCC (IPL レベル5) のベクタ領域は
+| $50-$5F ($140-$17C、Inside X68000 ch.3)。IPL ROM がこの領域に SCC
+| Ch.B 受信ハンドラを登録するため、SCC のマウス受信が有効化される。
 	lea.l	.message_msinit, a1
 	IOCS	_B_PRINT
-	move.w	#0x2000, %sr		| IPL マスク 0 (割り込み許可)
+	move.w	#0x2000, %sr		| IPL マスク 1 (レベル2-7許可)
 	moveq	#0x70, d0
 	trap	#15			| IOCS _MS_INIT
 	moveq	#0x71, d0

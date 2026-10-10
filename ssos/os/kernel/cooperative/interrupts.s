@@ -37,22 +37,27 @@ ss_set_interrupts:
 		| Save original interrupt state
 		jsr	save_interrupts
 
-		| Set MFP vector base
-		move.b	#0x41, 0xe88017
+	| Set MFP vector base.  Bit 3 (S) = 1 selects software EOI mode:
+	|   our handlers clear their ISRA/ISRB bits explicitly, and sources
+	|   served by the NOP stubs stay latched after the first hit
+	|   (auto-EOI would re-enter the H-SYNC stub at the scanline rate).
+	move.b	#0x41, 0xe88017
 
-		| IERAB: keep all sources enabled (Human68k-compatible).
-		|   IER bits may be needed by IOCS (USART, Timers) even when
-		|   the corresponding interrupt is masked.
-		move.b	#0xff, 0xe88007
-		move.b	#0x7f, 0xe88009
+	| IERAB: enable all sources.  Deliberate superset of Human68K's
+	|   own masks (fig.13 lists IERA=$18/IERB=$3E; Human68K v3.02
+	|   measures IERA=$18 and IERB=$26, which grows to $2E with
+	|   drivers loaded): every IOCS source (keyboard USART, timers)
+	|   stays live even where IMR decides.
+	move.b	#0xff, 0xe88007
+	move.b	#0x7f, 0xe88009
 
-		| IMRAB: keep all sources unmasked so Human68K's handlers
-		|   (keyboard, mouse, CRTC, etc.) continue to work.
-		|   Our code overrides only specific vectors (0x134 V-DISP,
-		|   0x110 Timer D); all others still point to Human68K ISRs.
-		|   IMRB bit 7 is reserved and must stay masked (0x7F).
-		move.b	#0xff, 0xe88013
-		move.b	#0x7f, 0xe88015
+	| IMRAB: keep all sources unmasked so Human68K's handlers
+	|   (keyboard, mouse, CRTC, etc.) continue to work.
+	|   Our code overrides only specific vectors (0x134 V-DISP,
+	|   0x110 Timer D); all others still point to Human68K ISRs.
+	|   IMRB bit 7 = GPIP5 (unused, tied H) — keep it masked (0x7F).
+	move.b	#0xff, 0xe88013
+	move.b	#0x7f, 0xe88015
 
 		| Reset IPRAB, ISRAB
 		move.b	#0x00, 0xe8800b

@@ -77,10 +77,14 @@ void premain(void) {
         volatile uint32_t* tv = (volatile uint32_t*)0xE00000;
         for (int i = 0; i < 0x20000; i++) tv[i] = 0;
     }
-    /* Disable text layer in video controller to hide cursor completely */
+    /* Disable text layer in video controller to hide cursor completely.
+     * VC R2 ($E82600): bit 5 = text ON/OFF, bit 6 = sprite+BG ON/OFF,
+     * bit 4 = graphic in 1024-dot modes, bits 3-0 = graphic in 512-dot
+     * modes.  Keep IOCS's configuration for the other layers and clear
+     * only the text bit (bit 5). */
     {
         volatile uint16_t* vc = (volatile uint16_t*)0xE82600;
-        *vc = 0x003E; /* All layers ON except text (bit0=0) */
+        *vc &= (uint16_t)~0x0020;
     }
 
     /*
@@ -107,7 +111,7 @@ void premain(void) {
     _iocs_ms_curon();
 
     /*
-     * baremetal 固有の MFP 調整 (AER のみ。IMR は Human68K 互換 $FF/$7F
+     * baremetal 固有の MFP 調整 (AER のみ。IMR は全許可 $FF/$7F
      * を維持する)。
      *
      * AER=$06: Timer A をイベントカウントモードで V-DISP 計測に使うため、
@@ -118,7 +122,10 @@ void premain(void) {
      * (x68k-master/04_MFP.md §5「イベントカウントモード」)
      *
      * IMRA=$FF / IMRB=$7F を維持する理由: SCC (IPL レベル5) と
-     * MFP 内部ソースをすべて許可する Human68K 互換設定。
+     * MFP 内部ソースをすべて許可する設定。Human68K 自体はより狭い
+     * マスクを設定する (Inside X68000 ch.4 図13: IERA=$18 / IERB=$3E、
+     * v3.02 実測では IERA=$18、IERB=$26〜$2E(ドライバ読み込みで
+     * 変動)) が、ここでは意図的に全許可のスーパーセットにする。
      * 以前は IMRA=$21/IMRB=$10 で未使用ソース発火を避けていたが、
      * その絞り込みが IPL ROM ハンドラが期待する状態を崩し、
      * 結果としてマウス受信ワークが更新されない症状の原因になっていた。
