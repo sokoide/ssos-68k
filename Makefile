@@ -1,5 +1,6 @@
 TOPTARGETS := all clean
 SUBDIRS := tools/makedisk
+.DEFAULT_GOAL := usage
 
 # use pnpm if available, otherwise npx
 RUNNER := $(shell command -v pnpm >/dev/null 2>&1 && echo "pnpm dlx" || echo "npx")
@@ -7,7 +8,18 @@ EXEC := $(shell command -v pnpm >/dev/null 2>&1 && echo "pnpm exec" || echo "npx
 ASM_FORMATTER ?= asmfmt
 
 .PHONY: $(TOPTARGETS) $(SUBDIRS) all format ssos-cooperative ssos-preemptive test test-asm test-qemu verify verify-check
-.default: all
+
+usage:
+	@echo "SSOS-68K build and test targets:"
+	@echo "  make all              Build both scheduler variants"
+	@echo "  make test             Run native tests"
+	@echo "  make test-asm         Run m68k assembly samples under QEMU"
+	@echo "  make test-qemu        Run scheduler tests under QEMU"
+	@echo "  make verify           Run automated verification and report hardware checks"
+	@echo "  make clean            Remove build outputs"
+	@echo "  make format           Format Markdown and assembly sources"
+
+.PHONY: usage
 
 # Single unified tree under ssos/; the threading model is selected by SCHED=.
 all: tools/makedisk ssos-cooperative ssos-preemptive

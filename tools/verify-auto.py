@@ -37,17 +37,22 @@ commands = [ ['make', 'test'], ['make', 'test', 'SANITIZE=1'], ['make', 'test-to
              ['make', 'test-qemu'], ['make', 'test-asm'], ['python3', 'tools/check-context.py'], ['python3', 'tools/bench-native.py'], ['python3', 'tools/check-build.py'],
              ['make', 'verify-check'] ]
 status = 0
+failed_step = None
 try:
     for i, args in enumerate(commands):
         log = out / f'{i:02d}.log'
-        print(' '.join(args) + ' -> ' + str(log), flush=True)
+        label = ' '.join(args)
+        print(f'[{i + 1}/{len(commands)}] RUN  {label}', flush=True)
         with log.open('w') as f:
             result = subprocess.run(args, env=env, stdout=f, stderr=subprocess.STDOUT)
         manifest['steps'].append({'command': args, 'exit': result.returncode, 'log': str(log)})
         if result.returncode:
-            print(log.read_text()[-5000:])
             status = result.returncode
+            failed_step = {'command': label, 'exit': result.returncode, 'log': str(log)}
+            print(f'[{i + 1}/{len(commands)}] FAIL (exit {result.returncode}) -> {log}', flush=True)
+            print(log.read_text()[-5000:])
             break
+        print(f'[{i + 1}/{len(commands)}] PASS -> {log}', flush=True)
     disasm = out / 'disassembly'
     disasm.mkdir()
     objects = list((root / 'ssos').glob('**/build/**/interrupts.o')) + list((root / 'ssos').glob('**/build/**/trap14.o')) + list((root / 'ssos').glob('**/build/**/mfp_state.o'))
@@ -59,6 +64,13 @@ try:
         if p.is_file() and p.suffix in ('.x', '.xdf', '.elf'):
             manifest['artifacts'].append({'path': str(p.relative_to(root)), 'sha256': hashlib.sha256(p.read_bytes()).hexdigest(), 'bytes': p.stat().st_size})
 finally:
+    manifest['result'] = 'PASS' if status == 0 else 'FAIL'
+    manifest['failed_step'] = failed_step
     (out / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
     print('Verification manifest: ' + str(out / 'manifest.json'))
+    completed = len(manifest['steps'])
+    if status == 0:
+        print(f'=== VERIFY PASS: {completed}/{len(commands)} steps completed ===')
+    else:
+        print(f'=== VERIFY FAIL: {failed_step["command"]} (exit {status}); {completed}/{len(commands)} steps completed ===')
 sys.exit(status)
