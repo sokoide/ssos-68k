@@ -11,8 +11,8 @@
 | ss_work_enqueue | handler/argポインタをqueueへ保持 | argはcallback完了までproducerが保持。満杯ならSS_ERR_LIMITで所有権を移さない。NULL queue/handlerはSS_ERR_PARAM |
 | ss_work_drain_budget | 開始時件数のうちbudget件を処理 | UI単一consumer専用。callbackは短時間でreturnし、再帰drainしない。新規投入分は次batchへ |
 
-ss_work_enqueueは短いIRQ保存復元区間を持ち、SupervisorのISRからは永続payloadでのみ使える。allocator/slab、描画/window、blocking IPC/sleep/yieldはISRから呼ばない。schedulerのISR入口はcaller-held IPL7、work callbackはtask contextでmask解除後に動く。
+ss_work_enqueue は短い IRQ 保存復元区間を持ち、Supervisor の ISR からは永続 payload でのみ使える。allocator/slab、描画/window、blocking IPC/sleep/yield は ISR から呼ばない。scheduler の ISR 入口は caller-held IPL7、work callback は task context で mask 解除後に動く。
 
-UI以外のtaskは描画/windowを直接呼ばず、永続payloadと短いcallbackをqueueへ送る。callback完了後にpayloadを再利用/解放できる。複数producerの共有payloadは別途排他する。callbackを解放済みのstack変数へ向けない。`.x`はwork/IPCをリンクせず、このtransportは`.xdf`用。
+UI 以外の task は描画/window を直接呼ばず、永続 payload と短い callback を queue へ送る。callback 完了後に payload を再利用/解放できる。複数 producer の共有 payload は別途排他する。callback を解放済みの stack 変数へ向けない。`.x`は work/IPC をリンクせず、この transport は`.xdf`用。
 
-work queueのhigh_water、rejected、max_delay_ticksはinitからの集計。delayはTimer D tick差であり、IRQ停止中のwall-clockではない。長期間/2^32tickを超える保留は対象外。件数budgetはhandler自身の無限実行を防げない。
+work queue の high_water、rejected、max_delay_ticks は init からの集計。delay は Timer D tick 差であり、IRQ 停止中の wall-clock ではない。長期間/2^32tick を超える保留は対象外。件数 budget は handler 自身の無限実行を防げない。

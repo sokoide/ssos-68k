@@ -2,8 +2,8 @@
 
 ## ステータス（2026-09-26）
 
-この計画のP0と完了条件の大半は実装済みで、テスト構成の現況は `tests/README.md` に、
-作業計画の正本は [maintenance-performance-review-2026-09-24.md](maintenance-performance-review-2026-09-24.md) の「実施計画（正本）」に移管した。未実施の残項目（input provider、scene統合テスト、MFP/DMACのモデル化）はレビュー文書のR10・R11・R13配下で扱う。本書は2026-08-07時点の計画記録として保持する。
+この計画の P0 と完了条件の大半は実装済みで、テスト構成の現況は `tests/README.md` に、
+作業計画の正本は [maintenance-performance-review-2026-09-24.md](maintenance-performance-review-2026-09-24.md) の「実施計画（正本）」に移管した。未実施の残項目（input provider、scene 統合テスト、MFP/DMAC のモデル化）はレビュー文書の R10・R11・R13 配下で扱う。本書は 2026-08-07 時点の計画記録として保持する。
 
 ## 目的
 

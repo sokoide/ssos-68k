@@ -4,6 +4,7 @@ SUBDIRS := tools/makedisk
 # use pnpm if available, otherwise npx
 RUNNER := $(shell command -v pnpm >/dev/null 2>&1 && echo "pnpm dlx" || echo "npx")
 EXEC := $(shell command -v pnpm >/dev/null 2>&1 && echo "pnpm exec" || echo "npx")
+ASM_FORMATTER ?= asmfmt
 
 .PHONY: $(TOPTARGETS) $(SUBDIRS) all format ssos-cooperative ssos-preemptive test test-asm test-qemu verify verify-check
 .default: all
@@ -29,6 +30,9 @@ format:
 	@echo "Formatting markdown files using $(RUNNER)..."
 	$(RUNNER) markdownlint-cli "**/*.md" --ignore "CLAUDE.md" --ignore "node_modules/**" --fix
 	$(EXEC) textlint --fix "**/*.md"
+	@echo "Formatting assembly files using $(ASM_FORMATTER)..."
+	@find . -name '*.s' -not -path './.git/*' -print0 | xargs -0 $(ASM_FORMATTER) -w
+	@find . -name '*.s' -not -path './.git/*' -print0 | xargs -0 perl -pi -e 's/^(\s*)\/\/(.*)$$/$$1|$$2/'
 
 # Native C tests (both SCHED variants) and QEMU asm samples. See tests/README.md.
 test:

@@ -66,7 +66,7 @@ cp ~/tmp/ssos_pre_profile1.x ~/tmp/ssos_pre_8bench.x
 ```
 
 実行時は `-8 -bench 100` を付ける。
-`-8` は 256 色モード、`-bench 100` は各決定的フェーズを100回実行する指定である。実行順は `full`、`region`、`z-expose`、`text-update`、`drag-region`、`xor-move`。`drag-region` は固定した2位置の間でhide → 旧領域再合成 → XOR → move/show → 新領域再合成を繰り返すが、共有`scene.c`の通常drag終了処理とは同一ではない。旧active windowの再合成は両経路ともタイトル領域のみになった。`text-update`も固定文字列の直接描画であり、`draw_content_dirty()`の差分検出を測らない。マウスやキーボードの操作は不要で、終了後は通常の復元処理を通る。
+`-8` は 256 色モード、`-bench 100` は各決定的フェーズを 100 回実行する指定である。実行順は `full`、`region`、`z-expose`、`text-update`、`drag-region`、`xor-move`。`drag-region` は固定した 2 位置の間で hide → 旧領域再合成 → XOR → move/show → 新領域再合成を繰り返すが、共有`scene.c`の通常 drag 終了処理とは同一ではない。旧 active window の再合成は両経路ともタイトル領域のみになった。`text-update`も固定文字列の直接描画であり、`draw_content_dirty()`の差分検出を測らない。マウスやキーボードの操作は不要で、終了後は通常の復元処理を通る。
 
 ## 実行
 
@@ -84,7 +84,7 @@ cp ~/tmp/ssos_pre_profile1.x ~/tmp/ssos_pre_8bench.x
 
 ### SSPERF ログの収集
 
-`SSPERF` はベンチ中ではなく、終了処理でCRTMODを復元した後に標準コンソールへ再出力される。さらに同じ内容をHuman68Kのカレントディレクトリに `bench.txt` として保存し、最後に `fclose` する。毎回 `"w"` で開くため、前回の内容は上書きされる。
+`SSPERF` はベンチ中ではなく、終了処理で CRTMOD を復元した後に標準コンソールへ再出力される。さらに同じ内容を Human68K のカレントディレクトリに `bench.txt` として保存し、最後に `fclose` する。毎回 `"w"` で開くため、前回の内容は上書きされる。
 
 画面がクリアされても、エミュレータ内で次のように確認できる。
 
@@ -92,11 +92,11 @@ cp ~/tmp/ssos_pre_profile1.x ~/tmp/ssos_pre_8bench.x
 type bench.txt
 ```
 
-`SSPERF file=bench.txt` が表示されれば、ファイルを開いて閉じる処理まで完了している。`open-failed` の場合は、実行したカレントディレクトリの書き込み可否またはHuman68Kのファイルシステム設定を確認する。
+`SSPERF file=bench.txt` が表示されれば、ファイルを開いて閉じる処理まで完了している。`open-failed` の場合は、実行したカレントディレクトリの書き込み可否または Human68K のファイルシステム設定を確認する。
 
 ### 通常操作時の runtime ログ
 
-`-bench` なしで起動した場合も、ESC終了時に同じSSPERF形式を `runtime.txt` に保存する。Windowの重なりやドラッグを含む実使用の描画量を測る用途であり、決定的ベンチマークの `bench.txt` とは混在させない。
+`-bench` なしで起動した場合も、ESC 終了時に同じ SSPERF 形式を `runtime.txt` に保存する。Window の重なりやドラッグを含む実使用の描画量を測る用途であり、決定的ベンチマークの `bench.txt` とは混在させない。
 
 ```text
 ssos_cop_profile1.x -8
@@ -106,16 +106,16 @@ ssos_pre_profile1.x -8
 cp runtime.txt runtime-pre.txt
 ```
 
-先頭行の `phase=runtime` にある `rounds` は描画frame数、`vsync` は計測区間のVSync数である。比較時は実行時間を揃えるか、`gvram write`、`glyph clip`、`dma attempts` を `rounds` で割って比較する。`SSPERF file=runtime.txt` が表示されれば保存完了である。
+先頭行の `phase=runtime` にある `rounds` は描画 frame 数、`vsync` は計測区間の VSync 数である。比較時は実行時間を揃えるか、`gvram write`、`glyph clip`、`dma attempts` を `rounds` で割って比較する。`SSPERF file=runtime.txt` が表示されれば保存完了である。
 
-DMAエラーが残る場合は、まず `-bench 1` で診断ログを取得する。
+DMA エラーが残る場合は、まず `-bench 1` で診断ログを取得する。
 
 ```text
 ssos_cop_profile1.x -8 -bench 1
 cp bench.txt bench-cop-dma-diagnostic.txt
 ```
 
-`SSPERF dma` 行の `status_samples`、`csr`、`cer` を確認する。`error` はDMAエラーが発生した矩形行数であり、`cer` が原因コードである。`config_samples` と `dcr/ocr/scr/mfc/dfc/bfc` はDMA開始時の設定値を示す。`ok=0` のままではDMA高速化とは判定せず、CPUフォールバックによる高速化と区別する。
+`SSPERF dma` 行の `status_samples`、`csr`、`cer` を確認する。`error` は DMA エラーが発生した矩形行数であり、`cer` が原因コードである。`config_samples` と `dcr/ocr/scr/mfc/dfc/bfc` は DMA 開始時の設定値を示す。`ok=0` のままでは DMA 高速化とは判定せず、CPU フォールバックによる高速化と区別する。
 
 ```sh
 ~/tmp/ssos_cop_profile1.x -8 -bench 100 > logs/gfx-cop-8bench.log 2>&1
@@ -142,7 +142,7 @@ cp bench.txt bench-cop-dma-diagnostic.txt
 
 ### 測定値の扱い
 
-過去のログはcommit、機種またはエミュレータ、clock、画面モード、`SS_PROFILE_GFX`、通常UIか決定的ベンチかを添えて保存する。条件が不明な数値は現行コードの性能値として再掲しない。改善判定には同一条件の`vsync`、DMA成功・失敗・timeout、GVRAM write、rendered windowsを併記する。現在の`SSPERF`に直接のwall-clock `total`/`frame`時間はない。`vsync`は整数カウントなので短い処理では差が量子化される。
+過去のログは commit、機種またはエミュレータ、clock、画面モード、`SS_PROFILE_GFX`、通常 UI か決定的ベンチかを添えて保存する。条件が不明な数値は現行コードの性能値として再掲しない。改善判定には同一条件の`vsync`、DMA 成功・失敗・timeout、GVRAM write、rendered windows を併記する。現在の`SSPERF`に直接の wall-clock `total`/`frame`時間はない。`vsync`は整数カウントなので短い処理では差が量子化される。
 
 ### 比較の流れ
 
@@ -168,7 +168,7 @@ cp bench.txt bench-cop-dma-diagnostic.txt
 
 ### vsync
 
-`vsync` はフェーズ中のV-DISPカウンタ差であり、直接の処理時間ではない。増減だけで良し悪しを決めず、他の描画項目と一緒に見る。
+`vsync` はフェーズ中の V-DISP カウンタ差であり、直接の処理時間ではない。増減だけで良し悪しを決めず、他の描画項目と一緒に見る。
 
 - 増える場合: 描画が VBlank 周辺に寄っている、または待機が増えている可能性
 - 減る場合: 同期待ちが減ったか、そもそも描画負荷が下がった可能性
@@ -179,20 +179,20 @@ cp bench.txt bench-cop-dma-diagnostic.txt
   - 減るほどよい
   - XOR 枠線や保存復元、オーバーレイ再描画のような経路で増えやすい
 - `GVRAM write`: 画面へ書いている量
-  - 現行のprofileは経路によって予定面積を先に計上する。DMA失敗やfallback時に実際のバス書込語数を厳密に示す値ではない
+  - 現行の profile は経路によって予定面積を先に計上する。DMA 失敗や fallback 時に実際のバス書込語数を厳密に示す値ではない
   - dirty 更新やクリッピングの改善で減ることがある
 
 ### primitive
 
-基本描画関数の呼出数を見る。`primitive`はDMA経由の矩形も数えるため、CPU専用の仕事量ではない。
+基本描画関数の呼出数を見る。`primitive`は DMA 経由の矩形も数えるため、CPU 専用の仕事量ではない。
 
-- `rect`や`hline`の増減は呼出回数の差であり、CPU/DMAの選択は`dma attempts/ok`で判定する
+- `rect`や`hline`の増減は呼出回数の差であり、CPU/DMA の選択は`dma attempts/ok`で判定する
 
 ### DMA
 
 矩形塗りつぶしのような大きい書き込みを DMAC に逃がしたかを見る。
 
-- DMA の増減だけでは優劣を決めない。同じ矩形ならCPU/DMAで書き込む画素数は概ね同じで、`GVRAM write`の減少はDMA高速化の必要条件ではない。setup/pollを含めた実時間と`vsync`を比較し、`ok`・`error`・`timeout`・`fallback_rows`を必ず確認する
+- DMA の増減だけでは優劣を決めない。同じ矩形なら CPU/DMA で書き込む画素数は概ね同じで、`GVRAM write`の減少は DMA 高速化の必要条件ではない。setup/poll を含めた実時間と`vsync`を比較し、`ok`・`error`・`timeout`・`fallback_rows`を必ず確認する
 
 ### window
 
@@ -213,21 +213,21 @@ dirty は「変わった部分だけ更新できたか」を示す。
 
 1. `phase`・`rounds`・機種・画面モード・入力列が一致するか
 2. 同じ画素結果で`vsync`または別途取得した実時間が改善したか
-3. `GVRAM read/write`、glyph数、`dirty submitted/clipped`、window再描画回数が期待方向か
-4. DMAを使う場合、成功率とtimeout・fallbackが悪化していないか
+3. `GVRAM read/write`、glyph 数、`dirty submitted/clipped`、window 再描画回数が期待方向か
+4. DMA を使う場合、成功率と timeout・fallback が悪化していないか
 
 ### 典型的な解釈
 
 - `GVRAM read` 減少 + `dirty clipped` 減少:
   - 保存復元や全面再描画を局所化できている可能性が高い
 - `DMA ok` 増加 + 同一画素で実時間改善 + timeout なし:
-  - 対象矩形ではDMA化が有利だった可能性がある
+  - 対象矩形では DMA 化が有利だった可能性がある
 - `vsync` だけ変化して他が不変:
   - 描画改善ではなく同期条件や測定条件差を疑う
 
 ## P3を判定する追加測定
 
-4形式の通常起動がOKでも、以下の性能値は得られない。P3の採否には同じ機種・clock・CRTMOD・入力列で変更前後を比較する。`-bench`は`.x`専用であり、`.xdf`は同じ描画結果の目視・故障確認を別途行う。
+4 形式の通常起動が OK でも、以下の性能値は得られない。P3 の採否には同じ機種・clock・CRTMOD・入力列で変更前後を比較する。`-bench`は`.x`専用であり、`.xdf`は同じ描画結果の目視・故障確認を別途行う。
 
 | 対象 | 必要な追加測定 | 採用条件 |
 | --- | --- | --- |
@@ -236,13 +236,13 @@ dirty は「変わった部分だけ更新できたか」を示す。
 | DMA停止未確認 | ACT解除あり/なしを分けた故障注入で、後者にCPU fallback、次のDMA開始、source/descriptor更新がないことを確認 | 安全性の完了条件。性能評価の前提であり、速度による採否はしない |
 | DMA閾値 | `-dma-bench`のCPU強制/DMA強制48条件を`-8`/`-16`、両方式で反復し、Timer D tick、`vsync`、DMA `ok/error/timeout/fallback_rows`、画素一致を記録 | 安定して成功し、setup/poll込みでCPUより速い領域だけDMAを選ぶ。現行の幅`>64`・高さ`>4`は実測前に変更しない |
 
-DMA閾値の比較では、現行の`SSPERF`は`vsync`が整数でwall-clock時間を出さないため、短い矩形を単発で比較しない。十分な反復数か追加の経過時間計測を用意し、実行順を入れ替えて複数回測る。転送成功率と画素一致が満たせない条件は、速く見えても採用しない。機種・clock・媒体・commit・profile設定・矩形の幅/高さ・反復数をログに残す。
+DMA 閾値の比較では、現行の`SSPERF`は`vsync`が整数で wall-clock 時間を出さないため、短い矩形を単発で比較しない。十分な反復数か追加の経過時間計測を用意し、実行順を入れ替えて複数回測る。転送成功率と画素一致が満たせない条件は、速く見えても採用しない。機種・clock・媒体・commit・profile 設定・矩形の幅/高さ・反復数をログに残す。
 
-`-dma-bench` はprofile版 `.x` 専用で、CPU強制とDMA強制を同じ矩形で反復する。例えば `ssos_pre_profile1.x -8 -dma-bench 2000` を実機で実行する。結果は終了処理後の `dma-bench.txt` に `SSPERF dma-grid` 行として保存される。幅32/64/65/128/256/512、高さ4/5/16/128の48条件を測り、組ごとにCPU→DMAとDMA→CPUの順を交互にする。`ticks` はTimer Dの5ms単位、`vsync` はV-DISP単位、`pixels=ok` は最後の矩形の全画素一致を示す。`path=dma`でも `attempts=0`、`ok<rounds×h`、`error/timeout/fallback_rows>0`ならDMA優位の根拠にしない。`stopped=ACT-unconfirmed` が出た場合は転送停止を確認できず、以降の描画・測定を止めている。この場合cleanupもDMA停止未確認を検出し、IRQ mask下の停止ループへ入る。表示モード復元・DOS終了・プロセス領域解放は行わない。停止中の診断はエミュレータdebugger等から行う。
+`-dma-bench` は profile 版 `.x` 専用で、CPU 強制と DMA 強制を同じ矩形で反復する。例えば `ssos_pre_profile1.x -8 -dma-bench 2000` を実機で実行する。結果は終了処理後の `dma-bench.txt` に `SSPERF dma-grid` 行として保存される。幅 32/64/65/128/256/512、高さ 4/5/16/128 の 48 条件を測り、組ごとに CPU→DMA と DMA→CPU の順を交互にする。`ticks` は Timer D の 5ms 単位、`vsync` は V-DISP 単位、`pixels=ok` は最後の矩形の全画素一致を示す。`path=dma`でも `attempts=0`、`ok<rounds×h`、`error/timeout/fallback_rows>0`なら DMA 優位の根拠にしない。`stopped=ACT-unconfirmed` が出た場合は転送停止を確認できず、以降の描画・測定を止めている。この場合 cleanup も DMA 停止未確認を検出し、IRQ mask 下の停止ループへ入る。表示モード復元・DOS 終了・プロセス領域解放は行わない。停止中の診断はエミュレータ debugger 等から行う。
 
-同じ機種・clock・モードで複数回採取し、CPU/DMA両経路の`pixels=ok`とDMA全行成功を先に確認する。tickが0や僅差なら反復数を増やす。Xeijでの値だけを実機閾値として採用しない。計測器は用意したが実機ログは未取得なので、幅`>64`・高さ`>4`の閾値は維持する。
+同じ機種・clock・モードで複数回採取し、CPU/DMA 両経路の`pixels=ok`と DMA 全行成功を先に確認する。tick が 0 や僅差なら反復数を増やす。Xeij での値だけを実機閾値として採用しない。計測器は用意したが実機ログは未取得なので、幅`>64`・高さ`>4`の閾値は維持する。
 
-2026-09-26時点で旧activeタイトル限定、dirty textの両端差分、およびDMAのACT停止未確認時の描画停止をコードへ反映した。NativeのDMA故障注入はACT解除あり/なしを通すが、DMAC実機の停止保証にはならない。共有sceneの非重複・部分重複・全面遮蔽のドラッグ終了後、通常文字更新後、252回再前面化後は、決定的入力に対する全面再描画との画素比較をNativeで通した。ドラッグ中は本文更新を保留するため、全面再描画とは一致しない。実機の性能採否は未了。
+2026-09-26 時点で旧 active タイトル限定、dirty text の両端差分、および DMA の ACT 停止未確認時の描画停止をコードへ反映した。Native の DMA 故障注入は ACT 解除あり/なしを通すが、DMAC 実機の停止保証にはならない。共有 scene の非重複・部分重複・全面遮蔽のドラッグ終了後、通常文字更新後、252 回再前面化後は、決定的入力に対する全面再描画との画素比較を Native で通した。ドラッグ中は本文更新を保留するため、全面再描画とは一致しない。実機の性能採否は未了。
 
 ## ログ整理
 
@@ -261,23 +261,20 @@ DMA閾値の比較では、現行の`SSPERF`は`vsync`が整数でwall-clock時�
 - `SSPERF` の出力形式はコード側の実装に依存するため、ログの項目名は実際の出力に合わせて読み替える
 - 256 色モードの比較では、`-8` 以外の CRTMOD を混ぜない
 
-
 ## 共有sceneの固定入力測定（2026-09-30）
 
-両profileの`.x`で`-8 -scene-bench`または`-16 -scene-bench`を指定する。`-bench`/`-dma-bench`との併用は拒否する。共有`ss_scene_run()`を517frameの固定Mouse/Key入力で駆動し、drag/drop・z再採番・1000→9・画面端の配置注入を通す。通常のIOCS入力サンプリングを迂回する以外の描画処理は共有である。Timer表示も処理frameから生成する。
+両 profile の`.x`で`-8 -scene-bench`または`-16 -scene-bench`を指定する。`-bench`/`-dma-bench`との併用は拒否する。共有`ss_scene_run()`を 517frame の固定 Mouse/Key 入力で駆動し、drag/drop・z 再採番・1000→9・画面端の配置注入を通す。通常の IOCS 入力サンプリングを迂回する以外の描画処理は共有である。Timer 表示も処理 frame から生成する。
 
-`scene.txt`にframes、Timer D ticks、frame処理（yield込み）の観測最大tick、入力/最終画素checksum、profile設定を出す。画素checksumは`-scene-bench`で明示的に指定した場合だけ、時間集計の後で終了前の表示領域から取得する。通常UIのESC終了では高コストな全画面VRAM走査を行わない。未指定またはDMA停止未確認時の`pixel_checksum`は0。tickは5ms単位であり、0や僅差を速度差として扱わない。profile 1では`runtime.txt`も処理量を記録する。profile 0とprofile 1の同一checksumを先に確認する。
+`scene.txt`に frames、Timer D ticks、frame 処理（yield 込み）の観測最大 tick、入力/最終画素 checksum、profile 設定を出す。画素 checksum は`-scene-bench`で明示的に指定した場合だけ、時間集計の後で終了前の表示領域から取得する。通常 UI の ESC 終了では高コストな全画面 VRAM 走査を行わない。未指定または DMA 停止未確認時の`pixel_checksum`は 0。tick は 5ms 単位であり、0 や僅差を速度差として扱わない。profile 1 では`runtime.txt`も処理量を記録する。profile 0 と profile 1 の同一 checksum を先に確認する。
 
-自動ホスト測定は`python3 tools/bench-native.py`。両方式・両profile・mode8/16でwarm-up＋5runを保存し、517frameのchecksum一致を判定する。frame bodyのmedian/p95/max、scheduler C logic（実context switchなし）、fragmented allocatorと容量回復、work処理を測る。scene以外は100操作batchのns値で、単一操作のnsと混同しない。時計の報告分解能と観測最小stepを残す。ホストRAMの時間からDMA閾値や実MFPの遅延を決めない。
+自動ホスト測定は`python3 tools/bench-native.py`。両方式・両 profile・mode8/16 で warm-up＋5run を保存し、517frame の checksum 一致を判定する。frame body の median/p95/max、scheduler C logic（実 context switch なし）、fragmented allocator と容量回復、work 処理を測る。scene 以外は 100 操作 batch の ns 値で、単一操作の ns と混同しない。時計の報告分解能と観測最小 step を残す。ホスト RAM の時間から DMA 閾値や実 MFP の遅延を決めない。
 
-ログとmetadataは`build/native-performance/<run>/`へ保存する。target raw logは機種/clock/媒体/成果物hashと共に別runへ保存し、前回の`scene.txt`を退避してから再測定する。glyph triageとDMA閾値変更は実機の採否測定まで保留する。
-
+ログと metadata は`build/native-performance/<run>/`へ保存する。target raw log は機種/clock/媒体/成果物 hash と共に別 run へ保存し、前回の`scene.txt`を退避してから再測定する。glyph triage と DMA 閾値変更は実機の採否測定まで保留する。
 
 ## 実stack領域のworker診断
 
-`EXTRA_CFLAGS=-DSS_DIAG_TASKS=32`を付けて両方式・両形式をbuildする（1/2/8も可）。`.x`は`-task-check`、`.xdf`はUI起動前に診断を実行する。実Timer Dで1/5/10tick sleepをし、entry引数、canary残量、`.xdf`ではworker間のIPC ring、return→TERMINATEDとworker完了数を確認する。`.x`は復元後にSSPROBEを出力し、`.xdf`は`ss_task_probe_result`をdebuggerから取得する。QEMUでは同じC診断をsynthetic tick pumpで実行済み。これは実pool/MFPの確認済みを意味しない。
+`EXTRA_CFLAGS=-DSS_DIAG_TASKS=32`を付けて両方式・両形式を build する（1/2/8 も可）。`.x`は`-task-check`、`.xdf`は UI 起動前に診断を実行する。実 Timer D で 1/5/10tick sleep をし、entry 引数、canary 残量、`.xdf`では worker 間の IPC ring、return→TERMINATED と worker 完了数を確認する。`.x`は復元後に SSPROBE を出力し、`.xdf`は`ss_task_probe_result`を debugger から取得する。QEMU では同じ C 診断を synthetic tick pump で実行済み。これは実 pool/MFP の確認済みを意味しない。
 
-N07のabort/時計停止/DMA故障注入はエミュレータsnapshotから行い、[追加計画](maintenance-performance-plan-2026-09-30.md)の組合せと結果を記録する。実機のIRQ禁止区間は独立clock/traceで測り、Timer D counterだけから最大時間を計算しない。
+N07 の abort/時計停止/DMA 故障注入はエミュレータ snapshot から行い、[追加計画](maintenance-performance-plan-2026-09-30.md)の組合せと結果を記録する。実機の IRQ 禁止区間は独立 clock/trace で測り、Timer D counter だけから最大時間を計算しない。
 
-
-診断buildに`EXTRA_CFLAGS='-DSS_DIAG_TASKS=32 -DSS_PROFILE_RUNTIME=1'`を指定すると、deadline到達→READYとREADY→実行の最大tickを分けて記録する。snapshotはIRQ保存復元下で取得する。既定のruntime profile 0はqueue経路への計測呼出しをinline no-opへコンパイルし、追加の配列も持たない。profile 1は計測負荷を伴い、IRQ禁止時間の計測器としては使わない。tick停止・長期wrap・priority starvationはwall-clockの上限保証と区別する。
+診断 build に`EXTRA_CFLAGS='-DSS_DIAG_TASKS=32 -DSS_PROFILE_RUNTIME=1'`を指定すると、deadline 到達→READY と READY→実行の最大 tick を分けて記録する。snapshot は IRQ 保存復元下で取得する。既定の runtime profile 0 は queue 経路への計測呼出しを inline no-op へコンパイルし、追加の配列も持たない。profile 1 は計測負荷を伴い、IRQ 禁止時間の計測器としては使わない。tick 停止・長期 wrap・priority starvation は wall-clock の上限保証と区別する。

@@ -32,7 +32,7 @@ make test-qemu
 
 ## Layout
 
-```
+```text
 framework/        TEST/RUN_TEST/ASSERT_* macros + remaining HW/asm stubs
   ssos_test.h     test framework (reusable across suites)
   test_runner.c   main(): runs every suite, prints the summary, sets exit code
@@ -157,13 +157,12 @@ specific and cannot run on QEMU virt.
 3. Add the suite source to `UNIT_SRCS` (and the module source to `OS_SRCS`) in
    `Makefile.native`.
 
-
 ## 追加自動検証と証拠（2026-09-30）
 
-Nativeはruntime_guardの部分初期化16組合せ・再入・DMA停止未確認、有限waitとtick周回、INITIALIZING/start交差、work再投入/budget/満杯/遅延、共有target入力517frameの画素一致と反復を確認する。IRQ stubは引き続きno-op。
+Native は runtime_guard の部分初期化 16 組合せ・再入・DMA 停止未確認、有限 wait と tick 周回、INITIALIZING/start 交差、work 再投入/budget/満杯/遅延、共有 target 入力 517frame の画素一致と反復を確認する。IRQ stub は引き続き no-op。
 
-QEMUは両方式で初期化中start拒否、1/2/8/32taskと1/5/10tick sleep、production `trap14.s`のrestore関数のIPL0〜7/ネスト、worker→UI queue、targetと共有する32worker診断を追加した。TRAP初期化/abort/IOCSはここでは実行しない。実MFPの非同期preemptionは未検証。
+QEMU は両方式で初期化中 start 拒否、1/2/8/32task と 1/5/10tick sleep、production `trap14.s`の restore 関数の IPL0〜7/ネスト、worker→UI queue、target と共有する 32worker 診断を追加した。TRAP 初期化/abort/IOCS はここでは実行しない。実 MFP の非同期 preemption は未検証。
 
-`make test-tools`は判定scriptのfixtureと期待断片/log保持を確認する。`make verify`はsanitizerを含む自動検証を逐次実行し、QEMU case log、version、commit、dirty状態、hash/sizeを保存する。`SS_TEST_LOG_DIR`でcase logの保存先を指定できる。単独QEMUの既定は`tests/build/test-logs/`、asmはrootの`build/test-logs/`。失敗runを上書きしない。
+`make test-tools`は判定 script の fixture と期待断片/log 保持を確認する。`make verify`は sanitizer を含む自動検証を逐次実行し、QEMU case log、version、commit、dirty 状態、hash/size を保存する。`SS_TEST_LOG_DIR`で case log の保存先を指定できる。単独 QEMU の既定は`tests/build/test-logs/`、asm は root の`build/test-logs/`。失敗 run を上書きしない。
 
-`python3 tools/check-build.py`はsource bytesを変えずmtimeだけを一時変更し、最後に復元する。clean build、両方式profile0/1、診断build、依存、flags、2回no-opを検証する。`python3 tools/check-context.py`は共通assembly instruction列を比較し、リンク後のopcode/relocation比較や実機検証の代用にはしない。詳細は[frame契約](../docs/context-switch-contract.md)。
+`python3 tools/check-build.py`は source bytes を変えず mtime だけを一時変更し、最後に復元する。clean build、両方式 profile0/1、診断 build、依存、flags、2 回 no-op を検証する。`python3 tools/check-context.py`は共通 assembly instruction 列を比較し、リンク後の opcode/relocation 比較や実機検証の代用にはしない。詳細は[frame契約](../docs/context-switch-contract.md)。

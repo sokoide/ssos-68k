@@ -13,17 +13,17 @@
 .global _start
 
 _start:
-    move.l  #0x4000, %sp       | set up a stack (QEMU virt RAM at 0x0)
-    lea     msg, %a0            | a0 -> string
+	move.l #0x4000, %sp       | set up a stack (QEMU virt RAM at 0x0)
+	lea    msg, %a0            | a0 -> string
 
 loop:
-    move.b  (%a0)+, %d0         | load next byte, advance pointer
-    beq     done                | NUL -> end of string
-    move.l  %d0, TTY            | write byte to Goldfish TTY
-    bra     loop
+	move.b (%a0)+, %d0         | load next byte, advance pointer
+	beq    done                | NUL -> end of string
+	move.l %d0, TTY            | write byte to Goldfish TTY
+	bra    loop
 
 done:
-    bra     done                | park forever (QEMU timeout reaps us)
+	bra done                | park forever (QEMU timeout reaps us)
 
 msg:
-    .asciz "Hello, m68k!\nOK\n"
+	.asciz "Hello, m68k!\nOK\n"

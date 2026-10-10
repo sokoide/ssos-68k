@@ -1,6 +1,6 @@
 # SSOS for X68000
 
-**SSOS** は X68000（MC68000 プロセッサ）向けの小型オペレーティングシステムである。協調的マルチタスクとプリエンプティブマルチタスクの 2 つのモデルを、ビルド時オプション `SCHED=cooperative|preemptive` で切り替えられる単一の統合ソースツリー（`ssos/`）として実装している。グラフィックス管理、マウス対応ウィンドウシステム、メモリ管理を備える。Human68K 上で動作するスタンドアロン版（`.x`）と、XDF ディスクイメージから直接 IPL 起動するベアメタル版（`.xdf`）の 2 形態でビルド可能。通常UIは `os/app/scene.c` を `.x` / `.xdf` で共有し、各形式の初期化・終了入口はホスト側に分かれる。スケジューラ本体は `os/kernel/scheduler.c` で共有し、方式別の割り込み処理と起床方針だけを `os/kernel/{cooperative,preemptive}/` で切り替える。
+**SSOS** は X68000（MC68000 プロセッサ）向けの小型オペレーティングシステムである。協調的マルチタスクとプリエンプティブマルチタスクの 2 つのモデルを、ビルド時オプション `SCHED=cooperative|preemptive` で切り替えられる単一の統合ソースツリー（`ssos/`）として実装している。グラフィックス管理、マウス対応ウィンドウシステム、メモリ管理を備える。Human68K 上で動作するスタンドアロン版（`.x`）と、XDF ディスクイメージから直接 IPL 起動するベアメタル版（`.xdf`）の 2 形態でビルド可能。通常 UI は `os/app/scene.c` を `.x` / `.xdf` で共有し、各形式の初期化・終了入口はホスト側に分かれる。スケジューラ本体は `os/kernel/scheduler.c` で共有し、方式別の割り込み処理と起床方針だけを `os/kernel/{cooperative,preemptive}/` で切り替える。
 
 ## 目次
 
@@ -65,7 +65,7 @@ make SCHED=cooperative
 # 出力: ~/tmp/ssos_cop.xdf（起動可能ディスクイメージ。プリエンプティブ版は SCHED=preemptive で ssos_pre.xdf）
 ```
 
-方式・形式・profileを切り替えても中間ファイルは別ディレクトリなので `make clean` は不要。
+方式・形式・profile を切り替えても中間ファイルは別ディレクトリなので `make clean` は不要。
 
 ### 全ターゲット一括ビルド
 
@@ -83,7 +83,7 @@ make -j2
 
 ### グラフィックス性能ベンチマーク
 
-`SS_PROFILE_GFX=1` でビルドしたスタンドアロン版は、Human68K上で決定的な描画フェーズを測定できる。
+`SS_PROFILE_GFX=1` でビルドしたスタンドアロン版は、Human68K 上で決定的な描画フェーズを測定できる。
 
 ```text
 ssos_cop_profile1.x -8 -bench 100
@@ -93,11 +93,11 @@ ssos_pre_profile1.x -8 -bench 100
 cp bench.txt bench-pre.txt
 ```
 
-`-8` は256色モード、`-bench 100` は各フェーズを100回実行する指定である。`bench.txt` は実行時のカレントディレクトリに作成され、毎回上書きされるため、2つの実行結果を比較する場合は上記のように別名で退避する。
+`-8` は 256 色モード、`-bench 100` は各フェーズを 100 回実行する指定である。`bench.txt` は実行時のカレントディレクトリに作成され、毎回上書きされるため、2 つの実行結果を比較する場合は上記のように別名で退避する。
 
-実行順は `full`、`region`、`z-expose`、`text-update`、`drag-region`、`xor-move` である。`drag-region` は固定した2位置の間で、実アプリと同じ hide → 旧領域再合成 → XOR → move/show → 新領域再合成を繰り返す。ログの `vsync`、`dma timeout`、`gvram write`、`windows rendered` を同じフェーズ間で比較する。`vsync` は少ないほど速い。`SSPERF file=bench.txt` が表示されれば、ファイルのオープンとクローズまで完了している。
+実行順は `full`、`region`、`z-expose`、`text-update`、`drag-region`、`xor-move` である。`drag-region` は固定した 2 位置の間で、実アプリと同じ hide → 旧領域再合成 → XOR → move/show → 新領域再合成を繰り返す。ログの `vsync`、`dma timeout`、`gvram write`、`windows rendered` を同じフェーズ間で比較する。`vsync` は少ないほど速い。`SSPERF file=bench.txt` が表示されれば、ファイルのオープンとクローズまで完了している。
 
-通常操作の実測では、`-bench` を付けずに起動し、Windowのドラッグや重なりを試してから ESC で終了する。
+通常操作の実測では、`-bench` を付けずに起動し、Window のドラッグや重なりを試してから ESC で終了する。
 
 ```text
 ssos_cop_profile1.x -8
@@ -107,13 +107,13 @@ ssos_pre_profile1.x -8
 cp runtime.txt runtime-pre.txt
 ```
 
-`runtime.txt` には終了までの `phase=runtime` 集計が保存される。`rounds` は描画frame数、`vsync` は計測期間のVSync数であり、異なる実行時間でも `gvram write / rounds` や `glyph clip / rounds` を比較できる。`-bench` 実行時は従来どおり `bench.txt` だけを出力する。
+`runtime.txt` には終了までの `phase=runtime` 集計が保存される。`rounds` は描画 frame 数、`vsync` は計測期間の VSync 数であり、異なる実行時間でも `gvram write / rounds` や `glyph clip / rounds` を比較できる。`-bench` 実行時は従来どおり `bench.txt` だけを出力する。
 
 ## .x / .xdf UI統合の範囲
 
-通常操作のUIは、Human68K版（`.x`）とベアメタル版（`.xdf`）で同じ
-`os/app/scene.c` を実行する。3ウィンドウの生成、入力、ドラッグ、差分本文描画、
-z-order、論理パレット、main task登録は共有である。
+通常操作の UI は、Human68K 版（`.x`）とベアメタル版（`.xdf`）で同じ
+`os/app/scene.c` を実行する。3 ウィンドウの生成、入力、ドラッグ、差分本文描画、
+z-order、論理パレット、main task 登録は共有である。
 
 | 境界 | 方針 | 理由 |
 | :--- | :--- | :--- |
@@ -130,9 +130,9 @@ z-order、論理パレット、main task登録は共有である。
 
 ### 性能改善の採用結果と今後の計画
 
-現在の256色DMA成功時の基準値は次の通りである。`drag-region` は重なったWindowの固定ドラッグ経路である。
+現在の 256 色 DMA 成功時の基準値は次の通りである。`drag-region` は重なった Window の固定ドラッグ経路である。
 
-**測定出典**: `4e31dd4` 時点（2026-07-18）の primitive ベンチ（profile 1 版 `.x`、`bench_rounds` 固定シーン）。X68000エミュレータ上で採取。機種・クロック・エミュレータ種別の個別記録はなく、現行コードでの再計測を推奨する（保守レビュー R14 の注記要件）。
+**測定出典**: `4e31dd4` 時点（2026-07-18）の primitive ベンチ（profile 1 版 `.x`、`bench_rounds` 固定シーン）。X68000 エミュレータ上で採取。機種・クロック・エミュレータ種別の個別記録はなく、現行コードでの再計測を推奨する（保守レビュー R14 の注記要件）。
 
 | phase | vsync | DMA状態 |
 | :--- | ---: | :--- |
@@ -144,39 +144,39 @@ z-order、論理パレット、main task登録は共有である。
 
 採用済みの改善:
 
-- DMAのCSR完了判定、BFC設定、timeout時のSAB停止
-- DMAチェインテーブルの偶数アラインメント
-- RAMからGVRAMへのDMA転送方向修正（`OCR=0x19`）
-- DMAエラーの`CSR/CER`診断ログ
-- region描画の背景・枠・タイトル・本文クリップ
-- ドラッグ中の前面切替をタイトルバーだけ再合成し、覆われるタイトル背景stippleを省略
-- damage region外の本文テキストをスキップ
-- XOR枠の水平辺を68000の整列済みlongアクセスで処理
+- DMA の CSR 完了判定、BFC 設定、timeout 時の SAB 停止
+- DMA チェインテーブルの偶数アラインメント
+- RAM から GVRAM への DMA 転送方向修正（`OCR=0x19`）
+- DMA エラーの`CSR/CER`診断ログ
+- region 描画の背景・枠・タイトル・本文クリップ
+- ドラッグ中の前面切替をタイトルバーだけ再合成し、覆われるタイトル背景 stipple を省略
+- damage region 外の本文テキストをスキップ
+- XOR 枠の水平辺を 68000 の整列済み long アクセスで処理
 
-固定`drag-region`の改善結果は、初期値 `vsync=554` / `gvram write=8878350` から、`vsync=314` / `gvram write=4634800` になった。VSyncは43.3%、GVRAM書込みは47.8%削減し、DMA error/timeoutは0を維持している。
+固定`drag-region`の改善結果は、初期値 `vsync=554` / `gvram write=8878350` から、`vsync=314` / `gvram write=4634800` になった。VSync は 43.3%、GVRAM 書込みは 47.8%削減し、DMA error/timeout は 0 を維持している。
 
 測定の結果、次の施策は採用しない。
 
-- 16色モード: `full=1393`で256色の`full=1020`より36.6%遅い
-- stippleのDMA化: 256色`full=1875`となり、CPUの`ss_fill_long`より遅かった
-- 粗い遮蔽情報だけを根拠にした描画skip拡大: 部分遮蔽を完全遮蔽と誤判定する危険がある
-- 16色モードでのドラッグ最適化: `drag-region=358`で256色より速くならず、full描画も遅い
+- 16 色モード: `full=1393`で 256 色の`full=1020`より 36.6%遅い
+- stipple の DMA 化: 256 色`full=1875`となり、CPU の`ss_fill_long`より遅かった
+- 粗い遮蔽情報だけを根拠にした描画 skip 拡大: 部分遮蔽を完全遮蔽と誤判定する危険がある
+- 16 色モードでのドラッグ最適化: `drag-region=358`で 256 色より速くならず、full 描画も遅い
 
 完了した測定基盤:
 
-- `render_region`の背景・枠・タイトル・本文のdirty矩形クリップ
+- `render_region`の背景・枠・タイトル・本文の dirty 矩形クリップ
 - 通常操作時の`runtime.txt`メトリクス
 - 実際の領域再合成経路を測る固定`drag-region`ベンチ
 
-性能最適化はいったん完了とする。次に着手するなら、性能ではなく`next_z`が255を超えた後も前面化を正しく保つz値正規化を先に行う。
+性能最適化はいったん完了とする。次に着手するなら、性能ではなく`next_z`が 255 を超えた後も前面化を正しく保つ z 値正規化を先に行う。
 
 追加の性能候補は、実験用ビルドでのみ検証する。
 
-1. HD63450の矩形アレイチェインDMA（行stride・転送方向・CPUフォールバックを個別に実機検証）
-2. damage regionを走査線/spanへ分割し、最終的にWindowで覆われる背景stippleを描かない
-3. 上位の不透明矩形が下位Window全体を包含する場合だけ遮蔽skipする
+1. HD63450 の矩形アレイチェイン DMA（行 stride・転送方向・CPU フォールバックを個別に実機検証）
+2. damage region を走査線/span へ分割し、最終的に Window で覆われる背景 stipple を描かない
+3. 上位の不透明矩形が下位 Window 全体を包含する場合だけ遮蔽 skip する
 
-クリップ化の採用条件は、描画結果を変えずに`region`の`vsync`とGVRAM書き込み量を削減し、`dma error=0`、`dma timeout=0`を維持することである。
+クリップ化の採用条件は、描画結果を変えずに`region`の`vsync`と GVRAM 書き込み量を削減し、`dma error=0`、`dma timeout=0`を維持することである。
 
 ### その他のビルドコマンド
 
@@ -377,11 +377,11 @@ uint16_t ss_task_sleep(uint32_t ticks);     /* ss_tick_counter + ticks まで WA
 ```
 
 優先度 0 が最高、15 が最低。レディーキューは 16 ビットビットマップで高速検索する（`pri_bitmap` の bit 15 が pri 0、bit 0 が pri 15）。
-sleep中のタスクは専用リストで管理するため、起床処理は全32 TCBではなくWAIT中タスクだけを走査する。tick周回をまたぐ期限比較を保証するため、1回のsleep上限は `SS_MAX_SLEEP_TICKS` である。実行可能な別タスクがない場合は `SS_ERR_STATE` を返す。
+sleep 中のタスクは専用リストで管理するため、起床処理は全 32 TCB ではなく WAIT 中タスクだけを走査する。tick 周回をまたぐ期限比較を保証するため、1 回の sleep 上限は `SS_MAX_SLEEP_TICKS` である。実行可能な別タスクがない場合は `SS_ERR_STATE` を返す。
 
 ## モジュール依存
 
-appはwindow/gfx/kernelのAPIを利用する。scheduler coreはUIへ依存せず、premain/standaloneの初期化hostが各subsystemを組み立てる。
+app は window/gfx/kernel の API を利用する。scheduler core は UI へ依存せず、premain/standalone の初期化 host が各 subsystem を組み立てる。
 
 ```mermaid
 graph TD
@@ -411,7 +411,7 @@ graph TD
 
 ## 2 つのマルチタスクモデル
 
-両 version は同じ `kernel/scheduler.c` と API（`ss_task_create` / `ss_task_start` / `ss_task_yield` / `ss_task_sleep`）を使う。通常UIの `app/scene.c` と共有ライブラリ（`gfx/mem/ipc/win`）も共通である。`.x` の `standalone/main.c` と `.xdf` の `os/app/main.c` はホスト固有の初期化・入口であり、共通のUI本体ではない。方式差は `os/kernel/{cooperative,preemptive}/interrupts.s` と `wakeups.c` に限定する。
+両 version は同じ `kernel/scheduler.c` と API（`ss_task_create` / `ss_task_start` / `ss_task_yield` / `ss_task_sleep`）を使う。通常 UI の `app/scene.c` と共有ライブラリ（`gfx/mem/ipc/win`）も共通である。`.x` の `standalone/main.c` と `.xdf` の `os/app/main.c` はホスト固有の初期化・入口であり、共通の UI 本体ではない。方式差は `os/kernel/{cooperative,preemptive}/interrupts.s` と `wakeups.c` に限定する。
 
 | 観点                     | 協調的 (`SCHED=cooperative`)                                                  | プリエンプティブ (`SCHED=preemptive`)                        |
 | :---                     | :---                                                                          | :---                                                         |
@@ -466,7 +466,7 @@ ss_timerd_handler:
 
 ## スタンドアロン vs OS モード
 
-- **スタンドアロンモード** (`.x`): `LOCAL_MODE` を定義して Human68K 実行形式としてコンパイルする。`os/win/window.c` と共有通常UI `os/app/scene.c` をリンクするため、`.xdf` と同じ z-order、ヒットテスト、コンテンツ管理、描画・ドラッグ処理を使う。グラフィックスモードとパレットの選択、V-sync watchdog、`SS_PROFILE_GFX=1` 時のベンチはホスト固有だが、通常UIのメインループは共有である。開発時の反復が速い。
+- **スタンドアロンモード** (`.x`): `LOCAL_MODE` を定義して Human68K 実行形式としてコンパイルする。`os/win/window.c` と共有通常 UI `os/app/scene.c` をリンクするため、`.xdf` と同じ z-order、ヒットテスト、コンテンツ管理、描画・ドラッグ処理を使う。グラフィックスモードとパレットの選択、V-sync watchdog、`SS_PROFILE_GFX=1` 時のベンチはホスト固有だが、通常 UI のメインループは共有である。開発時の反復が速い。
 - **OS モード** (`.xdf`): カスタムブートローダを持つ完全起動可能システム。`.x` と中間成果物を共有しない。
 
 ### s30 後の統一: ウィンドウ実装の共有
@@ -484,15 +484,15 @@ s30 以前は `.x` は独自の `Win` 構造体 / `zmap[3]` / `bring_to_front` /
 | タイトル/コンテンツ | `ss_win_set_title` / `ss_win_set_content_line` / `ss_win_get_ptr` |
 | 描画コールバック | `ss_win_set_render(win, render_fn)` でウィンドウ単位のカスタム描画を登録 |
 
-**`.x` ホスト側に残る固有処理**（通常UIの独自実装ではない）:
+**`.x` ホスト側に残る固有処理**（通常 UI の独自実装ではない）:
 
-- グラフィックスモードとパレットの選択（`-8`: 256色、`-16`: 16色）
-- `scene_wait_vsync` のtick/spin上限と、一度だけのMFP再設定。spin上限は5秒保証ではない
-- `SS_PROFILE_GFX=1` 時のベンチ（`-bench N`）。`draw_frame`、`redraw_*`、`bench_drag_region` などのプリミティブ描画はベンチ専用であり、通常UIでは使わない
+- グラフィックスモードとパレットの選択（`-8`: 256 色、`-16`: 16 色）
+- `scene_wait_vsync` の tick/spin 上限と、一度だけの MFP 再設定。spin 上限は 5 秒保証ではない
+- `SS_PROFILE_GFX=1` 時のベンチ（`-bench N`）。`draw_frame`、`redraw_*`、`bench_drag_region` などのプリミティブ描画はベンチ専用であり、通常 UI では使わない
 - `bench.txt` / `runtime.txt` の出力と Human68K ファイル I/O
 - TRAP #14 とベクタの設定・復元、`_exit` による DOS への復帰
 
-これらは通常UIとは別の、`.x` ホスト固有の初期化・終了・ベンチ処理として残している。通常のウィンドウ生成、入力、ドラッグ、コンテンツ更新、描画は `.x` / `.xdf` とも共有 `scene.c` が担う。
+これらは通常 UI とは別の、`.x` ホスト固有の初期化・終了・ベンチ処理として残している。通常のウィンドウ生成、入力、ドラッグ、コンテンツ更新、描画は `.x` / `.xdf` とも共有 `scene.c` が担う。
 
 ### ウィンドウ Z-Order 設計（両ビルド共通）
 
@@ -509,13 +509,13 @@ s30 以前は `.x` は独自の `Win` 構造体 / `zmap[3]` / `bring_to_front` /
 設計の要点:
 
 1. **ウィンドウごとに `z` を保存**: 各 `SSWindow` が自己記述的になる。外部の順序簿なしでウィンドウの作成/破棄/再作成が可能
-2. **小さな集合をその場で整列**: 最大32個をz昇順に整列し、不要なz値全走査を避ける
+2. **小さな集合をその場で整列**: 最大 32 個を z 昇順に整列し、不要な z 値全走査を避ける
 3. **領域単位の再合成**: 背景から順に上書きするため、部分遮蔽も正確に扱える
 4. **単調増加 z でドラッグ前面化**: 前面化の順序を明確に保つ
 
 ### `.x` ビルドでリンクされるオブジェクト
 
-`ssos/standalone/Makefile` はホストの `main.c` と共有 `os/app/scene.c`・scheduler・memory・gfx・window・util をリンクする。assembly は方式別 `interrupts.s`、共通 `os/kernel/mfp_state.s`、Human68K専用 `standalone/trap14.s` に分離される。
+`ssos/standalone/Makefile` はホストの `main.c` と共有 `os/app/scene.c`・scheduler・memory・gfx・window・util をリンクする。assembly は方式別 `interrupts.s`、共通 `os/kernel/mfp_state.s`、Human68K 専用 `standalone/trap14.s` に分離される。
 
 `os/app/main.c` は `.x` には含まれず、`.xdf` 側の初期化・`ss_run()` 入口である。`.x` は `standalone/main.c` から共有 `os/app/scene.c` を呼ぶ。`os/app/scene.c`、`os/win/window.c`、`os/win/win.h` の変更は両ビルドに影響する。
 
@@ -544,7 +544,7 @@ s30 以前は `.x` は独自の `Win` 構造体 / `zmap[3]` / `bring_to_front` /
 | IMRA | `$FF` (全許可)          | `$FF` (全許可)                 | s23 の教訓。Human68K 全 ISR を動作させて IOCS キーボード/マウスを有効化する。両方式とも `ss_set_interrupts()` が同じ `$FF/$7F` を書く                                                                            |
 | IMRB | `$7F` (bit7 除く全許可) | `$7F` (bit7 除く全許可)        | 同上                                                                                                                                                                  |
 
-s23〜s26 の期間は preemptive 版のみ旧値 `$21/$10` (Timer A + Key RXF + Timer D の最小セット) が残っていたが、のちに両方式とも `$FF/$7F` へ統一された。2026-09-30の変更では、`.x` watchdogも起動後snapshotのIMR/timerをIPL7下で再適用する。元のHuman68K復元snapshotは上書きしない。実機での復旧・入力状態は確認待ち。
+s23〜s26 の期間は preemptive 版のみ旧値 `$21/$10` (Timer A + Key RXF + Timer D の最小セット) が残っていたが、のちに両方式とも `$FF/$7F` へ統一された。2026-09-30 の変更では、`.x` watchdog も起動後 snapshot の IMR/timer を IPL7 下で再適用する。元の Human68K 復元 snapshot は上書きしない。実機での復旧・入力状態は確認待ち。
 
 ### 設計根拠
 
@@ -593,7 +593,7 @@ Timer D と V-DISP の両 ISR は:
 
 ### バグ履歴（解決済み）
 
-#### s33: standalone 終了時 Address Error（B_PRINT が a1 を破壊 → _B_SUPER が MD を誤読）
+#### s33: standalone 終了時 Address Error（B_PRINT が a1 を破壊 →_B_SUPER が MD を誤読）
 
 **症状**: `ssos_pre.x` の ESC 終了時、"SSOS-Preemptive terminated." 表示直後に
 `Exceptional Abort By address error` (PC=0xFFA870, `move.l -(a0),-(a1)`)。crash 時 A1=BSS+1（奇数）。
@@ -633,7 +633,7 @@ B_PRINT が壊した a1（=BSS+1）を MD として使う。MD ≥ 0 なので�
 （`__fd_exit_clean`/`_dos_allclose`/PSP 復帰の memmove）が壊れたスタックを歩き、IPL-ROM の逆方向
 memmove (0xFFA870) で a1=奇数 → Address Error。
 
-```
+```text
 B_PRINT("...")        → a1 = BSS+1   (IOCS が破壊、復元せず)
 _B_SUPER(d1=old_usp)  → IOCS は a1(=BSS+1) を MD として採用、d1 は無視
                         MD≥0 → user 復帰、USP = BSS+1
@@ -660,6 +660,7 @@ _exit(0);
 ```
 
 修正の要点:
+
 - **生 trap ではなく `_iocs_*` ラッパを使う**: ラッパが trap#15 のたびに a1 を正しく設定する。IOCS ハンドラは a1 を scratch に使うため、生 trap で連続呼び出しすると a1 の事前設定を呼び出し側が毎回担う必要がある。ラッパに任せればこの落とし穴がない。
 - **enter は MD=0**（`b_super.S` は MD==0 のとき `beq` で特権命令 `move.l %sp,%usp` をスキップするので、ユーザーモードから安全。MD<0 は IOCS が SSP を MD から導出し起動 crash するため不可）。
 - **exit は MD=old_usp**: supervisor で実行されるので `move.l %sp,%usp` は特権違反にならず、trap 内で USP=MD に上書きされるため無害。
@@ -678,7 +679,7 @@ normal path と trap14 例外ダンプパスの両方に適用。
 - **文字列長**: 31 バイトで安定再現、12 バイトでは再現しなかったのも、短い文字列だと a1 残留値が
   たまたま安全側に振れるため（非決定的）。
 - **設計教訓**: IOCS 関数の連続呼び出しでは**生 trap ではなく `_iocs_*` ラッパを使う**こと。
-  ラッパは各 trap#15 の直前に a1=第1引数 を設定するため、IOCS ハンドラが a1 を scratch に使っても
+  ラッパは各 trap#15 の直前に a1=第 1 引数を設定するため、IOCS ハンドラが a1 を scratch に使っても
   次の呼び出しで確実に上書きされる。生 trap を使うと a1 の事前設定を毎回手書きする必要があり、
   s33 のような漏れに直結する。
 - CASE 2 の旧クラッシュは別因（volatile ループが trap#15 直後に `lea (16,%sp),%sp` を生成して A7 破壊。
@@ -764,7 +765,7 @@ SCC 受信 → 割込(0x148) → IPL-ROM ハンドラ($3F003039) → 座標更�
 2. **ソフトウェアカーソル**: GVRAM に XOR 枠線描画（テキストレイヤー非依存）。XOR は自分自身で相殺するため保存バッファ不要
 3. **ドラッグ枠線方式**: ドラッグ中は XOR 枠線のみ（ウィンドウ本体不動）、ドロップ時のみ `ss_win_render_all()`。ちらつかない（standalone 準拠）
 4. **z 一意化**: `next_z=4` 開始、255→3 折り返し（[s29](#s29-初回ドラッグの-z-衝突解決済み) を参照）
-5. **粗い遮蔽skipを撤回**: 部分遮蔽を完全遮蔽と誤判定しないよう、現在は領域をz順に再合成する
+5. **粗い遮蔽skipを撤回**: 部分遮蔽を完全遮蔽と誤判定しないよう、現在は領域を z 順に再合成する
 
 #### standalone 無影響の根拠（s26 当時）
 
@@ -808,18 +809,18 @@ s26 当時の standalone ビルドは `obj/interrupts.o main.o scheduler.o buddy
   - preemptive 版の `ss_win_set_content_line` を `ss_disable_interrupts()` / `ss_enable_interrupts()` で割り込み保護（メインスレッドの `memcmp` + 描画中の競合を回避）
 - **ビルド**: 4 ターゲット (cooperative OS, preemptive OS, cooperative `.x`, preemptive `.x`) 全て exit 0
 - **メモリ**: `.bss` 63.6KB → 68.3KB、RAM 80KB に 11.7KB 余裕
-- **`.x` ホスト側に残る固有処理**: 256 色パレット、`scene_wait_vsync` の有限watchdog、ベンチの bitmap save/restore、marching-ants outline など。通常UIの実装自体は後続の統合で `os/app/scene.c` に共有化された
-- **当時の残課題（解消済み）**: `os/app/main.c` の `WinContent` 配列と `SSWindow.title`/`content` の重複は、後続の `scene.c` 統合で整理された。現在のUI taskは単一であり、旧 `data_thread` は存在しない
+- **`.x` ホスト側に残る固有処理**: 256 色パレット、`scene_wait_vsync` の有限 watchdog、ベンチの bitmap save/restore、marching-ants outline など。通常 UI の実装自体は後続の統合で `os/app/scene.c` に共有化された
+- **当時の残課題（解消済み）**: `os/app/main.c` の `WinContent` 配列と `SSWindow.title`/`content` の重複は、後続の `scene.c` 統合で整理された。現在の UI task は単一であり、旧 `data_thread` は存在しない
 
 ### 現在の制限事項
 
 | 項目                                                                             | 内容                                                                                                                                                                                             |
 | :---                                                                             | :---                                                                                                                                                                                             | :--- |
-| **`.x` watchdogの実機確認待ち**                              | snapshot再適用・有限な脱出は実装済み。V-DISP/Timer D停止時の復旧と入力状態は実機確認待ち                                                                   |
+| **`.x` watchdogの実機確認待ち**                              | snapshot 再適用・有限な脱出は実装済み。V-DISP/Timer D 停止時の復旧と入力状態は実機確認待ち                                                                   |
 | **プリエンプティブ版に `mfp_debug.c` の実装が未提供**                            | `kernel.h` で extern 宣言はあるが、`stubs.o` で未実装。実機検証時に要対応                                                                                                                        |
 | **OS 版で非アクティブタイトルが「白」に見えない**（s27 残）                      | コードとパレットはスタンドアロンと同一だが視覚的に差がある。要エミュレータ/実機検証。仮説: (1) IOCS 0x94 経由のパレット設定が baremetal で反映されない、(2) CRTMOD 16 のパレットレジスタ挙動の差 |
 | **メモリ確保失敗時のフォールバックなし**                                         | `ss_init()` は allocator 初期化失敗で `SS_ERR_MEMORY` を返し、`premain()` は割り込み禁止の停止ループに入る（続行しない）。実行を継続する復旧手段は将来課題                    |
-| **Z-order の再採番**                                                             | `drag_begin` は `next_z` が 255 に達した時点で可視ウィンドウに 1..N の再採番を行い折り返し衝突を防ぐ。Nativeテストで 252 回の前面化を全面再描画と画素比較済み。再採番直後の表示の一貫性は実機では未確認                    |
+| **Z-order の再採番**                                                             | `drag_begin` は `next_z` が 255 に達した時点で可視ウィンドウに 1..N の再採番を行い折り返し衝突を防ぐ。Native テストで 252 回の前面化を全面再描画と画素比較済み。再採番直後の表示の一貫性は実機では未確認                    |
 
 ### IOCS マウスルーチン番号（参考）
 
@@ -874,7 +875,9 @@ make test-qemu
 要約: **test-asm は「m68k 命令の学習・教材」**、**test-qemu は「SSOS 本体の動作検証」**。SSOS のスケジューラを検証したいなら `make test-qemu`、m68k アセンブリ自体を試したいなら `make test-asm`。
 
 #### `tests/asm/`（m68k 命令の教材サンプル、5段階）
+
 SSOS の ctx switch が基盤とする m68k プリミティブを段階的に学ぶ（`.text` を 0x400 に置き、0x0-0x3FF の例外ベクタテーブルと衝突させない）:
+
 - `t01_hello.s` — 最小。Goldfish TTY に "Hello" を出すだけ（サブルーチンなし）
 - `t02_subroutines.s` — `bsr`/`rts` で `putchar`/`print_str` を切り出し、カウントループ
 - `t03_ctx_save_restore.s` — `movem.l` で全レジスタを保存→破壊→復元
@@ -882,6 +885,7 @@ SSOS の ctx switch が基盤とする m68k プリミティブを段階的に学
 - `t05_trap_exception.s` — `trap #0` でベクタ経由のハンドラに入り `rte` で戻る（preempt の基礎）
 
 #### `tests/qemu/`（SSOS スケジューラ検証、cop/pre に分割）
+
 共通部分（`common/`: `stub.c`、`tty.h`、`linker.ld`）を除き、協調的とプリエンプティブで別ディレクトリ。SSOS 本体の `scheduler.c` を**改変なし**でビルドし、ctx switch を QEMU 移植版で動かす。
 
 | テスト | 経路 | 検証内容（Native では不可能）|
@@ -936,7 +940,7 @@ C ロジックのみを対象とし、以下は意図的に**テストしない*
 
 ### 変更の検証フローと `make verify-check`
 
-`make verify`はNative、ASan/UBSan、検証tool fixture、QEMU、asm、context共通instruction比較、ホスト性能ログ、clean build/profile切替/依存/flags/no-opを順に実行する。各stepとQEMU caseのlog、対象commit/dirty状態、tool版、成果物hash/sizeを`build/verification/<run>/`に保存する。自動検証中の公開コピー先は`build/published/`。通常makeの既定は`~/tmp`で、`SS_EXPORT_DIR`で変更できる。
+`make verify`は Native、ASan/UBSan、検証 tool fixture、QEMU、asm、context 共通 instruction 比較、ホスト性能ログ、clean build/profile 切替/依存/flags/no-op を順に実行する。各 step と QEMU case の log、対象 commit/dirty 状態、tool 版、成果物 hash/size を`build/verification/<run>/`に保存する。自動検証中の公開コピー先は`build/published/`。通常 make の既定は`~/tmp`で、`SS_EXPORT_DIR`で変更できる。
 
 ```sh
 . ~/.elf2x68k
@@ -947,11 +951,11 @@ make verify-check REF=main
 python3 tools/bench-native.py
 ```
 
-`verify-check`は差分と未追跡sourceを安全側に分類する。disk生成toolは`.xdf`へ影響し、無効REFは非0終了する。QEMU移植版の成功はproduction assemblyや実MFPの非同期タイミングを完全カバーしない。純粋数値変換以外のtarget変更は該当形式の手動確認を示す。情報コマンドの終了コード0を実機確認完了として扱わない。
+`verify-check`は差分と未追跡 source を安全側に分類する。disk 生成 tool は`.xdf`へ影響し、無効 REF は非 0 終了する。QEMU 移植版の成功は production assembly や実 MFP の非同期タイミングを完全カバーしない。純粋数値変換以外の target 変更は該当形式の手動確認を示す。情報コマンドの終了コード 0 を実機確認完了として扱わない。
 
-Task/APIの制限は[契約表](docs/task-api-contract.md)、frameとQEMU差分は[context契約](docs/context-switch-contract.md)、未完了項目は[追加改善計画](docs/maintenance-performance-plan-2026-09-30.md)を参照する。
+Task/API の制限は[契約表](docs/task-api-contract.md)、frame と QEMU 差分は[context契約](docs/context-switch-contract.md)、未完了項目は[追加改善計画](docs/maintenance-performance-plan-2026-09-30.md)を参照する。
 
-固定sceneは両profileの`.x`で`-scene-bench`を指定する。診断buildは`EXTRA_CFLAGS='-DSS_DIAG_TASKS=32 -DSS_PROFILE_RUNTIME=1'`（1/2/8/32も可）を付ける。`.x`では`-task-check`が独立workerのstack/sleep/returnを確認して終了し、`.xdf`ではUI起動前に同じ診断を行う。診断はworker slotを消費するため、新しいプロセス/起動画像で実行する。標準buildでは診断を実行しない。詳細は[測定手順](docs/gfx-performance.md)を参照する。
+固定 scene は両 profile の`.x`で`-scene-bench`を指定する。診断 build は`EXTRA_CFLAGS='-DSS_DIAG_TASKS=32 -DSS_PROFILE_RUNTIME=1'`（1/2/8/32 も可）を付ける。`.x`では`-task-check`が独立 worker の stack/sleep/return を確認して終了し、`.xdf`では UI 起動前に同じ診断を行う。診断は worker slot を消費するため、新しいプロセス/起動画像で実行する。標準 build では診断を実行しない。詳細は[測定手順](docs/gfx-performance.md)を参照する。
 
 ## 参考
 

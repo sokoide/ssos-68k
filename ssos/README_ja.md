@@ -202,7 +202,7 @@ TRAP #14 は CPU の trap 命令で SR+PC がスタックに push されるた�
 
 ### 設計方針
 
-Timer D 割り込み (200Hz) はティック加算と起床要求フラグの設定だけを行い、強制コンテキストスイッチは行わない。起床処理はschedulerのコンテキスト切替時に割り込みをマスクして実行する。待機中のmain taskもworkerのyieldで起床できる。切替自体はタスクの `ss_task_yield()` が契機となる。
+Timer D 割り込み (200Hz) はティック加算と起床要求フラグの設定だけを行い、強制コンテキストスイッチは行わない。起床処理は scheduler のコンテキスト切替時に割り込みをマスクして実行する。待機中の main task も worker の yield で起床できる。切替自体はタスクの `ss_task_yield()` が契機となる。
 
 ### `ss_task_yield` の動作
 
@@ -241,11 +241,10 @@ Timer D 割り込み (200Hz) はティック加算と起床要求フラグの設
 - `draw_char8_clip` の z-order 最適化 (重なりなし時の fast path)。
 - ウィンドウリサイズ・スクロール対応。
 
-
 ## 現行の契約と検証（2026-09-30）
 
-TCB/stack/frameの正本は`os/kernel/scheduler.h`、`scheduler_abi.h`、`context_frame.h`。taskはINITIALIZING中にstartできず、canary初期化後にDORMANTへ公開する。entry(arg)のreturnはTERMINATEDで、slotを再利用しない。mainのIPCは非対応。制限とUI要求のpayload寿命は[API契約](../docs/task-api-contract.md)を参照する。
+TCB/stack/frame の正本は`os/kernel/scheduler.h`、`scheduler_abi.h`、`context_frame.h`。task は INITIALIZING 中に start できず、canary 初期化後に DORMANT へ公開する。entry(arg)の return は TERMINATED で、slot を再利用しない。main の IPC は非対応。制限と UI 要求の payload 寿命は[API契約](../docs/task-api-contract.md)を参照する。
 
-VSync停止は無期限spinを続けず、`.x`では一度のsnapshot復旧後に脱出、`.xdf`では有限待機後にIPL7下で停止する。DMA停止未確認では`.x`も表示・プロセス領域を返さず停止する。実機復旧・IOCS/DMAC動作の確認は残る。
+VSync 停止は無期限 spin を続けず、`.x`では一度の snapshot 復旧後に脱出、`.xdf`では有限待機後に IPL7 下で停止する。DMA 停止未確認では`.x`も表示・プロセス領域を返さず停止する。実機復旧・IOCS/DMAC 動作の確認は残る。
 
-検証入口はrootの`make verify`。ホスト/RAM、QEMU移植版、実機の範囲は[context契約](../docs/context-switch-contract.md)と[追加計画](../docs/maintenance-performance-plan-2026-09-30.md)へ集約する。mode8は512word stride、mode16は1024word strideで、同じ固定値を全modeへ適用しない。
+検証入口は root の`make verify`。ホスト/RAM、QEMU 移植版、実機の範囲は[context契約](../docs/context-switch-contract.md)と[追加計画](../docs/maintenance-performance-plan-2026-09-30.md)へ集約する。mode8 は 512word stride、mode16 は 1024word stride で、同じ固定値を全 mode へ適用しない。
