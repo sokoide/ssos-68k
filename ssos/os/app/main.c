@@ -1,4 +1,6 @@
-#include "../kernel/kernel.h"
+#include "../kernel/status.h"
+#include "../kernel/irq.h"
+#include "../kernel/boot.h"
 #include "../kernel/scheduler.h"
 #include "../kernel/work_queue.h"
 #include "../mem/memory.h"

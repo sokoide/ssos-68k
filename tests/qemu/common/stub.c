@@ -9,6 +9,8 @@
  *
  * The actual context switch lives in ctx_switch.s. */
 
+#include "clock.h"
+
 #include <stdint.h>
 #include <stddef.h>
 

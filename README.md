@@ -2,8 +2,19 @@
 
 **SSOS** は X68000（MC68000 プロセッサ）向けの小型オペレーティングシステムである。協調的マルチタスクとプリエンプティブマルチタスクの 2 つのモデルを、ビルド時オプション `SCHED=cooperative|preemptive` で切り替えられる単一の統合ソースツリー（`ssos/`）として実装している。グラフィックス管理、マウス対応ウィンドウシステム、メモリ管理を備える。Human68K 上で動作するスタンドアロン版（`.x`）と、XDF ディスクイメージから直接 IPL 起動するベアメタル版（`.xdf`）の 2 形態でビルド可能。通常 UI は `os/app/scene.c` を `.x` / `.xdf` で共有し、各形式の初期化・終了入口はホスト側に分かれる。スケジューラ本体は `os/kernel/scheduler.c` で共有し、方式別の割り込み処理と起床方針だけを `os/kernel/{cooperative,preemptive}/` で切り替える。
 
+## 教育用 OS として読む
+
+SSOS は単一 CPU・共有アドレス空間・Supervisor mode の task を使う小型 OS である。`.xdf` も IOCS/IPL ROM を利用する。task 切替とプロセスのメモリ保護を区別して学ぶ。
+
+- [設計方針と学習順](docs/educational-os-design.md): 現状評価、責務・依存の改善方針、CPU → scheduler → memory → IPC → UI → 実機の読み順。
+- [教育・保守性の改善計画](docs/educational-os-plan.md): 公開 API、host、計測、graphics の段階的な分離と完了条件。
+- [文書索引](docs/README.md): 現行契約、検証・測定、既存改善計画、旧実装の履歴。
+
+まず root の `make test` で Native のロジック・RAM 画素を確認できる。QEMU/クロス環境は次の段階で必要になる。以下の詳細なバグ履歴は当時の記録であり、現行の契約は文書索引から参照する。
+
 ## 目次
 
+- [教育用 OS として読む](#教育用-os-として読む)
 - [前提条件](#前提条件)
 - [ビルド](#ビルド)
 - [.x / .xdf UI統合の範囲](#x--xdf-ui統合の範囲)
@@ -52,7 +63,7 @@ make standalone SCHED=cooperative
 ```bash
 cd /path/to/ssos-68k
 . ~/.elf2x68k
-SS_PROFILE_GFX=1 make
+SS_PROFILE_GFX=1 make all
 ```
 
 このコマンドは両モデルの `.x` / `.xdf` を生成する。中間成果物は `ssos/{standalone,os,boot}/build/<方式>/` に、ディスクイメージは `ssos/build/disk/<方式>/profile-<値>/` に分離する。公開用コピーは `~/tmp/ssos_{cop,pre}_profile1.{x,xdf}`。通常ビルド（profile 0）は従来の `~/tmp/ssos_{cop,pre}.{x,xdf}` である。コピー先の権限エラーが出ても、各 `build/` 内の成果物は利用できる。
@@ -69,11 +80,11 @@ make SCHED=cooperative
 
 ### 全ターゲット一括ビルド
 
-ルート Makefile から全ターゲット（`.x` と `.xdf` 両方）を一括ビルド:
+ルート Makefile から全ターゲット（`.x` と `.xdf` 両方）を一括ビルドする。引数なしの `make` は Usage を表示する。
 
 ```bash
 # リポジトリルートで
-make -j2
+make -j2 all
 # 成果物: ~/tmp/ssos_cop.x, ~/tmp/ssos_cop.xdf, ~/tmp/ssos_pre.x, ~/tmp/ssos_pre.xdf
 ```
 
@@ -168,7 +179,7 @@ z-order、論理パレット、main task 登録は共有である。
 - 通常操作時の`runtime.txt`メトリクス
 - 実際の領域再合成経路を測る固定`drag-region`ベンチ
 
-性能最適化はいったん完了とする。次に着手するなら、性能ではなく`next_z`が 255 を超えた後も前面化を正しく保つ z 値正規化を先に行う。
+ここまでの数値は過去の primitive ベンチの記録である。現行 scene は z 値の再採番を実装済みで、Native の画素比較で確認する。今後の性能採否と実機確認は[既存改善計画](docs/maintenance-performance-plan-2026-09-30.md)で管理する。
 
 追加の性能候補は、実験用ビルドでのみ検証する。
 
@@ -181,8 +192,7 @@ z-order、論理パレット、main task 登録は共有である。
 ### その他のビルドコマンド
 
 ```bash
-# 各 variant ディレクトリで
-make compiledb      # LSP 対応の compile_commands.json を生成
+# ssos/ ディレクトリで（SCHED を指定）
 make dump           # バイナリの逆アセンブル出力（デバッグ用）
 make readelf        # ELF ファイル情報を表示
 make clean          # ビルド成果物を全て削除
@@ -198,16 +208,17 @@ SSOS の OS 版（`.xdf`）は X68000 の物理アドレス空間に以下を配
 | 領域         | 範囲            | サイズ  | 用途                                                            |
 | :---         | :---            | :---    | :---                                                            |
 | ブートセクタ | `0x00002000` 〜 | 1KB     | IPL から `boot.X` 1KB をロード（`boot/main.s`）                 |
-| OS イメージ  | `0x00010000` 〜 | 192KB   | `boot/main.s` がセクタ 2-207 をロード、`.text`+`.rodata` 配置先 |
+| OS イメージ  | `0x00010000` 〜 | 192KB   | `.text`+`.rodata` の linker 配置先。boot は sector 2 から 207 KiB をロード |
 | RAM          | `0x00040000` 〜 | 80KB    | `.data`+`.bss` 領域。SS_MAX_WINDOWS=32 対応で 64KB→80KB に拡張 |
-| SSOSRAM      | `0x00150000` 〜 | 10944KB | OS ヒープ（`ss_mem_init` の対象、`__ssosram_size=0x00AB0000`）  |
+| Stack pool   | `0x00150000` 〜 | 512KB   | 32 worker × 16KB の専用 stack。heap と分離 |
+| OS heap      | `0x001D0000` 〜 | 10432KB | `ss_mem_init` の対象。固定配置は `kernel/linker.ld` が正本 |
 | Text VRAM    | `0x00E00000` 〜 | 512KB   | テキスト画面（IPL で使用、OS 起動時に 0 クリア）                |
 | GVRAM Page 0 | `0x00C00000` 〜 | 512KB   | 16 色モード (CRTMOD 16) のフレームバッファ                      |
 | GVRAM Page 1 | `0x00C80000` 〜 | 512KB   | 256 色モード (CRTMOD 8) のダブルバッファ用                      |
 | CRTC         | `0x00E80000` 〜 | —       | 画面制御（V-DISP, スクロール等）                                |
 | DMAC Ch.2    | `0x00E84080` 〜 | —       | 矩形塗りつぶし高速化（DMA メモリ→VRAM）                         |
 | MFP          | `0x00E88000` 〜 | —       | 割り込みコントローラ（タイマ A〜D, USART, GPIO）                |
-| Video Ctl    | `0x00E82600`    | 1 word  | 画面レイヤ ON/OFF（bit0=テキスト）                              |
+| Video Ctl    | `0x00E82600`    | 1 word  | 画面レイヤ ON/OFF。現行 premain は text bit のみクリア                              |
 
 ### メモリアロケータ
 
@@ -225,66 +236,31 @@ SSOSRAM 領域は **Buddy + Slab ハイブリッド**アロケータで管理す
 
 ## ブートフロー
 
-`.xdf` イメージから起動したときの処理順序を示す。
+現行 `.xdf` の入口は次の順で進む。ロード配置の正本は `boot/main.s` と `os/kernel/linker.ld` である。
 
 ```text
-[IPL ROM]
-  │ ディスク sector 1（ブートセクタ）を 0x00002000 にロードしてジャンプ
-  ▼
-[0x002000: boot/main.s:boot]    ──▶ entry に分岐
-  │
-[0x002000: boot/main.s:entry]
-  │ • "Booting Scott & Sandy OS..." 等のバナー表示
-  │ • IOCS _B_READ で sector 2-207（最大 207KB）を 0x00100000 にロード
-  │ • "Sector 2 copied to 0x010000. Ready to go!" 表示
-  │ • IOCS _MS_INIT / _MS_CURON で IPL-ROM マウスハンドラを
-  │   IPL レベル 5（ベクタ 0x140-0x15C）に登録
-  │ • 0x00100000 にジャンプ（→ os/kernel/entry.s:entry）
-  ▼
-[0x010000: os/kernel/entry.s:entry]   (RAM 0x010000 に SP 設定)
-  │ • SP ← 0x010000
-  │ • ss_set_interrupts()        ← MFP 全レジスタ初期化、IMR=$FF/$7F
-  │ • premain() にジャンプ
-  ▼
-[os/kernel/premain.c:premain]
-  │ 1. clear_bss()
-  │ 2. IOCS CRTMOD(16)             ← 16 色モードへ
-  │ 3. CRTC R20.SIZ=1 強制セット   ← IPL ROM の CRTMOD(16) バグ回避
-  │ 4. 16 色パレット設定 (IOCS 0x94)
-  │ 5. IOCS _B_CUROFF / ファンクションキー非表示 / ソフトキーボード無効
-  │ 6. Text VRAM 512KB を 0 クリア
-  │ 7. CRTC スクロールレジスタ 0
-  │ 8. Text VRAM 追加クリア + Video Ctl 0xE82600=$003E
-  │    （テキストレイヤー OFF、IPL-ROM マウスカーソル隠蔽）
-  │ 9. ss_set_interrupts()        ← IOCS が書き換えた MFP を再初期化
-  │ 10. IOCS _MS_INIT / _MS_CURON   ← クリーンの MFP=$FF/$7F 状態で再登録
-  │ 11. AER = $06                  ← GPIP4 を 1→0 エッジ検出に設定
-  │ 12. IMRA / IMRB = $FF / $7F (両方式共通、Human68K 互換)
-  │     ※ .x watchdog は起動後snapshotをIPL7下で一度再適用。復旧失敗は有限停止
-  │ 13. ss_gfx_set_mode(CRTMOD_16)  ← SSGfxMode 初期化
-  │ 14. ss_init()                    ← モジュール初期化
-  │ ▼
-[os/app/main.c:ss_init]
-  │ • ss_mem_init()                 ← SSOSRAM を Buddy で初期化
-  │ • ss_task_stack_base = linker予約の専用512 KiB stack pool
-  │ • ss_sched_init() / ss_work_init() / ss_ipc_init()
-  │ • ss_gfx_init() / ss_win_init()
-  │ • ss_run() に fall through
-  ▼
-[os/app/main.c:ss_run]
-  │ • 3 つのウィンドウ（Timer / Keyboard / Mouse）を z=1,2,3 で作成
-  │ • render_win コールバック登録
-  │ • ss_win_render_all()
-  │ • メインループ（wait_vsync → 更新 → yield）
-  ▼
-[idle]  vsync / mouse / keyboard を待つ
+IPL ROM
+  → boot/main.s: boot/entry
+      IOCS _B_READ で sector 2 から 207 KiB を 0x010000 へロード
+      IOCS のマウス初期化後、0x010000 へジャンプ
+  → os/kernel/entry.s: entry
+      SP を 0x010000 に設定して premain へ
+  → os/kernel/premain.c: premain
+      BSS clear → IOCS の表示初期化 → text layer を無効化
+      ss_set_interrupts を一度実行
+      マウス再初期化と baremetal 固有の AER 設定
+      linker の stack pool サイズと ss_init の成否を検査
+      IRQ 保存復元下で main TCB を登録
+  → os/app/main.c: ss_run
+      指定時だけ worker 診断 → 共有 ss_scene_run
+      scene 終了時は割り込みをマスクして停止
 ```
 
-### なぜ `ss_set_interrupts()` を 2 回呼ぶか
+### 独自 ISR は C 初期化後に設置する
 
-`entry.s` で 1 回目の `ss_set_interrupts()` を呼ぶが、その後 `premain()` 内の `IOCS CRTMOD(16)` / `_B_CUROFF` / `_MS_INIT` 等の IOCS 呼び出しが **MFP レジスタと割り込みベクタを上書き** してしまう。これにより V-DISP（`0x134`）/ Timer D（`0x110`）の自前ハンドラが消え、`ss_vsync_counter` が進まなくなり `wait_vsync()` でフリーズする。`premain()` 末尾で 2 回目を呼ぶことでクリーンな状態に戻す。
+`entry.s` は `ss_set_interrupts()` を呼ばない。`premain()` が BSS と IOCS の表示初期化を済ませてから設置する。これにより、C 状態の準備前に独自 ISR が動くことと、保存状態が BSS clear で消えることを避ける。マウス再初期化は現在の `.xdf` 固有の手順として残る。
 
-これは `.xdf` 版（OS 版）に固有の問題で、`standalone/` は `ss_set_interrupts()` を 1 回しか呼ばない（IOCS 呼び出しが全て終わった後）。
+`.x` は `standalone/main.c` が Supervisor 移行、元の状態の保存、subsystem/main TCB の初期化、IOCS 初期化後の ISR 設置、scene 実行、復元を受け持つ。両形式の起動・終了契約は[runtime 所有権](docs/runtime-ownership.md)を参照する。
 
 ## アーキテクチャ概要
 
@@ -296,9 +272,11 @@ ssos-68k/
 │   ├── boot/                            # ブートセクタ (1KB 制限、IPL→OS ロード)
 │   ├── os/                              # OS 本体
 │   │   ├── kernel/                      # カーネル
-│   │   │   ├── entry.s                  #   OS エントリ（SP 設定、ss_set_interrupts 呼び出し）
-│   │   │   ├── kernel.h                 #   共通カーネルヘッダ（ハードウェアアドレス、API）
-│   │   │   ├── scheduler.h              #   共通タスク API・SSTask 構造体
+│   │   │   ├── entry.s                  #   OS エントリ（SP 設定、premain へ）
+│   │   │   ├── task.h                   #   application 用 task API（status.h を利用）
+│   │   ├── irq.h / clock.h          #   IRQ 保存復元と counter の宣言
+│   │   ├── boot.h / x68k_mfp.h      #   起動/linker と X68000 MFP の内部宣言
+│   │   │   ├── scheduler.h              #   scheduler 内部の TCB・queue・ABI 検査
 │   │   │   ├── scheduler.c              #   共通スケジューラ本体
 │   │   │   ├── mfp_state.s              #   両方式共通のMFP・ベクタ保存復元
 │   │   │   ├── premain.c                #   .xdf のC初期化
@@ -334,9 +312,9 @@ ssos-68k/
 
 | コンポーネント          | 役割                                                                                                |
 | :---                    | :---                                                                                                |
-| **kernel/entry.s**      | OS エントリ。SP を 0x010000 に設定し `ss_set_interrupts()` を呼び `premain()` に制御を渡す          |
-| **kernel/premain.c**    | C 初期化。IOCS 呼び出し群、`ss_set_interrupts()` 再呼び出し、AER/IMR 設定、`ss_init()` → `ss_run()` |
-| **kernel/interrupts.s** | MFP 初期化、Timer D / V-DISP ハンドラ、`ss_context_switch` / `ss_task_yield`             |
+| **kernel/entry.s**      | OS エントリ。SP を 0x010000 に設定し `premain()` に制御を渡す          |
+| **kernel/premain.c**    | C 初期化。IOCS、ISR 設置、AER、`ss_init()`、main TCB 登録、`ss_run()` |
+| **kernel/{cooperative,preemptive}/interrupts.s** | MFP 初期化、Timer D / V-DISP ハンドラ、`ss_context_switch` / `ss_task_yield`             |
 | **standalone/trap14.s** | `.x` 専用のHuman68K例外・abortハンドラ |
 | **kernel/scheduler.c**  | タスク管理。16 優先度レディーキュー、ラウンドロビン、`ss_task_yield` / `ss_task_sleep`              |
 | **kernel/work_queue.c** | 遅延処理。ISR から post してメインループで `ss_work_drain`                                          |
@@ -350,64 +328,25 @@ ssos-68k/
 
 ### タスク管理 API
 
-`os/kernel/scheduler.h` の主要 API:
+application は `os/kernel/task.h` を include する。`SSTaskInfo`、create/start/yield/sleep/exit と ID による stack 診断を提供する。戻り値と stack の寿命は[task API 契約](docs/task-api-contract.md)を参照する。
 
-```c
-typedef struct SSTask SSTask;
-struct SSTask {
-    void*    context;       /* Saved stack pointer */
-    SSTask*  prev, *next;   /* Ready queue linkage */
-    void*    stack_base;    /* Top of stack */
-    uint32_t stack_size;
-    void*    (*entry)(void*);
-    uint32_t wait_until;    /* ss_task_sleep 用起床時刻 */
-    uint8_t  state;         /* NONE/INITIALIZING/DORMANT/READY/WAIT/TERMINATED */
-    uint8_t  pri;           /* 0 = 最高優先度 */
-    uint8_t  ctx_level;
-    uint8_t  resume_type;   /* yield=1, timer-int=0 */
-    SSTask*  sleep_next;    /* WAIT中タスクだけを結ぶリスト */
-    uint8_t  ipc_waiting;
-    void*    arg;
-};
-
-uint16_t ss_task_create(SSTaskInfo* info);  /* DORMANT で作成 */
-uint16_t ss_task_start(uint16_t id);        /* READY に遷移 */
-void     ss_task_yield(void);               /* 協調版: 自発的コンテキストスイッチ */
-uint16_t ss_task_sleep(uint32_t ticks);     /* ss_tick_counter + ticks まで WAIT */
-```
+`os/kernel/scheduler.h` は内部 TCB、ready queue、切替・起床入口を宣言し、scheduler・IPC・起動 host・内部検証で利用する。TCB/frame layout の正本は `scheduler_abi.h` / `context_frame.h` である。application は TCB や queue を操作しない。
 
 優先度 0 が最高、15 が最低。レディーキューは 16 ビットビットマップで高速検索する（`pri_bitmap` の bit 15 が pri 0、bit 0 が pri 15）。
 sleep 中のタスクは専用リストで管理するため、起床処理は全 32 TCB ではなく WAIT 中タスクだけを走査する。tick 周回をまたぐ期限比較を保証するため、1 回の sleep 上限は `SS_MAX_SLEEP_TICKS` である。実行可能な別タスクがない場合は `SS_ERR_STATE` を返す。
 
 ## モジュール依存
 
-app は window/gfx/kernel の API を利用する。scheduler core は UI へ依存せず、premain/standalone の初期化 host が各 subsystem を組み立てる。
+scheduler core は UI に依存せず、起動 host が各 subsystem を組み立てる。一般定数・task API・IRQ/clock と、MMIO/起動宣言を別 header に分けている。目標とする分離と依存図は[設計方針](docs/educational-os-design.md#目標とする責務と依存)、移行順序は[改善計画](docs/educational-os-plan.md)を参照する。
 
-```mermaid
-graph TD
-    app["app/scene.c<br/>（.x/.xdf共有の通常UI）"]
-    win["win/window.c"]
-    gfx["gfx/vram.c"]
-    ipc["ipc/message.c"]
-    kernel["kernel/<br/>interrupts.s<br/>scheduler.c<br/>work_queue.c<br/>premain.c<br/>entry.s"]
-    mem["mem/<br/>buddy.c<br/>slab.c"]
-
-    app --> win
-    app --> gfx
-    app --> ipc
-    win --> kernel
-    win --> mem
-    gfx --> kernel
-    gfx --> mem
-    ipc --> kernel
-```
-
-- **kernel** は MFP 割り込み、`ss_set_interrupts()`、コンテキストスイッチを提供する最も内側の層
-- **mem** は `ss_alloc()` / `ss_free()` を提供し、kernel にも依存しない（`__ssosram_start` シンボルのみ必要）
-- **gfx** は GVRAM および IOCS グラフィックス API をラップ
-- **win** はウィンドウ API。`gfx`、`kernel` に依存
-- **ipc** はメッセージキュー。`kernel` の `ss_task_yield` を使用
-- **app** はこれらを組み合わせて 3 ウィンドウデモを実装
+| 現行の責務 | 主な依存・接続 |
+| --- | --- |
+| scheduler / work / IPC | task 状態と queue、IRQ 保存復元、context switch。IOCS/UI の操作をしない |
+| buddy / slab | caller が渡す arena。排他は caller の責任 |
+| window | gfx、palette、kernel の error/IRQ 宣言。window は静的配列で管理 |
+| graphics / palette | GVRAM/CRTC/DMAC、IOCS palette。Native は RAM と stub へ置換 |
+| scene | window/gfx と task API、入力・wait hook。既定入力には IOCS が残る |
+| premain / app main / standalone | 各形式の初期化、main 登録、scene 起動、終了処理 |
 
 ## 2 つのマルチタスクモデル
 
@@ -416,9 +355,9 @@ graph TD
 | 観点                     | 協調的 (`SCHED=cooperative`)                                                  | プリエンプティブ (`SCHED=preemptive`)                        |
 | :---                     | :---                                                                          | :---                                                         |
 | コンテキストスイッチ契機 | タスクが `ss_task_yield()` を呼んだ時                                         | Timer D ISR (10 tick毎、約50ms)、または明示yield              |
-| レジスタ保存             | yield 時 `d0-d7/a0-a6` 全 16 レジスタ                                         | ISR 内で `d0-d7/a0-a6` 全保存（10 ティックに 1 回）          |
+| レジスタ保存             | yield 時 `d0-d7/a0-a6` 15 本の register（d0-d7/a0-a6）                                         | ISR 内で `d0-d7/a0-a6` 全保存（10 ティックに 1 回）          |
 | ISR の重み               | 軽い（カウンタ + flag のみ、6 命令）                                          | 重い（10 ティック毎に全レジスタ保存 + C 関数呼び出し）       |
-| `ss_task_yield()` の有無 | 必須（タスクの責任）                                                          | 任意（即座に切り替わるので呼ぶ必要なし）                     |
+| `ss_task_yield()` の有無 | 実行機会を譲る yield または blocking API が必要                                                          | 自発的切替にも使用。強制切替は 10 tick ごと                     |
 | 起床処理                 | schedulerのコンテキスト切替時に `ss_process_wakeups()` を呼ぶ                 | ISR 内で直接 `ss_do_wakeups()` を呼ぶ（`ss_switch_tick=10`） |
 | スタック                 | 各タスクに独立したスタック（`ss_task_stack_base` 配下）                       | 各タスクに独立したスタック（`ss_task_stack_base` 配下）      |
 | 実装位置                 | `os/kernel/cooperative/{interrupts.s,wakeups.c}`                              | `os/kernel/preemptive/{interrupts.s,wakeups.c}`              |
@@ -504,7 +443,7 @@ s30 以前は `.x` は独自の `Win` 構造体 / `zmap[3]` / `bring_to_front` /
 | ヒットテスト | `ss_win_hit_test`（z-order 順、最前面を返す）|
 | レンダリング z 走査 | 可視ウィンドウを集め、z昇順に挿入ソートして再合成 |
 | オクルージョン | 領域再描画では重なる可視ウィンドウをすべてz昇順に再描画し、上位ウィンドウで自然に上書きする |
-| 初期 z 衝突回避 | `next_z=4` 開始、255 到達後 4 折り返し（[s29](#s29-初回ドラッグの-z-衝突解決済み)）|
+| 初期 z 衝突回避 | `next_z=4` 開始、255 到達前に可視 window を順序維持で再採番|
 
 設計の要点:
 
@@ -525,8 +464,8 @@ s30 以前は `.x` は独自の `Win` 構造体 / `zmap[3]` / `bring_to_front` /
 
 | レジスタ     | アドレス  | 値                                       | 効果                                     |
 | :---         | :---      | :---                                     | :---                                     |
-| IERA         | `$E88007` | `$FF`                                    | 全ソース有効（IOCS 互換性）              |
-| IERB         | `$E88009` | `$7F`                                    | 全ソース有効（IOCS 互換性）              |
+| IERA         | `$E88007` | `$FF`                                    | SSOS の広い許可設定（Human68K の標準値とは異なる）              |
+| IERB         | `$E88009` | `$7F`                                    | SSOS の広い許可設定（Human68K の標準値とは異なる）              |
 | IMRA         | `$E88013` | `$FF` (両方式共通)                       | マスク設定（下記参照）                   |
 | IMRB         | `$E88015` | `$7F` (両方式共通)                       | マスク設定（下記参照）                   |
 | VR           | `$E88017` | `$41`                                    | Auto-EOI、ベクタベース 0x40              |
@@ -541,7 +480,7 @@ s30 以前は `.x` は独自の `Win` 構造体 / `zmap[3]` / `bring_to_front` /
 
 | 設定 | cooperative             | preemptive                     | 理由                                                                                                                                                                  |
 | :--- | :---                    | :---                           | :---                                                                                                                                                                  |
-| IMRA | `$FF` (全許可)          | `$FF` (全許可)                 | s23 の教訓。Human68K 全 ISR を動作させて IOCS キーボード/マウスを有効化する。両方式とも `ss_set_interrupts()` が同じ `$FF/$7F` を書く                                                                            |
+| IMRA | `$FF` (全許可)          | `$FF` (全許可)                 | SSOS の起動時設定。Human68K の標準 mask と同一ではない。両方式とも `ss_set_interrupts()` が同じ `$FF/$7F` を書く                                                                            |
 | IMRB | `$7F` (bit7 除く全許可) | `$7F` (bit7 除く全許可)        | 同上                                                                                                                                                                  |
 
 s23〜s26 の期間は preemptive 版のみ旧値 `$21/$10` (Timer A + Key RXF + Timer D の最小セット) が残っていたが、のちに両方式とも `$FF/$7F` へ統一された。2026-09-30 の変更では、`.x` watchdog も起動後 snapshot の IMR/timer を IPL7 下で再適用する。元の Human68K 復元 snapshot は上書きしない。実機での復旧・入力状態は確認待ち。
@@ -550,7 +489,7 @@ s23〜s26 の期間は preemptive 版のみ旧値 `$21/$10` (Timer A + Key RXF +
 
 - **IER は `$FF/$7F` のまま**: IOCS 関数は対応する IER ビットがセットされている必要がある。IER を変更するとキーボード USART やタイマのボーレートジェネレータが動作しなくなる
 - **IMR 全マスク解除（`$FF/$7F`、両方式共通）**: Human68K のキーボード、マウス、CRTC の ISR は動作し続ける必要がある。当コードはベクタ 0x134（V-DISP）と 0x110（Timer D）のみ上書きし、その他のベクタはすべて Human68K のハンドラを指したまま。IMR ビットをマスクすると IOCS のキーボード/マウス入力が動作しなくなる。かつての preemptive の最小セット (`$21/$10`) は、IPL ROM ハンドラ未登録ベクタへの誤発火を避ける意図だったが、マウス受信ワークが更新されなくなる症状の原因になったため廃止された
-- **`ss_set_interrupts()` は全 IOCS 初期化の後に呼び出すこと**（CRTMOD、MS_INIT 等）。IOCS 呼び出しが MFP を再プログラムするため。`premain()` では **2 回呼ぶ** ことで対応
+- **`ss_set_interrupts()` は全 IOCS 初期化の後に呼び出すこと**（CRTMOD、MS_INIT 等）。IOCS 呼び出しが MFP を再プログラムするため。`entry.s` は設置せず、`premain()` が C/表示初期化後に一度設置する。マウス再初期化はその後の `.xdf` 固有手順として残る
 
 ### ISR 設計
 
@@ -560,21 +499,20 @@ Timer D と V-DISP の両 ISR は:
 2. 最小限のレジスタを保存（協調: `d0/a0`、プリエンプティブ: `d0-d7/a0-a6`）
 3. カウンタをインクリメントしフラグを設定（ISR 内で C 関数呼び出しなし、協調版）
 4. ISR の in-service ビットをクリア
-5. 割り込み再許可 (`move.w #0x2000, %sr`)
-6. `rte`
+5. `rte` で保存された SR/PC へ復帰（直前に固定 SR へ変更しない）
 
 ## デバッグ
 
 ### MFP レジスタ追跡
 
-`os/kernel/kernel.h` の `SSMfpRegs` 構造体と関連 API で MFP の状態変化を追跡できる:
+`os/kernel/x68k_mfp.h` に `SSMfpRegs` と以下の診断 API 宣言を置く。ただし、現行ツリーにはこれらの関数定義がなく、呼び出すには実装が必要である。
 
 - `ss_dump_mfp_regs(SSMfpRegs* out)`: 15 個の MFP レジスタをスナップショット
 - `ss_diff_mfp_regs(before, after, buf, bufsize)`: 2 つのスナップショットを比較、差分を整形表示
 - `ss_mfp_track_begin(snapshot)` / `ss_mfp_track_end(before, label)`: IOCS 呼び出しのラッパー、変更をテキスト VRAM に記録
 - `ss_mfp_watch_ctrl(label)`: 監視対象 MFP レジスタの選択
 
-これらは `ssos/os/kernel/kernel.h` で extern 宣言され、実装は各 variant の `premain.c` 配下（歴史的経緯で cooperative 側に実体がある）。
+現在の MFP の保存・復元は共通 `os/kernel/mfp_state.s` を使う。未実装の診断宣言と区別する。
 
 ### 例外ハンドラ（TRAP #14）
 
@@ -589,7 +527,7 @@ Timer D と V-DISP の両 ISR は:
 
 ## 知見
 
-ここでは歴史的に解決したバグと、現在の制限事項を分けて記載する。
+以下の s 番号の節は歴史的な調査記録で、当時のコード片・ハードウェア解釈を含む。現行 API/ABI と設計は[文書索引](docs/README.md)を参照する。
 
 ### バグ履歴（解決済み）
 
@@ -817,7 +755,7 @@ s26 当時の standalone ビルドは `obj/interrupts.o main.o scheduler.o buddy
 | 項目                                                                             | 内容                                                                                                                                                                                             |
 | :---                                                                             | :---                                                                                                                                                                                             | :--- |
 | **`.x` watchdogの実機確認待ち**                              | snapshot 再適用・有限な脱出は実装済み。V-DISP/Timer D 停止時の復旧と入力状態は実機確認待ち                                                                   |
-| **プリエンプティブ版に `mfp_debug.c` の実装が未提供**                            | `kernel.h` で extern 宣言はあるが、`stubs.o` で未実装。実機検証時に要対応                                                                                                                        |
+| **MFP 診断 API の実装が未提供**                            | `x68k_mfp.h` の診断宣言に対応する関数定義は両方式とも現行ツリーにない                                                                                                                        |
 | **OS 版で非アクティブタイトルが「白」に見えない**（s27 残）                      | コードとパレットはスタンドアロンと同一だが視覚的に差がある。要エミュレータ/実機検証。仮説: (1) IOCS 0x94 経由のパレット設定が baremetal で反映されない、(2) CRTMOD 16 のパレットレジスタ挙動の差 |
 | **メモリ確保失敗時のフォールバックなし**                                         | `ss_init()` は allocator 初期化失敗で `SS_ERR_MEMORY` を返し、`premain()` は割り込み禁止の停止ループに入る（続行しない）。実行を継続する復旧手段は将来課題                    |
 | **Z-order の再採番**                                                             | `drag_begin` は `next_z` が 255 に達した時点で可視ウィンドウに 1..N の再採番を行い折り返し衝突を防ぐ。Native テストで 252 回の前面化を全面再描画と画素比較済み。再採番直後の表示の一貫性は実機では未確認                    |
@@ -837,125 +775,40 @@ s26 当時の standalone ビルドは `obj/interrupts.o main.o scheduler.o buddy
 
 ## テスト
 
-`tests/` に 2 種類のテストを置いている。詳細と制限事項は `tests/README.md` を参照。
+リポジトリ root から実行する。詳細と追加 suite の登録方法は[tests README](tests/README.md)を正本とする。`make check-includes` は公開 header と scene/core の include 境界を間接依存まで検査し、`make test-tools` でも実行する。
 
-| ターゲット        | 内容                                          | ツールチェーン                              |
-| :---              | :---                                          | :---                                        |
-| `make test`       | Native C テスト（ホスト clang、高速・CI 向き）| `cc`（Apple clang）                         |
-| `make test-asm`   | m68k asm サンプルを QEMU で実行               | `m68k-elf-as/ld`, `qemu-system-m68k`        |
-| `make test-qemu`  | **SSOS スケジューラ + 実 ctx switch を QEMU 駆動** | `m68k-elf-gcc`, `qemu-system-m68k`     |
-
-```bash
-# リポジトリルートで（両 SCHED variant の Native テストを実行、失敗時は非 0 で終了）
+```sh
 make test
-
-# QEMU asm サンプル
+make test SANITIZE=1
 make test-asm
-# または個別に
-cd tests/asm && make run S=t01_ctx_save_restore
-
-# QEMU で SSOS 本体の協調スケジューラ + ctx switch を実 m68k で駆動
-# （2 タスクが movem.l の保存/復元でラウンドロビンする様子を観察）
 make test-qemu
+make test-tools
+make check-includes
 ```
 
-### `test-asm` と `test-qemu` の違い
+| 検証層 | 確認できること | 残る範囲 |
+| --- | --- | --- |
+| Native | 共有 C logic、allocator/IPC/work、RAM 上の raster/window/scene、故障状態のモデル | 実 register/stack 切替、割り込みの並行実行、MMIO timing |
+| QEMU scheduler | 共有 scheduler と方式別 CPU port、entry/return、SR/frame、rte、10 tick cadence | production MFP setup/EOI、任意命令への非同期 Timer D、IOCS |
+| QEMU asm | `tests/asm/t01_hello.s`〜`t05_trap_exception.s` の段階式 CPU primitive | OS の boot と X68000 装置接続 |
+| X68000 実機/エミュレータ | 4 成果物の起動、入力、表示、復元、実 MFP/DMAC | 試験した機種・clock・操作条件以外 |
 
-両方とも `qemu-system-m68k -M virt` で m68k コードを動かすが、**何を動かすか・何を確認するか**が違う。
+Native の IRQ stub は no-op、yield は queue 回転だけを行う。graphics は本番の raster を `SS_HOST_TEST` で RAM 上に接続し、最終画素を検証する。scene は固定入力 replay と全面再描画との比較を利用する。QEMU の切替は MFP 依存を除いた移植 assembly であり、同期 trap の成功を実機の非同期安全性と同一視しない。[frame/QEMU 差分](docs/context-switch-contract.md)を参照する。
 
-|                | `make test-asm`                                 | `make test-qemu`                                          |
-| :---           | :---                                            | :---                                                      |
-| 場所           | `tests/asm/`                                    | `tests/qemu/`                                             |
-| **対象**       | **SSOS 本体を使わない**純粋な m68k asm の教材サンプル | **SSOS 本体の `scheduler.c`**（改変なし）+ ctx switch の QEMU 移植版 |
-| **目的**       | m68k 命令（`movem.l` 等）の動作を QEMU で単体確認 | SSOS のスケジューラ + コンテキストスイッチを実 m68k で検証 |
-| ビルド         | `m68k-elf-as` + `ld`（asm のみ、C なし）        | `m68k-elf-gcc`（C + asm、`-nostdlib`）                    |
-| 中身           | `t01_hello` → `t02_subroutines`(bsr/rts) → `t03_ctx_save_restore`(`movem.l`) → `t04_stack_frame`(yield フレーム) → `t05_trap_exception`(trap/rte) と段階的に複雑化 | `coop/`（yield 経路）と `pre/`（`trap #0` で Timer D ISR シミュレート、`rte` 経路）に分割 |
-| 確認できること | m68k プリミティブ自体が正しく動くこと            | タスクが実際にレジスタ退避/復元で切り替わること（`1212...` と交互に出力）|
-
-要約: **test-asm は「m68k 命令の学習・教材」**、**test-qemu は「SSOS 本体の動作検証」**。SSOS のスケジューラを検証したいなら `make test-qemu`、m68k アセンブリ自体を試したいなら `make test-asm`。
-
-#### `tests/asm/`（m68k 命令の教材サンプル、5段階）
-
-SSOS の ctx switch が基盤とする m68k プリミティブを段階的に学ぶ（`.text` を 0x400 に置き、0x0-0x3FF の例外ベクタテーブルと衝突させない）:
-
-- `t01_hello.s` — 最小。Goldfish TTY に "Hello" を出すだけ（サブルーチンなし）
-- `t02_subroutines.s` — `bsr`/`rts` で `putchar`/`print_str` を切り出し、カウントループ
-- `t03_ctx_save_restore.s` — `movem.l` で全レジスタを保存→破壊→復元
-- `t04_stack_frame.s` — `pea`+SR+`movem.l` で yield フレームを手動構築→破壊→復元（`ss_task_yield` と同じ構造）
-- `t05_trap_exception.s` — `trap #0` でベクタ経由のハンドラに入り `rte` で戻る（preempt の基礎）
-
-#### `tests/qemu/`（SSOS スケジューラ検証、cop/pre に分割）
-
-共通部分（`common/`: `stub.c`、`tty.h`、`linker.ld`）を除き、協調的とプリエンプティブで別ディレクトリ。SSOS 本体の `scheduler.c` を**改変なし**でビルドし、ctx switch を QEMU 移植版で動かす。
-
-| テスト | 経路 | 検証内容（Native では不可能）|
-| :--- | :--- | :--- |
-| `coop/t01_single_yield.c` | yield/jmp | 1タスクが yield で main に往復する最小動作（`TM`）|
-| `coop/t02_round_robin.c` | yield/jmp | 2タスクが `movem.l` でラウンドロビン（`1212...`）|
-| `coop/t03_register_save.c` | yield/jmp | d2-d7 の固有値が yield 切替後も復元されるか（レジスタ整合性）|
-| `pre/t01_round_robin.c` | trap/rte | 2タスクが `trap #0`→ISR→`rte` でラウンドロビン |
-| `pre/t02_register_save.c` | trap/rte | d2-d7 の固有値が `rte` 復元後も保持されるか |
-| `pre/t03_sleep_wakeup.c` | trap/rte | `ss_task_sleep` で他タスクに譲り、tick 経過後に復帰するか |
-
-> 補足: `test-qemu` の ctx switch は SSOS 本体の `interrupts.s`（X68000 MFP 依存）から MFP 依存を削いだ移植版（`ctx_switch.s` / `preempt_ctx_switch.s`）。MFP は QEMU virt に存在しないため。`trap` は同期例外なので真の非同期プリエンプションではないが、ISR 駆動の切替機構は検証可。
-
-### Native テストの仕組み
-
-純粋ロジック（`numfmt` / `buddy` / `slab`）はホストコンパイラでそのまま実行する。カーネル（`scheduler.c`）とウィンドウ（`window.c`）のソースも**改変なし**でホストコンパイルし、X68000 HW/asm 依存部分だけ `tests/framework/test_mocks.c` でスタブ化する。
-
-| 実体                              | スタブ                                                    |
-| :---                              | :---                                                      |
-| `ss_disable/enable_interrupts`(asm)| no-op（テストはシングルスレッド）                         |
-| `ss_task_yield`(asm ctx switch)   | `ss_do_context_switch()` のみ呼出（レジスタ交換しない）   |
-| `ss_tick_counter` 等(ISR)         | ホスト変数（`ADVANCE_TICK` マクロで操作）                 |
-| `ss_task_stack_base`(app)         | 静的 512KB arena                                          |
-| `ss_gfx_rect` / `ss_gfx_fill_stipple`(VRAM/DMA) | 呼出カウンタ（描画発生のみ検証）           |
-| `ss_current_mode`                 | ダミーモード（128x128）                                   |
-
-スケジューラは `SCHED=cooperative` と `SCHED=preemptive` の両方でビルドする。キュー/タスク/スリープ/起床の C ロジックは共通なので、同一の `test_scheduler.c` を両方で走らせる。
-
-### テスト構成
-
-| ファイル                      | 対象                                                                 |
-| :---                          | :---                                                                 |
-| `tests/unit/test_numfmt.c`    | 数値フォーマット（`ss_utoa_dec` / `ss_itoa_dec` / `ss_utoa_hex`）    |
-| `tests/unit/test_mem.c`       | Buddy アロケータ + Slab キャッシュ                                   |
-| `tests/unit/test_scheduler.c` | 優先度レディーキュー、タスク lifecycle、スリープ/起床、ctx switch 回転 |
-| `tests/unit/test_work_queue.c`| 遅延処理キューのFIFO、満杯時の不変条件                             |
-| `tests/unit/test_window.c`    | ウィンドウ CRUD、z-order、dirty 領域、hit-test、render_all           |
-| `tests/unit/test_ipc.c`       | メッセージキュー（send/recv、FIFO、wraparound、満杯）                |
-| `tests/asm/t01_hello.s` 等    | m68k プリミティブ教材（hello → サブルーチン → `movem.l` → フレーム → trap/rte、QEMU）      |
-| `tests/framework/`            | テストフレームワーク（`ssos_test.h`、runner、HW stubs）              |
-
-### テスト範囲の制限
-
-C ロジックのみを対象とし、以下は意図的に**テストしない**（実機/エミュレータで検証する）:
-
-- **グラフィックス/VRAM/DMA/IOCS/MFP** の直接操作（`ss_gfx_*` はスタブ）
-- **実コンテキストスイッチ**（`interrupts.s`）の**協調的 yield 経路とプリエンプティブの Timer D ISR 経路（`.resume_interrupted`/`rte` を含む）はどちらも `make test-qemu` で検証する**。QEMU 上で SSOS 本体の cooperative/preemptive 両 `scheduler.c` と ctx switch を実レジスタで駆動。プリエンプティブは `trap #0` で Timer D ISR をシミュレート（例外フレームが同一のため `rte` パスが同じく走る）。ただし Native の `ss_task_yield` スタブはレジスタ交換しないため、Native 側は状態遷移のみ検証する
-- **真の非同期プリエンプション**（実行中の任意ポイントでのハードウェア割込）。QEMU の `trap` は同期例外のため、ISR 駆動の切替機構は検証できるが完全な非同期性までは再現しない。MFP EOI / Timer D 周期設定も対象外
-- **ブートローダ**（`boot/`）、`premain.c`、`app/main.c`、`standalone/main.c`
-
-`tests/asm/` の QEMU サンプルは、SSOS 本体の `interrupts.s` ではなく、それが基盤とする m68k プリミティブ（`movem.l` 保存/復元など）の教材サンプルである。`tests/qemu/` は SSOS 本体の `scheduler.c` を**改変なし**で m68k-elf-gcc でビルドし、ctx switch を MFP 依存だけ削いだ移植版で動かす（協調的は yield 経路、プリエンプティブは trap でシミュレートした Timer D ISR 経路）。いずれも `interrupts.s` の X68000/MFP 固有部分は QEMU virt では動かないため対象外。
-
-### 変更の検証フローと `make verify-check`
-
-`make verify`は Native、ASan/UBSan、検証 tool fixture、QEMU、asm、context 共通 instruction 比較、ホスト性能ログ、clean build/profile 切替/依存/flags/no-op を順に実行する。各 step と QEMU case の log、対象 commit/dirty 状態、tool 版、成果物 hash/size を`build/verification/<run>/`に保存する。自動検証中の公開コピー先は`build/published/`。通常 make の既定は`~/tmp`で、`SS_EXPORT_DIR`で変更できる。
+### 変更の検証フロー
 
 ```sh
 . ~/.elf2x68k
 make verify
 make verify-check
 make verify-check REF=HEAD~1
-make verify-check REF=main
-python3 tools/bench-native.py
 ```
 
-`verify-check`は差分と未追跡 source を安全側に分類する。disk 生成 tool は`.xdf`へ影響し、無効 REF は非 0 終了する。QEMU 移植版の成功は production assembly や実 MFP の非同期タイミングを完全カバーしない。純粋数値変換以外の target 変更は該当形式の手動確認を示す。情報コマンドの終了コード 0 を実機確認完了として扱わない。
+`make verify` は Native/sanitizer、tool fixture、QEMU、asm、共通 context instruction 比較、host 測定、build matrix/依存/no-op を逐次実行する。log、source snapshot、設定、成果物 hash/size を `build/verification/<run>/` に保存する。自動検証時の公開先は `build/published/`、通常 build は `~/tmp` が既定で `SS_EXPORT_DIR` で変更できる。
 
-Task/API の制限は[契約表](docs/task-api-contract.md)、frame と QEMU 差分は[context契約](docs/context-switch-contract.md)、未完了項目は[追加改善計画](docs/maintenance-performance-plan-2026-09-30.md)を参照する。
+`verify-check` は変更した source から必要な実機確認を報告する。終了コード 0 は実機確認の完了を意味しない。[N01〜N09 計画](docs/maintenance-performance-plan-2026-09-30.md)に未確認条件を記録する。
 
-固定 scene は両 profile の`.x`で`-scene-bench`を指定する。診断 build は`EXTRA_CFLAGS='-DSS_DIAG_TASKS=32 -DSS_PROFILE_RUNTIME=1'`（1/2/8/32 も可）を付ける。`.x`では`-task-check`が独立 worker の stack/sleep/return を確認して終了し、`.xdf`では UI 起動前に同じ診断を行う。診断は worker slot を消費するため、新しいプロセス/起動画像で実行する。標準 build では診断を実行しない。詳細は[測定手順](docs/gfx-performance.md)を参照する。
+固定入力の `.x` 計測は `-scene-bench`、worker 診断 build は `EXTRA_CFLAGS='-DSS_DIAG_TASKS=32 -DSS_PROFILE_RUNTIME=1'` を使う。診断 `.x` は `-task-check`、診断 `.xdf` は UI 前に worker を実行する。通常 build は診断を実行しない。操作と比較条件は[gfx 計測手順](docs/gfx-performance.md)、task の制限は[API 契約](docs/task-api-contract.md)を参照する。
 
 ## 参考
 

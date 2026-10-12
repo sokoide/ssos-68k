@@ -1,10 +1,18 @@
 #ifndef SS_SCHEDULER_H
 #define SS_SCHEDULER_H
 
-#include "kernel.h"
+#include <stddef.h>
+#include "task.h"
 #include "scheduler_abi.h"
 
-#define SS_MAX_SLEEP_TICKS 0x7FFFFFFFUL
+/* Scheduler implementation/CPU ports/bootstrap only. Applications use task.h. */
+/* Task states */
+#define SS_TS_NONE     0
+#define SS_TS_DORMANT  1
+#define SS_TS_READY    2
+#define SS_TS_WAIT     3
+#define SS_TS_TERMINATED 4
+#define SS_TS_INITIALIZING 5
 
 typedef struct SSTask SSTask;
 struct SSTask {
@@ -42,15 +50,6 @@ _Static_assert(sizeof(SSTask) == SS_TCB_SIZE_VALUE,
 #endif
 
 typedef struct {
-    void* (*entry)(void*); /* entry(arg); return value is ignored */
-    uint8_t pri;
-    uint8_t ctx_level;
-    uint16_t stack_size;   /* custom stack must be >= SS_MIN_TASK_STACK */
-    void*    stack;        /* NULL = pool; otherwise last aligned word of region */
-    void*    arg;          /* passed to entry; NULL by default */
-} SSTaskInfo;
-
-typedef struct {
     uint16_t pri_bitmap;           /* bit 15 = pri 0 (highest) */
     SSTask*  heads[SS_MAX_PRI];
     SSTask*  tails[SS_MAX_PRI];
@@ -72,28 +71,12 @@ void    ss_sched_enqueue(SSTask* tcb);
 void    ss_sched_dequeue(SSTask* tcb);
 SSTask* ss_sched_pick(void);
 
-uint16_t ss_task_create(SSTaskInfo* info);
-uint16_t ss_task_start(uint16_t id);
-void     ss_do_context_switch(void);
-void     ss_do_wakeups(void);
-uint16_t ss_task_sleep(uint32_t ticks);
-void     ss_task_yield(void);
-void     ss_process_wakeups(void);
-void     ss_task_exit(void) __attribute__((noreturn));
-
-/* Custom stack is a descending region [stack - stack_size + 4, stack + 4).
- * It remains caller-owned until system shutdown; it is not reclaimed.
- * Returning from entry calls ss_task_exit. The task becomes TERMINATED and
- * its slot/stack remain reserved; there is no join or stack reclamation yet.
- * ss_task_create returns IDs 1..SS_MAX_TASKS or a uint16_t-encoded SS_ERR_*.
- * ctx_level is accepted but all registers are currently saved at every switch.
- */
+void ss_do_context_switch(void);
+void ss_do_wakeups(void);
+void ss_process_wakeups(void);
+void ss_stack_canary_init(uint16_t id);
 
 /* ss_do_wakeups mutates sleeping/ready queues. Call only with IRQs masked;
  * ss_process_wakeups is invoked by ss_do_context_switch under that mask. */
-
-/* Stack debugging */
-uint32_t ss_stack_check(uint16_t id);
-void     ss_stack_canary_init(uint16_t id);
 
 #endif /* SS_SCHEDULER_H */

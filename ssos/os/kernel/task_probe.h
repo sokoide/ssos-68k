@@ -1,6 +1,6 @@
 #ifndef SS_TASK_PROBE_H
 #define SS_TASK_PROBE_H
-#include "kernel.h"
+#include <stdint.h>
 #ifndef SS_DIAG_TASKS
 #define SS_DIAG_TASKS 0
 #endif

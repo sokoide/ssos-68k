@@ -1,6 +1,9 @@
+#include "status.h"
+#include "irq.h"
+#include "x68k_mfp.h"
+#include "boot.h"
 #include "../gfx/gfx.h"
 #include "../gfx/palette.h"
-#include "kernel.h"
 #include "main_task.h"
 #include <stdint.h>
 #include <x68k/iocs.h>

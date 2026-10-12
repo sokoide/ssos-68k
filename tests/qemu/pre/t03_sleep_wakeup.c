@@ -11,7 +11,9 @@
  * context runs, and resuming — only QEMU can.
  */
 
-#include "scheduler.h"   /* kernel.h */
+#include "clock.h"
+
+#include "scheduler.h"
 #include "tty.h"
 
 static volatile int phase = 0;   /* 1 = task1 has gone to sleep, 2 = task1 woke */

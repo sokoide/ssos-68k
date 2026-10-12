@@ -1,5 +1,6 @@
+#include "../kernel/status.h"
+#include "../kernel/irq.h"
 #include "ipc.h"
-#include "../kernel/kernel.h"
 #include "../kernel/scheduler.h"
 #include <string.h>
 

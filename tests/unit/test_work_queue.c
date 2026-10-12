@@ -1,4 +1,5 @@
-#include "kernel.h"
+#include "status.h"
+#include "clock.h"
 #include "ssos_test.h"
 #include "work_queue.h"
 

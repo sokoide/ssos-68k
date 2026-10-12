@@ -1,3 +1,5 @@
+#include "status.h"
+#include "irq.h"
 #include "scheduler.h"
 #include "main_task.h"
 #include "ipc.h"

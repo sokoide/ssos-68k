@@ -9,10 +9,11 @@
  * ss_recv blocks (yields) when the queue is empty, so we always pre-seed the
  * queue before calling it. */
 
+#include "status.h"
+
 #include "ssos_test.h"
 #include "ipc.h"
 #include "scheduler.h"
-#include "kernel.h"
 
 #include <string.h>
 

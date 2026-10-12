@@ -10,7 +10,11 @@
  *   Context switch: cooperative = explicit yield (SCHED=cooperative)
  *                   preemptive  = Timer D ISR     (SCHED=preemptive)
  */
-#include "../os/kernel/kernel.h"
+
+#include "../os/kernel/status.h"
+#include "../os/kernel/irq.h"
+#include "../os/kernel/clock.h"
+#include "../os/kernel/x68k_mfp.h"
 #include "../os/kernel/scheduler.h"
 #include "../os/mem/memory.h"
 #include "../os/gfx/gfx.h"

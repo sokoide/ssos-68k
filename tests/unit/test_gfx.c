@@ -1,5 +1,6 @@
 #include "ssos_test.h"
 #include "gfx.h"
+#include "gfx_hw.h"
 #include "profile.h"
 
 static uint32_t stride(void) {

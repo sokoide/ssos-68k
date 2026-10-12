@@ -1,7 +1,7 @@
+#include "../kernel/irq.h"
 #include "../gfx/gfx.h"
 #include "../gfx/palette.h"
 #include "../gfx/profile.h"
-#include "../kernel/kernel.h"
 #include "win.h"
 #include <string.h>
 

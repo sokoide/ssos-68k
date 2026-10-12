@@ -16,7 +16,7 @@
  * context-switch mechanics, which is the part Native cannot reach.
  */
 
-#include "scheduler.h"   /* kernel.h: SSTask, SSTaskInfo, API */
+#include "scheduler.h"
 #include "tty.h"
 #include <stdint.h>
 

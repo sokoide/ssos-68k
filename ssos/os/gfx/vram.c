@@ -1,4 +1,5 @@
 #include "gfx.h"
+#include "gfx_hw.h"
 #include "profile.h"
 #include <stdint.h>
 #include <string.h>

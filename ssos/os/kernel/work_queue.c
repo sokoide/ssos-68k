@@ -1,5 +1,7 @@
+#include "status.h"
+#include "irq.h"
+#include "clock.h"
 #include "work_queue.h"
-#include "kernel.h"
 #include <string.h>
 
 SSWorkQueue ss_main_work_queue;

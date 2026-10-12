@@ -10,6 +10,8 @@ Three test families, run from this directory:
 | `make test-asm` | m68k asm samples under QEMU                    | `m68k-elf-as/ld`, `qemu-system-m68k` |
 | `make test-qemu`| **SSOS scheduler + real ctx switch on QEMU**   | `m68k-elf-gcc`, `qemu-system-m68k` |
 
+学習順と各層で確かめる問いは[教育用 OS の設計方針](../docs/educational-os-design.md#学習順と確かめる問い)、教材例の整備計画は[改善計画 E05](../docs/educational-os-plan.md#e05-最小の学習例を整備する)を参照する。
+
 ## Quick start
 
 ```bash
@@ -146,6 +148,12 @@ The QEMU asm samples under `asm/` are self-contained teaching examples of the
 m68k primitives the SSOS context switch is built on (`movem.l` save/restore).
 They are **not** the SSOS `interrupts.s` itself — that file is X68000-MFP-
 specific and cannot run on QEMU virt.
+
+## Include 境界の検査
+
+root の `make check-includes` は公開 header と scene/replay が内部 TCB/queue・起動/MMIO header へ依存しないこと、kernel core が IOCS/DOS・装置 header へ依存しないことを間接 include まで確認する。`make test-tools` は検査と故障 fixture、公開 header の単独 C compile を実行し、`make verify` に含まれる。
+
+起動 host・CPU port・内部 tests の内部利用は許可する。既定 scene の IOCS 入力は E03 で分離するため、現在は検査対象から除外する。macro include や任意の C 依存は解析しない。範囲は `tools/check-includes.py` の PUBLIC/APPLICATION/CORE が正本。
 
 ## Adding a new suite
 

@@ -1,17 +1,7 @@
-#ifndef SS_KERNEL_H
-#define SS_KERNEL_H
+#ifndef SS_X68K_MFP_H
+#define SS_X68K_MFP_H
 
-#include <stddef.h>
 #include <stdint.h>
-
-/* Error codes */
-#define SS_OK          0
-#define SS_ERR        (-1)
-#define SS_ERR_PARAM  (-2)
-#define SS_ERR_MEMORY (-3)
-#define SS_ERR_LIMIT  (-4)
-#define SS_ERR_STATE  (-5)
-#define SS_ERR_ID     (-6)
 
 /* Hardware addresses - MFP */
 #define SS_MFP_BASE     0xE88000
@@ -28,48 +18,9 @@
 #define SS_VEC_CRTC    0x138
 #define SS_VEC_HSYNC   0x13C
 
-/* Task constants */
-#define SS_MAX_TASKS   32
-#define SS_MAX_PRI     16
-#define SS_TASK_STACK  16384
-#define SS_MIN_TASK_STACK 256
-
-/* Context save levels */
-#define SS_CTX_MINIMAL 0x00
-#define SS_CTX_NORMAL  0x01
-#define SS_CTX_FULL    0x02
-
-/* Task states */
-#define SS_TS_NONE     0
-#define SS_TS_DORMANT  1
-#define SS_TS_READY    2
-#define SS_TS_WAIT     3
-#define SS_TS_TERMINATED 4
-#define SS_TS_INITIALIZING 5
-
-/* Global counters (defined in interrupts.s) */
-extern volatile uint32_t ss_tick_counter;
-extern volatile uint32_t ss_vsync_counter;
-extern volatile uint32_t ss_vdisp_fire_count;
-extern volatile uint32_t ss_timerd_fire_count;
-
-/* Entry points */
-void premain(void);
-int16_t ss_init(void);
-void ss_run(void);
-
-/* Interrupt setup (defined in interrupts.s) */
+/* X68000 MFP setup and saved-state restoration. */
 void ss_set_interrupts(void);
 void ss_restore_interrupts(void);
-uint16_t ss_irq_save(void);
-void ss_irq_restore(uint16_t saved_sr);
-
-/* Linker symbols */
-extern uint8_t __text_start, __text_end, __text_size;
-extern uint8_t __data_start, __data_end, __data_size;
-extern uint8_t __bss_start, __bss_end, __bss_size;
-extern uint8_t __ssosram_start, __ssosram_size;
-extern uint8_t __ssosstack_start, __ssosstack_end, __ssosstack_size;
 
 /* MFP register addresses */
 #define SS_MFP_IERA  (*(volatile uint8_t*)0xE88007)
@@ -115,4 +66,4 @@ void ss_mfp_track_begin(SSMfpRegs* snapshot);
 void ss_mfp_track_end(const SSMfpRegs* before, const char* label);
 void ss_mfp_watch_ctrl(const char* label);
 
-#endif /* SS_KERNEL_H */
+#endif /* SS_X68K_MFP_H */

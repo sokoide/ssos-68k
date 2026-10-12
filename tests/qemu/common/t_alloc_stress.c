@@ -9,6 +9,9 @@
  * invariants. Main asserts the free-byte count returns exactly to baseline.
  */
 
+#include "status.h"
+#include "irq.h"
+
 #include "scheduler.h"
 #include "main_task.h"
 #include "memory.h"

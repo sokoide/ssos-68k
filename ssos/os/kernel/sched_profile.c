@@ -1,3 +1,5 @@
+#include "irq.h"
+#include "clock.h"
 #include "sched_profile.h"
 #include "scheduler.h"
 #include <string.h>

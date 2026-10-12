@@ -1,3 +1,6 @@
+#include "status.h"
+#include "irq.h"
+#include "clock.h"
 #include "scheduler.h"
 #include "sched_profile.h"
 #include <stdint.h>

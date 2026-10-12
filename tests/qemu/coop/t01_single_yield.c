@@ -9,7 +9,7 @@
  * t02_round_robin.c (two tasks) and t03_register_save.c (register integrity).
  */
 
-#include "scheduler.h"   /* kernel.h: SSTask, SSTaskInfo, API */
+#include "scheduler.h"
 #include "tty.h"
 
 static void* worker(void* arg) {

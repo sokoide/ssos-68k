@@ -56,6 +56,9 @@ try:
         changed = [p for p, stamp in outputs().items() if before.get(p) != stamp]
         if changed:
             raise RuntimeError('no-op changed outputs: ' + str(changed))
+    touch_check('ssos/os/kernel/task.h', 'ssos/os/build/cooperative/profile-0/kernel/scheduler.o', '-j4', 'all')
+    touch_check('ssos/os/kernel/x68k_mfp.h', 'ssos/standalone/build/cooperative/profile-0/main.o', '-j4', 'all')
+    touch_check('ssos/os/gfx/gfx_hw.h', 'ssos/os/build/cooperative/profile-0/gfx/vram.o', '-j4', 'all')
     touch_check('ssos/os/kernel/scheduler.h', 'ssos/os/build/cooperative/profile-0/kernel/scheduler.o', '-j4', 'all')
     touch_check('ssos/os/kernel/scheduler_abi.h', 'ssos/standalone/build/cooperative/profile-0/interrupts.o', '-j4', 'all')
     touch_check('ssos/include/iocscall.mac', 'ssos/standalone/build/cooperative/profile-0/trap14.o', '-j4', 'all')

@@ -12,7 +12,7 @@
  * for it, sets ss_curr_task, then creates+starts the two workers.
  */
 
-#include "scheduler.h"   /* pulls in kernel.h: SSTask, SSTaskInfo, API */
+#include "scheduler.h"
 #include "tty.h"
 #include <stdint.h>
 

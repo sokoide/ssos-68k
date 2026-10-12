@@ -1,3 +1,4 @@
+#include "status.h"
 #include "main_task.h"
 #include "tty.h"
 

@@ -1,9 +1,10 @@
+#include "status.h"
+#include "clock.h"
 #include "ssos_test.h"
 #include "scene.h"
 #include "scene_replay.h"
 #include "work_queue.h"
 #include "gfx.h"
-#include "kernel.h"
 #include "scheduler.h"
 #include "win.h"
 

@@ -1,5 +1,5 @@
-#include "../kernel/kernel.h"
-#include "../kernel/scheduler.h"
+#include "../kernel/clock.h"
+#include "../kernel/task.h"
 #include "../kernel/work_queue.h"
 #include "../gfx/gfx.h"
 #include "../gfx/palette.h"

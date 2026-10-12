@@ -1,3 +1,6 @@
+#include "status.h"
+#include "irq.h"
+#include "clock.h"
 #include "task_probe.h"
 #include "scheduler.h"
 #if SS_DIAG_TASKS && !defined(LOCAL_MODE)

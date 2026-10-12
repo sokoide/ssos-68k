@@ -11,6 +11,9 @@
  * the interrupted context via rte and can make the assertions below.
  */
 
+#include "status.h"
+#include "clock.h"
+
 #include "scheduler.h"
 #include "tty.h"
 

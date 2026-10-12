@@ -6,6 +6,8 @@
  * and the wake must hand control back per queue order, not priority.
  */
 
+#include "status.h"
+
 #include "scheduler.h"
 #include "main_task.h"
 #include "ipc.h"

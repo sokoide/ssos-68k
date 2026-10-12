@@ -1,5 +1,7 @@
 # Task・UI要求APIの契約
 
+公開 task 宣言は `ssos/os/kernel/task.h`、error は `status.h`。`scheduler.h` は TCB/queue/切替入口の内部 header で、application は include しない。IRQ の宣言は `irq.h`、counter は `clock.h`。signature と error の符号化は従来と同じ。
+
 | API | 成功 | 制限と失敗 |
 | --- | --- | --- |
 | ss_task_create | uint16_tのID 1〜32 | 負のSS_ERR_*はuint16_tへ符号化される。INITIALIZING中はstart不可、完了後DORMANT。custom stackは終了後もcaller所有 |

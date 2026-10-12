@@ -1,5 +1,7 @@
 /* t04_main_task_register.c - production main-task bootstrap round trip. */
 
+#include "status.h"
+
 #include "main_task.h"
 #include "tty.h"
 

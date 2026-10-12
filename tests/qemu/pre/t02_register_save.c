@@ -8,7 +8,7 @@
  * restores register state correctly, which Native and t01_round_robin cannot.
  */
 
-#include "scheduler.h"   /* kernel.h */
+#include "scheduler.h"
 #include "tty.h"
 #include <stdint.h>
 

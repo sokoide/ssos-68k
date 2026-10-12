@@ -1,3 +1,4 @@
+#include "irq.h"
 #include "scheduler.h"
 #include "tty.h"
 extern void ss_restore_trap14(void);

@@ -1,3 +1,5 @@
+#include "status.h"
+#include "clock.h"
 #include "main_task.h"
 #include "task_probe.h"
 #include "tty.h"

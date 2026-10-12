@@ -10,10 +10,12 @@
  * Built once per SCHED= variant: cooperative and preemptive share this file
  * because their queue/task/wakeup logic is identical. */
 
+#include "status.h"
+#include "clock.h"
+
 #include "ssos_test.h"
 #include "scheduler.h"
 #include "sched_profile.h"
-#include "kernel.h"
 
 /* ss_tick_counter is defined in test_mocks.c; bump it to simulate ticks. */
 #define ADVANCE_TICK(n) (ss_tick_counter += (n))

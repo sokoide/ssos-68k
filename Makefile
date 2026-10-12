@@ -13,6 +13,7 @@ usage:
 	@echo "SSOS-68K build and test targets:"
 	@echo "  make all              Build both scheduler variants"
 	@echo "  make test             Run native tests"
+	@echo "  make check-includes   Check public/core C include boundaries"
 	@echo "  make test-asm         Run m68k assembly samples under QEMU"
 	@echo "  make test-qemu        Run scheduler tests under QEMU"
 	@echo "  make verify           Run automated verification and report hardware checks"
@@ -67,10 +68,13 @@ verify-check:
 verify:
 	python3 tools/verify-auto.py
 
-test-tools:
+check-includes:
+	python3 tools/check-includes.py
+
+test-tools: check-includes
 	python3 -m unittest discover -s tests/tools -v
 
-.PHONY: test-tools bench-native
+.PHONY: test-tools check-includes bench-native
 bench-native:
 	$(MAKE) -C tests -f Makefile.native bench SCHED=cooperative
 	$(MAKE) -C tests -f Makefile.native bench SCHED=preemptive

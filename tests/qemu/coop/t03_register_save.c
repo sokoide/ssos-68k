@@ -12,7 +12,7 @@
  * See pre/t02_register_save.c for the trap/rte equivalent.
  */
 
-#include "scheduler.h"   /* kernel.h */
+#include "scheduler.h"
 #include "tty.h"
 #include <stdint.h>
 

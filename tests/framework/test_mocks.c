@@ -14,8 +14,10 @@
  *   - graphics MMIO             (real: VRAM/CRTC/DMAC)      -> RAM seam in vram.c
  */
 
+#include "irq.h"
+#include "clock.h"
+
 #include "ssos_test.h"
-#include "kernel.h"
 #include "scheduler.h"
 #include "gfx.h"
 #include "palette.h"

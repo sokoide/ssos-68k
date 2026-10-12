@@ -1,0 +1,254 @@
+# 旧 UI アーキテクチャノート（履歴）
+
+旧 `ssos/README_ja.md` を 2026-10-13 に保存した。以下は現行説明・旧実装・後日の追記が混在する記録であり、API、mode、stride、Timer 設定、例外復帰の現行仕様には使わない。現行の入口は[文書索引](README.md)、学習順は[設計方針](educational-os-design.md)を参照する。
+
+## 保存した概説
+
+SSOS は X68000 実機およびエミュレータ上で動作するベアメタル OS プロトタイプです。スレッドモデルのみをビルド時オプションで切り替えられ、`make SCHED=cooperative` では明示的な `ss_task_yield()` 呼び出しによるコーペラティブマルチタスク、`make SCHED=preemptive` では Timer D ISR によるプリエンプティブマルチタスクとして動作します。通常 UI の描画・入力・シーン定義は `os/app/scene.c` に統合され、`.x` と `.xdf` の両方で共有されます。通常 UI の UI task は単一です。`standalone` 固有なのはホスト初期化・終了処理と、`SS_PROFILE_GFX=1` のベンチマークです。
+
+## 現行 UI 統合（2026年7月）
+
+- 通常 UI は `os/app/scene.c` の同一シーンを `.x` / `.xdf` で共有する。
+- UI task は単一で、入力・本文更新・描画・ドラッグ処理を実行する。
+- `standalone` はホスト固有の初期化・終了処理を受け持ち、ベンチマーク時だけ standalone 専用の計測処理を追加する。
+
+## グラフィックモード設定
+
+SSOS では、標準的な IOCS `_CRTMOD` 呼び出しにより画面モードを設定しています。
+
+### IOCS `_CRTMOD` モード一覧
+
+| 分類               | モード番号 | 解像度        | 仮想画面      | 色数      | 備考                            |
+| :---               | :---       | :---          | :---          | :---      | :---                            |
+| **パレットモード** | 8          | 512 × 512     | 512 × 512     | 256色     | HiReso (31kHz)                  |
+|                    | 9          | 512 × 512     | 512 × 512     | 256色     | LoReso (15kHz)                  |
+|                    | **10**     | **256 × 256** | **512 × 512** | **256色** | **HiReso (31kHz) / 現在採用中** |
+|                    | 11         | 256 × 256     | 512 × 512     | 256色     | LoReso (15kHz)                  |
+| **High Color**     | 12         | 512 × 512     | 512 × 512     | 65536色   | HiReso (31kHz)                  |
+|                    | 13         | 512 × 512     | 512 × 512     | 65536色   | LoReso (15kHz)                  |
+
+※ モード 0〜7 は 16 色（4 プレーン）モード、モード 16〜19 は特殊解像度用です。
+
+### crtmod 9 と 10 の違い
+
+| 項目              | モード 9 (512×512)              | モード 10 (256×256)                          |
+| :---              | :---                            | :---                                         |
+| 表示解像度        | 512 × 512 ピクセル              | 256 × 256 ピクセル (各ピクセルが 2×2 で表示) |
+| GVRAM ストライド  | 512 ワード/ライン (1024 バイト) | 512 ワード/ライン (1024 バイト)              |
+| ページあたり VRAM | 512KB (全面使用)                | 512KB 中 256 ライン分使用                    |
+| 備考              | LoReso (15kHz)                  | HiReso (31kHz)                               |
+
+## VRAM 構造 (256色 モード 10)
+
+X68000 の 256 色モードは「パレット形式」ですが、メモリ上では **1画素 = 2バイト** としてマップされます。
+
+- **GVRAM アドレス**: `$C00000`
+- **1画素**: 16 ビット（下位 8 ビットにパレットインデックスを格納）。
+- **物理アライメント**: 1 ドットが 2 バイトを占有するため、`uint16_t*` ポインタによるアクセスが最適です。
+- **ライン幅 (Stride)**: 512 ワード (1024 バイト)。**mode8は512ワード、現行mode16は1024ワード**。
+- **座標計算**: `GVRAM + (y * (bytes_per_line / 2)) + x`
+
+## パレットと UI カラー (MacOS 7 スタイル)
+
+`_iocs_gpalet` を使用して、MacOS 7 の外観を再現するためのパレット構成を行っています。
+
+- **パレット形式**: `GGGGG RRRRR BBBBB P` (16 ビット)
+- **カラー構成**:
+  - `C_BLACK` (Index 0): 黒。タイトルバーの文字、枠線、横線に使用。
+  - `C_WHITE` (Index 1): 白。ウィンドウのコンテンツ背景に使用。
+  - `C_GRAY_L` (Index 2): ライトグレー。アクティブウィンドウのタイトルバー、デスクトップ背景（白との交互）に使用。
+
+## デスクトップ UI デザイン
+
+MacOS 7 の視覚的特徴を以下のアルゴリズムで再現しています。
+
+1. **チェッカーボード背景 (`fill_stipple`)**:
+    白とライトグレーを 1 ドットおきに交互に描画し、当時の Macintosh 特有のデスクトップ質感を再現。
+2. **タイトルバーの装飾**:
+    - **Foreground**: ライトグレー背景に 5 本の黒い水平線を描画。中央のタイトル文字部分のみ線をクリッピング。
+    - **Background**: 白背景。境界を明確にするため最下段に 1 ピクセルの黒線を引く。
+3. **ウィンドウ枠**: すべて 1 ピクセルの黒線 (`C_BLACK`) で統一。
+
+## フォント描画
+
+内蔵の **Spleen 5x8** フォント（ASCII 0x20-0x7E）を採用しています。
+
+- **配置**: バイナリ内に 1 文字 8 バイトのビットマスクとして埋め込み。
+- **レンダリング**: 各ビットを走査し、パレットインデックスを GVRAM へ直接書き込み。
+- **レイアウト**: 5 ピクセル幅の文字に 1 ピクセルの隙間を加え、6 ピクセル送りで描画。
+
+## 描画パイプライン（旧実装の記録：2026年7月の UI 統合以前）
+
+以下の `need_full`、`ol_save` / `ol_restore`、marching ants に関する説明は、旧 standalone 描画実装の記録であり、現行通常 UI の実装説明ではありません。
+
+### レンダリングモード
+
+メインループの描画フェーズは 3 つのモードに分かれ、フレームごとに 1 つだけ実行される。
+
+| モード            | 条件             | 処理                                                     |
+| :---              | :---             | :---                                                     |
+| **Full Redraw**   | `need_full == 1` | 全画面 stipple → 全ウィンドウ描画（z-order）             |
+| **Drag Outline**  | `drag >= 0`      | 前回 outline 復元 → 新位置保存 → marching ants 描画      |
+| **Dirty Content** | それ以外         | 変更のあったテキスト行のみピクセルクリッピング付きで描画 |
+
+### Full Redraw（初回・ドラッグ開始時）
+
+初回フレーム (`need_full = 1`) で画面全体を構築する:
+
+1. `fill_stipple` でデスクトップ全体に白/グレーのチェッカーボードパターンを描画
+2. `draw_frame` で各ウィンドウの枠・タイトルバー・コンテンツ背景を z-order 順（下→上）に描画
+3. `draw_content_dirty` で各ウィンドウのテキスト内容を描画
+
+このモードは初回フレームと、ドラッグ開始時の対象ウィンドウ矩形のみに限定して呼ばれる。
+
+### Drag Outline（ドラッグ中）
+
+ドラッグ中はウィンドウの実体を描き直さず、marching ants アウトラインのみを更新する:
+
+1. `ol_restore` — 前回保存した outline 位置の元画像を復元（位置変化時のみ）
+2. `ol_save` — 新位置の周辺ピクセルをバッファに保存（最大 1200 ワード、位置変化時のみ）
+3. `draw_march_outline` — 白黒交互の破線を周長に沿って描画（`frame & 7` でアニメーション）
+
+#### 位置変化検出による最適化
+
+ドラッグ中のフレームは 2 種類に分かれる:
+
+| フレーム種別                          | 処理                  | VRAM操作数                                 |
+| :---                                  | :---                  | :---                                       |
+| **位置変化あり** (マウス移動)         | restore → save → draw | ≈ 周長ピクセル数                           |
+| **位置不変** (マウス停止・アニメのみ) | draw のみ             | ≈ 周長ピクセル数 (**セーブ/リストア不要**) |
+
+位置不変時はアウトラインピクセルが同じ周長上にあるため、新パターンで上書きするだけで正しく更新される。バッファの背景データは次の位置変化時まで有効。
+
+#### Fast Path / Slow Path 分岐
+
+`draw_march_outline` / `ol_save` / `ol_restore` の各関数は、ウィンドウが完全に画面内にある場合（通常ケース）に境界チェックを全削除した fast path を使用する:
+
+- **Fast path** (画面内): ポインタ演算による連続アクセス、ループ内分岐なし
+- **Slow path** (画面外あり): ピクセル単位の境界チェック（元のロジック）
+
+上辺・下辺は VRAM 内で連続アドレスのため、配列添字 (`GVRAM[y*STR+x]`) ではなくポインタ (`p[i]`) でアクセスし、乗算をループ外に移動。
+
+ドラッグ終了時に `ol_restore` 後、ウィンドウを実描画。
+
+### Dirty Content（通常時・ピクセル単位クリッピング）
+
+通常時は変更のあったテキスト行のみを更新し、全画面再描画を回避する:
+
+```text
+for each window in z-order (bottom → top):
+    for each text line:
+        if memcmp(line, prev) != 0:
+            draw_text_clip(x, y, line, fg, bg, zpos)
+            memcpy(prev, line)
+```
+
+**ピクセル単位クリッピング** (`draw_char8_clip`):
+各ピクセル描画前に上位ウィンドウの矩形との衝突判定を行い、被覆ピクセルはスキップする:
+
+```text
+for each pixel (xx, yy) in character glyph:
+    for each window above the current window in z-order:
+        if (xx, yy) is inside that window's bounding box:
+            skip this pixel  // 上位ウィンドウの描画内容を保持
+```
+
+## VRAM 転送アーキテクチャ
+
+### CPU move.l / move.w 書き込み + DMA
+
+`fill_rect` / `fill_stipple` は `MOVE.L` (32 ビット) で 2 ピクセル同時書き込み。奇数アドレス時は `MOVE.W` で 1 ピクセルフォールバック。大きな矩形には DMAC CH2 を使用。
+
+| 関数                 | 用途                     | 転送量         | 特徴                      |
+| :---                 | :---                     | :---           | :---                      |
+| `fill_rect`          | 矩形塗り潰し             | 最大 256×256   | DMA (w>64, h>4) or move.l |
+| `fill_stipple`       | チェッカーボード背景     | 256×256        | 事前計算パターン + move.l |
+| `draw_char8`         | フォント1文字            | 5×8 = 40 word  | fg/bg 同時書き            |
+| `draw_char8_clip`    | クリッピング付きフォント | ≤ 40 word      | ピクセル単位で被覆判定    |
+| `draw_march_outline` | ドラッグ outline         | ≈ 2×(w+h) word | 周長のみ                  |
+
+### VRAM 書き込みのアドレス計算
+
+256 色モードでは 1 画素 = 1 ワード（16 ビット）。パレットインデックスを下位 8 ビットに格納。
+
+```text
+address = GVRAM_BASE + (y * 512 + x) * 2
+        = GVRAM_BASE + y * 1024 + x * 2   (byte address)
+```
+
+`uint16_t*` ポインタと stride 512（ワード単位）でアクセス:
+
+```c
+#define GVRAM ((volatile uint16_t*)0xC00000)
+#define GVRAM_STR 512  /* words per line = 1024 bytes — 色モード・解像度に関わらず固定 */
+
+pixel(x, y) = GVRAM[y * GVRAM_STR + x]  /* uint16_t write */
+```
+
+## 例外ハンドリング (TRAP #14)
+
+バスエラー・アドレスエラー・不正命令を TRAP #14 で捕捉し、デバッグ情報を表示して安全に終了する。
+
+### 設計（X68000 プログラミングリファレンスに準拠）
+
+| コンポーネント      | 役割                                                                                                                                                                              |
+| :---                | :---                                                                                                                                                                              |
+| `ss_trap14_handler` | 例外発生時に Human68K が TRAP #14 で呼び出す。d7=エラーコード、a6=パラメータブロック(SR+PC) を trapbuf に保存し `_ABORTJOB` でプロセス abort。**ハンドラ内では I/O を行わない**。 |
+| `ss_trap14_abort`   | abort 後に Human68K が呼び出す (ベクタ 0xFFF2/0xFFF1)。緊急スタック上で `ss_abort_cleanup()` を呼び、Timer D/V-DISP・MFP・COPY/NMI・TRAP #14・画面入力を復元してから例外を表示し `_ABORTRST` で終了。 |
+| `ss_init_trap14`    | 0xB8 にハンドラ設置 + `_B_INTVCS` で 0xFFF2/0xFFF1 に abort ハンドラ設置。                                                                                                        |
+| `ss_restore_trap14` | 0xB8 を元のベクタに復元。                                                                                                                                                         |
+
+### 注意: `rts` と `rte`
+
+TRAP #14 は CPU の trap 命令で SR+PC がスタックに push されるため、ハンドラは **`rte` で戻らなければならない**。`rts` だと SR がスタックに残りスタック破壊→クラッシュする。
+
+## コーペラティブコンテキストスイッチ
+
+### 設計方針
+
+Timer D 割り込み (200Hz) はティック加算と起床要求フラグの設定だけを行い、強制コンテキストスイッチは行わない。起床処理は scheduler のコンテキスト切替時に割り込みをマスクして実行する。待機中の main task も worker の yield で起床できる。切替自体はタスクの `ss_task_yield()` が契機となる。
+
+### `ss_task_yield` の動作
+
+1. 現在タスクの全レジスタ (d0-d7/a0-a6) をスタックに保存
+2. `ss_do_context_switch()` で次タスクを選択 (ラウンドロビン)
+3. `ss_yield_count` をインクリメント
+4. 新タスクの保存されたレジスタを復元して復帰
+
+### スレッド構成（旧実装の記録：2026年7月の UI 統合以前）
+
+現行の通常 UI は単一の UI task で動作する。以下の `Thread 2 (data)` は旧 standalone 構成の記録として残す。
+
+- **Thread 1 (main, pri=8)**: レンダリング + マウス IOCS を V-sync 毎 (57Hz) に実行。各ループ末尾で `ss_task_yield()`
+- **Thread 2 (data, pri=8)**: タイマー/キーボード IOCS のみ。`ss_task_sleep(40)` で 200ms 間隔。起床後 `ss_task_yield()`
+
+### Timer D 設定
+
+- TCDCR: prescaler /200 (0xF7)。4MHz / 200 = 20kHz
+- TDDR: 100。20kHz / 100 = **200Hz** (5ms/ティック)
+- ハンドラ内容: ティック加算 → 起床要求フラグ設定 → RTE (コンテキストスイッチなし)
+- `ss_task_sleep()` の引数は 200Hz tick 単位 (1 tick = 5ms)。例: `ss_task_sleep(40)` = 200ms。
+
+## セキュリティ・安全機能
+
+| 機能              | ベクタ              | 内容                                     |
+| :---              | :---                | :---                                     |
+| TRAP #14 例外捕捉 | 0xB8 (vector 0x2E)  | バスエラー/アドレスエラー/不正命令を捕捉 |
+| COPY キー保護     | 0xB0 (vector 0x2C)  | TRAP #12 を NOP ハンドラに置換           |
+| NMI 保護          | 0x7C (autovector 7) | NMI を NOP ハンドラに置換                |
+
+## 今後の拡張
+
+- 8x16 フォントおよび全角文字のパレットモード対応。
+- DMAC チャネル 2 を用いた `fill_rect` のさらなる高速化。
+- マウス SCC 割り込みハンドラによる IOCS 呼び出し削減。
+- `draw_char8_clip` の z-order 最適化 (重なりなし時の fast path)。
+- ウィンドウリサイズ・スクロール対応。
+
+## 現行の契約と検証（2026-09-30）
+
+TCB/stack/frame の正本は`os/kernel/scheduler.h`、`scheduler_abi.h`、`context_frame.h`。task は INITIALIZING 中に start できず、canary 初期化後に DORMANT へ公開する。entry(arg)の return は TERMINATED で、slot を再利用しない。main の IPC は非対応。制限と UI 要求の payload 寿命は[API契約](task-api-contract.md)を参照する。
+
+VSync 停止は無期限 spin を続けず、`.x`では一度の snapshot 復旧後に脱出、`.xdf`では有限待機後に IPL7 下で停止する。DMA 停止未確認では`.x`も表示・プロセス領域を返さず停止する。実機復旧・IOCS/DMAC 動作の確認は残る。
+
+検証入口は root の`make verify`。ホスト/RAM、QEMU 移植版、実機の範囲は[context契約](context-switch-contract.md)と[追加計画](maintenance-performance-plan-2026-09-30.md)へ集約する。mode8 は 512word stride、mode16 は 1024word stride で、同じ固定値を全 mode へ適用しない。
